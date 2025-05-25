@@ -111,7 +111,3 @@ Neural networks operate by composing many such prototype surface evaluators acro
 * The final layers classify inputs based on **composite proximity** to these learned prototype surfaces
 
 Rather than making decisions by crossing fixed decision boundaries, the network evaluates the **degree of deviation from multiple prototype sets**, allowing rich and flexible classification based on geometric structure in the data. It's noteworthy that this understanding of network behavior as composing prototype surface evaluators applies directly to common existing architectures employing linear layers and ReLU activations, without necessitating changes to their design or training methods.
-
----
-
-Let me know if you'd like a version of this suitable for publication formatting, a slide deck summary, or diagrams to illustrate these concepts.

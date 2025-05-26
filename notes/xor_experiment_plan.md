@@ -20,10 +20,12 @@
 
 **3. Theoretical Application: PSL Applied to XOR**
     * Describe how the general PSL theory is expected to manifest specifically for an MLP solving XOR.
-    * How hidden neurons are predicted to define prototype regions (`Wx+b <= 0`).
+    * How hidden neurons are predicted to define prototype regions (`Activation(Wx+b) = 0`).
     * How the combination of these regions (and the signals of inclusion/exclusion) allows the output neuron to solve the XOR logic.
     * Discuss the interpretation of the output layer's function within the PSL framework for this binary classification task.
     * ReLU's zero-activation regions encapsulating prototypes (and positive activation signaling non-prototypical inputs) 
+    * Abs's zero-activation decision boundary encapsulating prototypes (and positive activation signaling non-prototypical inputs) 
+    * Sigmoids's positive and negative extremes.
     * emphasize the geometric interpretation (hyperplanes, half-spaces as prototype regions) rather than explicitly naming them as learned "distance metrics"
     * The metric "point distance from surface" framed carefully as "deviation from the prototype surface (Wx+b=0)" rather than as the network learning a formal "distance metric."
     * 
@@ -59,7 +61,7 @@
         * Accuracy histogram across multiple runs.
         * Activations (pre and post-ReLU for hidden, pre-sigmoid and post-sigmoid for output) for all XOR inputs.
     * **5.5. Analysis, Metrics, and Visualization:**
-        * **Geometric Visualization:** Plot 2D hyperplanes (`Wx+b=0`) of hidden neurons against training data. Identify the "prototype regions" for ReLU (`Wx+b <= 0`).
+        * **Geometric Visualization:** Plot 2D hyperplanes (`Wx+b=0`) of hidden neurons against training data. Identify the "prototype regions" for different activations.
         * **Quantitative Metrics (Examples):**
             * Distance of each input point to each hidden neuron's hyperplane (`Wx+b=0`).
             * Analysis of weight "mirror pairs" (W_0 = -W_1).
@@ -73,9 +75,3 @@
     * This section will list specific experiments conducted under this plan.
     * Each experiment entry will detail its specific configuration (from 5.3), link to results/visualizations, and summarize key observations and discussion points.
     * This list will be updated iteratively as experiments are performed and new questions arise.
-        * *Example Initial Entry:*
-            * `Experiment 001: XOR with 2 Hidden ReLU Units`
-                * *Configuration:* (Details...)
-                * *Results/Visualizations:* (Link/Path...)
-                * *Observations:* (...)
-

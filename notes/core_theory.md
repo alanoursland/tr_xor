@@ -55,6 +55,24 @@ outputs positive values only when the input lies in the half-space where $Wx + b
 
 Thus, ReLU can be viewed as a one-sided distance evaluator: it activates only when the input lies **outside** a defined region, and it remains zero when the input lies **within** it. The region where ReLU outputs zero — i.e., the negative half-space — is interpreted here as the **prototype region**: a learned set of feature patterns to which the neuron is “tuned.”
 
+### **2.5 Absolute-Value as Two-Sided Prototype Locus**
+
+While ReLU marks the entire negative half-space $\{x : Wx + b \le 0\}$ as the prototype region (via zero activation), the absolute-value activation $g(z) = |z|$ reinterprets prototype membership in a more sharply localized way. Instead of extending a region, it selects a **prototype locus**—a *measure-zero* set precisely on the affine hyperplane where the pre-activation vanishes.
+
+Let $f(x) = |Wx + b|$. Then $f(x) = 0$ if and only if $x \in H = \{x : Wx + b = 0\}$. In contrast to ReLU, there is no extension to one side: the activation is strictly positive off the hyperplane, and symmetric in both directions. The zero set is no longer a half-space but the **surface itself**.
+
+We can interpret this as a shift in the prototype encoding principle. With absolute value, a unit declares a prototype not by inclusion, but by **coincidence**: the prototype is the exact affine slice where the activation vanishes. Furthermore, the **output of the unit now encodes distance** from this prototype locus. In fact, since
+
+$$
+|Wx + b| = \text{ReLU}(Wx + b) + \text{ReLU}(-Wx - b),
+$$
+
+the absolute-value unit can be understood as simultaneously measuring distance on both sides of the surface, using two opposing ReLU-like detectors.
+
+This behavior makes absolute-value networks function less like inclusion-based classifiers and more like **surface detectors**: each hidden neuron describes an affine prototype, and outputs the deviation from it. The network as a whole then aggregates these deviations to guide classification. As we will see later in the XOR case (Section §4.1), this property allows a single $|\cdot|$ unit to carve out linearly inseparable regions through symmetric combination—something ReLU requires multiple units to achieve.
+
+In short, absolute-value activations preserve the prototype surface idea but collapse the prototype region to a locus. They transition the model’s geometry from region-growing to **distance field encoding**, setting up a different but still compatible basis for prototype surface learning.
+
 ---
 
 ## **3. Prototype Recognition Mechanism**
@@ -99,6 +117,40 @@ This zero-output region defines a **superset** of the original prototype set. It
 ReLU therefore acts as a **set extender**: it generalizes the prototype membership from the exact surface (defined by the linear equation) to **an entire half-space**. From a functional perspective, the neuron treats all these points — infinitely many of them — as **equivalent** by assigning them the same output (zero).
 
 This reinterpretation turns a conventional assumption on its head: **zero activation is not a sign of inactivity, but a sign of inclusion**. It indicates that the input lies within a recognized region — defined not as a point but as a **spatially extended prototype set**. In this view, a zero activation can be interpreted as an 'acceptance' of the input into the prototype set, while a positive activation signals 'rejection' or measures the input's deviation from this recognized region.
+
+Here is a draft of **§3.3 “Absolute-Value Encodes Signed Distance”** for `core_theory.md`, complementing the existing §3.2 on ReLU:
+
+---
+
+### **3.3 Absolute-Value Encodes Signed Distance**
+
+Whereas ReLU extends a single prototype surface into an entire half-space of inclusion, the absolute-value activation performs no such expansion. Instead, it treats the prototype as the **zero set** $\{x : Wx + b = 0\}$, and outputs a value proportional to the **distance** from that set. The geometry is not one of region growth, but of distance field encoding.
+
+Given a neuron with parameters $W \in \mathbb{R}^{1 \times d}$, $b \in \mathbb{R}$, the pre-activation value $z = Wx + b$ represents a signed measure of displacement from the surface $H = \{x : Wx + b = 0\}$. Applying the absolute-value activation yields
+
+$$
+|z| = |Wx + b|,
+$$
+
+which corresponds to the **unsigned (algebraic) distance** from $x$ to the surface $H$, up to a normalizing factor.
+
+More precisely, the perpendicular Euclidean distance from a point $x$ to the surface $H$ is:
+
+$$
+\text{dist}(x, H) = \frac{|Wx + b|}{\|W\|}.
+$$
+
+Thus, a neuron with $g(z) = |z|$ implicitly defines a prototype surface and computes the (scaled) distance from it.
+
+This shift has two implications:
+
+1. **Distance over inclusion.** Unlike ReLU, which gives a binary membership signal (zero if in the prototype region, positive otherwise), the absolute-value unit furnishes a continuous score—useful not for gating, but for evaluating deviation. Classification becomes a matter of **comparing distances** to multiple prototype surfaces, possibly using downstream learned weights to shape their relative influence.
+
+2. **Symmetry of response.** Absolute-value units respond identically to displacements on either side of the prototype surface. This enables downstream layers to form symmetric or anti-symmetric combinations, particularly important in problems like XOR where parity matters.
+
+When networks use absolute-value activations, hidden units act more like **distance sensors** than region classifiers. This aligns closely with traditional metric learning, but from a surface-based, rather than centroid-based, perspective.
+
+From a prototype surface learning standpoint, the use of $|\cdot|$ enforces a strict localization: **the prototype is the surface itself**, and all outputs describe how far the input has drifted from it. This behavior complements the ReLU-based regime, offering a dual view—**proximity measured from both sides, rather than inclusion from one.**
 
 ---
 

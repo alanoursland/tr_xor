@@ -29,7 +29,7 @@ Thus, we introduce a generalized notion—**Separation Order (SepOrd)**—to for
 
 ## 2. Definition: Separation Order (SepOrd)
 
-**Definition (Separation Order)**: For a continuous activation function $\sigma : \mathbb{R} \to \mathbb{R}$, the **Separation Order** (SepOrd) is defined as the number of distinct connected open intervals where $\sigma$ is monotonic (non-decreasing or non-increasing):
+**Definition (Separation Order)**: For an activation function $\sigma : \mathbb{R} \to \mathbb{R}$, the **Separation Order** (SepOrd) is defined as the number of distinct connected open intervals where $\sigma$ is monotonic (non-decreasing or non-increasing):
 
 $$
 \operatorname{SepOrd}(\sigma) = \bigl|\text{connected intervals where } \sigma \text{ is strictly monotonic}\bigr|
@@ -200,8 +200,6 @@ Each σ-unit can fold space only SepOrd(σ) times (i.e. union at most that many 
 \lceil k / \text{SepOrd}(σ) \rceil
 \]  
 layers of folding before the final threshold; fewer layers leave at least one required half-space unrepresented. This collapses to the classical “depth ≥ order” bound when σ is monotone (SepOrd = 1) and improves by the reciprocal factor SepOrd(σ) when σ is non-monotone.:contentReference[oaicite:1]{index=1}  
-
-∎
 
 ---
 

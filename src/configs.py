@@ -11,6 +11,7 @@ from typing import Dict, List, Tuple, Any, Optional, Union, Callable
 from enum import Enum
 from dataclasses import dataclass, field
 from pathlib import Path
+from data import xor_data_centered, xor_labels_T1
 import copy
 import torch
 import torch.nn as nn
@@ -20,8 +21,10 @@ import models
 # Configuration Schema and Types
 # ==============================================================================
 
+
 class ExperimentType(Enum):
     """Types of experiments supported by the framework."""
+
     XOR = "xor"
     PARITY = "parity"
     CUSTOM_BOOLEAN = "custom_boolean"
@@ -31,6 +34,7 @@ class ExperimentType(Enum):
 
 class OptimizationType(Enum):
     """Supported optimizer types."""
+
     ADAM = "adam"
     SGD = "sgd"
     RMSPROP = "rmsprop"
@@ -40,6 +44,7 @@ class OptimizationType(Enum):
 
 class LossType(Enum):
     """Supported loss function types."""
+
     CROSS_ENTROPY = "cross_entropy"
     MSE = "mse"
     BCE = "binary_cross_entropy"
@@ -49,6 +54,7 @@ class LossType(Enum):
 
 class SchedulerType(Enum):
     """Learning rate scheduler types."""
+
     NONE = "none"
     STEP = "step"
     EXPONENTIAL = "exponential"
@@ -60,112 +66,134 @@ class SchedulerType(Enum):
 @dataclass
 class TrainingConfig:
     """Configuration for training procedure."""
+
     optimizer: torch.optim.Optimizer = None
     eps: float = 1e-8
-    
+
     loss_function: torch.nn.Module = None
-    
+
     epochs: int = None
     batch_size: int = None
-    
+
     # Learning rate scheduling
     scheduler: SchedulerType = SchedulerType.NONE
     scheduler_params: Dict[str, Any] = field(default_factory=dict)
-    
+
     # Early stopping
     early_stopping: bool = False
     patience: int = 50
     min_delta: float = 1e-6
     restore_best_weights: bool = True
-    
+
     # Convergence criteria
     convergence_threshold: float = 1e-6
     convergence_window: int = 10
-    
+
     # Gradient clipping
     gradient_clipping: bool = False
     max_grad_norm: float = 1.0
+
+    def cleanup(self) -> None:
+        """Clean up training resources."""
+        if self.optimizer is not None:
+            del self.optimizer
+            self.optimizer = None
+        if self.loss_function is not None:
+            del self.loss_function  
+            self.loss_function = None
+
+# @dataclass
+# class DataConfig:
+#     """Configuration for data generation and preprocessing."""
+#     problem_type: ExperimentType
+
+#     # XOR-specific
+#     xor_normalized: bool = True
+#     xor_center_origin: bool = True
+
+#     # Parity-specific
+#     parity_n_bits: int = 3
+#     parity_signed: bool = True
+#     parity_complete: bool = True  # Use complete truth table vs sampling
+#     parity_num_samples: Optional[int] = None  # For sampling
+
+#     # Data augmentation
+#     add_noise: bool = False
+#     noise_std: float = 0.1
+#     rotation_augment: bool = False
+#     rotation_angles: List[float] = field(default_factory=list)
+#     scaling_augment: bool = False
+#     scale_factors: List[float] = field(default_factory=list)
+
+#     # Preprocessing
+#     normalization: str = "none"  # From NormalizationType enum
+#     center_data: bool = False
+
+#     # Validation split
+#     validation_split: float = 0.0
+#     stratified_split: bool = True
+
+#     # Custom dataset parameters
+#     custom_truth_table: Optional[Dict[Tuple[int, ...], int]] = None
 
 
 @dataclass
 class DataConfig:
     """Configuration for data generation and preprocessing."""
-    problem_type: ExperimentType
-    
-    # XOR-specific
-    xor_normalized: bool = True
-    xor_center_origin: bool = True
-    
-    # Parity-specific
-    parity_n_bits: int = 3
-    parity_signed: bool = True
-    parity_complete: bool = True  # Use complete truth table vs sampling
-    parity_num_samples: Optional[int] = None  # For sampling
-    
-    # Data augmentation
-    add_noise: bool = False
-    noise_std: float = 0.1
-    rotation_augment: bool = False
-    rotation_angles: List[float] = field(default_factory=list)
-    scaling_augment: bool = False
-    scale_factors: List[float] = field(default_factory=list)
-    
-    # Preprocessing
-    normalization: str = "none"  # From NormalizationType enum
-    center_data: bool = False
-    
-    # Validation split
-    validation_split: float = 0.0
-    stratified_split: bool = True
-    
-    # Custom dataset parameters
-    custom_truth_table: Optional[Dict[Tuple[int, ...], int]] = None
+
+    x: torch.Tensor
+    y: torch.Tensor
+
+    # Optional metadata
+    problem_type: Optional[ExperimentType] = None
+    description: str = ""
 
 
 @dataclass
 class AnalysisConfig:
     """Configuration for post-training analysis."""
+
     # Geometric analysis
     geometric_analysis: bool = True
     hyperplane_plots: bool = True
     prototype_region_analysis: bool = True
     decision_boundary_analysis: bool = True
     distance_field_analysis: bool = True
-    
+
     # Weight analysis
     weight_analysis: bool = True
     mirror_pair_detection: bool = True
     weight_evolution_tracking: bool = False
     weight_clustering: bool = False
     symmetry_analysis: bool = True
-    
+
     # Activation analysis
     activation_analysis: bool = True
     activation_patterns: bool = True
     sparsity_analysis: bool = True
     zero_activation_regions: bool = True
-    
+
     # Convergence analysis
     convergence_analysis: bool = True
     training_dynamics: bool = True
     loss_landscape_analysis: bool = False
-    
+
     # Comparative analysis
     cross_run_comparison: bool = True
     statistical_analysis: bool = True
     stability_analysis: bool = True
-    
+
     # Visualization options
     save_plots: bool = True
     plot_format: str = "png"  # "png", "pdf", "svg"
     plot_dpi: int = 300
     interactive_plots: bool = False
     plot_style: str = "default"
-    
+
     # Analysis bounds and resolution
     analysis_bounds: List[Tuple[float, float]] = field(default_factory=lambda: [(-2.5, 2.5), (-2.5, 2.5)])
     analysis_resolution: int = 100
-    
+
     # PSL-specific analysis
     prototype_surface_validation: bool = True
     separation_order_analysis: bool = True
@@ -175,54 +203,78 @@ class AnalysisConfig:
 @dataclass
 class ExecutionConfig:
     """Configuration for experiment execution."""
+
     num_runs: int = 10
     random_seeds: Optional[List[int]] = None
     device: str = "auto"  # "auto", "cpu", "cuda", "cuda:0", etc.
-    
+    skip_existing: bool = True  # Don't rerun existing experiments
+
     # Parallel execution
     parallel_runs: bool = False
     max_workers: Optional[int] = None
-    
+
     # Output and logging
     output_dir: str = "results"
     experiment_name: str = "unnamed_experiment"
     save_intermediate: bool = False
     save_frequency: int = 100  # epochs
-    
+
     # Logging
     logging_level: str = "INFO"
     log_to_file: bool = True
     log_to_console: bool = True
     detailed_logging: bool = False
-    
+
     # Resource management
     memory_limit: Optional[int] = None  # MB
     time_limit: Optional[int] = None  # seconds
-    
+
     # Reproducibility
     deterministic: bool = True
     benchmark: bool = False  # For CUDA reproducibility vs performance
 
+@dataclass
+class LoggingConfig:
+    """Configuration for logging information."""
+    train_epochs: int = 1000 # number of training epochs between logging
 
 @dataclass
 class ExperimentConfig:
     """Complete experiment configuration."""
+
     model: torch.nn.Module
     training: TrainingConfig
     data: DataConfig
     analysis: AnalysisConfig
     execution: ExecutionConfig
-    
+    logging: LoggingConfig
+
     # Metadata
     description: str = ""
     tags: List[str] = field(default_factory=list)
     version: str = "1.0"
     created_by: str = "psl_framework"
     notes: str = ""
-    
+
     # Dependencies and inheritance
     base_config: Optional[str] = None
     overrides: Dict[str, Any] = field(default_factory=dict)
+
+    def cleanup(self) -> None:
+        """Clean up all config resources."""
+        if self.model is not None:
+            # Move model to CPU first, then delete
+            self.model = self.model.cpu()
+            del self.model
+            self.model = None
+        
+        if self.training is not None:
+            self.training.cleanup()
+        
+        # Force GPU memory cleanup
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
 
 
 # ==============================================================================
@@ -235,7 +287,7 @@ BASE_CONFIGS: Dict[str, ExperimentConfig] = {}
 # XOR experiment templates
 XOR_EXPERIMENTS: Dict[str, ExperimentConfig] = {}
 
-# Parity experiment templates  
+# Parity experiment templates
 PARITY_EXPERIMENTS: Dict[str, ExperimentConfig] = {}
 
 # Comparative analysis templates
@@ -279,9 +331,9 @@ experiments: Dict[str, Callable[[], ExperimentConfig]] = {}
 
 def initialize_experiments() -> None:
     global experiments
-    
-    experiments["abs1"] = abs1_config
-    
+
+    experiments["abs1_normal"] = config_abs1_normal
+
     print(f"Initialized {len(experiments)} experiments: {list(experiments.keys())}")
     pass
 
@@ -289,84 +341,86 @@ def initialize_experiments() -> None:
 def get_experiment_config(name: str) -> ExperimentConfig:
     """
     Retrieve experiment configuration by name.
-    
+
     Args:
         name: Name of experiment configuration
-        
+
     Returns:
         Complete experiment configuration
     """
     if not experiments:
         initialize_experiments()
-    
+
     if name not in experiments:
         available = list(experiments.keys())
         raise KeyError(f"Unknown experiment '{name}'. Available experiments: {available}")
-    
+
     # Call the factory function to create the config
     config_factory = experiments[name]
     config = config_factory()
-    
+
     # Handle inheritance if needed
     if config.base_config:
         config = resolve_config_inheritance(name)
-    
+
     return config
 
+
 def list_experiments(category: Optional[str] = None, tags: Optional[List[str]] = None) -> List[str]:
-   """
-   List available experiment configurations.
-   
-   Args:
-       category: Filter by experiment category
-       tags: Filter by experiment tags
-       
-   Returns:
-       List of experiment names matching criteria
-   """
-   if not experiments:
-       initialize_experiments()
-   
-   # Start with all experiment names
-   experiment_names = list(experiments.keys())
-   
-   # If no filtering requested, return all
-   if category is None and tags is None:
-       return sorted(experiment_names)
-   
-   # Filter by category and/or tags if requested
-   filtered_names = []
-   
-   for name in experiment_names:
-       # Create config to check its metadata
-       try:
-           config = experiments[name]()
-           
-           # Check category filter
-           if category is not None:
-               # Since we simplified, we can infer category from name or description
-               # Or you could add a category field to ExperimentConfig
-               if category.lower() not in name.lower() and category.lower() not in config.description.lower():
-                   continue
-           
-           # Check tags filter  
-           if tags is not None:
-               # Would need to add tags field to ExperimentConfig for this to work
-               # For now, skip tag filtering
-               pass
-           
-           filtered_names.append(name)
-           
-       except Exception:
-           # If config creation fails, skip this experiment
-           continue
-   
-   return sorted(filtered_names)
+    """
+    List available experiment configurations.
+
+    Args:
+        category: Filter by experiment category
+        tags: Filter by experiment tags
+
+    Returns:
+        List of experiment names matching criteria
+    """
+    if not experiments:
+        initialize_experiments()
+
+    # Start with all experiment names
+    experiment_names = list(experiments.keys())
+
+    # If no filtering requested, return all
+    if category is None and tags is None:
+        return sorted(experiment_names)
+
+    # Filter by category and/or tags if requested
+    filtered_names = []
+
+    for name in experiment_names:
+        # Create config to check its metadata
+        try:
+            config = experiments[name]()
+
+            # Check category filter
+            if category is not None:
+                # Since we simplified, we can infer category from name or description
+                # Or you could add a category field to ExperimentConfig
+                if category.lower() not in name.lower() and category.lower() not in config.description.lower():
+                    continue
+
+            # Check tags filter
+            if tags is not None:
+                # Would need to add tags field to ExperimentConfig for this to work
+                # For now, skip tag filtering
+                pass
+
+            filtered_names.append(name)
+
+        except Exception:
+            # If config creation fails, skip this experiment
+            continue
+
+    return sorted(filtered_names)
+
 
 def get_experiment_categories() -> Dict[str, List[str]]:
     """
     Get experiment names organized by category.
-    
+
     Returns:
         Dictionary mapping categories to experiment lists
     """
@@ -377,70 +431,72 @@ def get_experiment_categories() -> Dict[str, List[str]]:
 # Configuration Validation
 # ==============================================================================
 
+
 def validate_experiment_config(config: ExperimentConfig) -> Tuple[bool, List[str]]:
-   """
-   Validate experiment configuration for completeness and consistency.
-   
-   Args:
-       config: Experiment configuration to validate
-       
-   Returns:
-       Tuple of (is_valid, error_messages)
-   """
-   errors = []
-
-   if not config:
-    errors.append(f"config is {config}")
-    return False, errors
-   
-   # Validate each section
-   model_valid, model_errors = validate_model_config(config.model)
-   training_valid, training_errors = validate_training_config(config.training)
-   data_valid, data_errors = validate_data_config(config.data)
-   analysis_valid, analysis_errors = validate_analysis_config(config.analysis)
-   execution_valid, execution_errors = validate_execution_config(config.execution)
-   
-   # Collect all errors
-   errors.extend(model_errors)
-   errors.extend(training_errors)
-   errors.extend(data_errors)
-   errors.extend(analysis_errors)
-   errors.extend(execution_errors)
-   
-   # Cross-section compatibility checks
-   compat_valid, compat_errors = check_config_compatibility(config)
-   errors.extend(compat_errors)
-   
-   # Basic sanity checks
-   if not config.description.strip():
-       errors.append("Experiment description cannot be empty")
-   
-   if config.execution.num_runs <= 0:
-       errors.append("Number of runs must be positive")
-      
-   is_valid = len(errors) == 0
-   return is_valid, errors
-
-def validate_model_config(config: torch.nn.Module) -> Tuple[bool, List[str]]:
     """
-    Validate model configuration parameters.
-    
+    Validate experiment configuration for completeness and consistency.
+
     Args:
-        config: Model configuration to validate
-        
+        config: Experiment configuration to validate
+
     Returns:
         Tuple of (is_valid, error_messages)
     """
     errors = []
-    
+
+    if not config:
+        errors.append(f"config is {config}")
+        return False, errors
+
+    # Validate each section
+    model_valid, model_errors = validate_model_config(config.model)
+    training_valid, training_errors = validate_training_config(config.training)
+    data_valid, data_errors = validate_data_config(config.data)
+    analysis_valid, analysis_errors = validate_analysis_config(config.analysis)
+    execution_valid, execution_errors = validate_execution_config(config.execution)
+
+    # Collect all errors
+    errors.extend(model_errors)
+    errors.extend(training_errors)
+    errors.extend(data_errors)
+    errors.extend(analysis_errors)
+    errors.extend(execution_errors)
+
+    # Cross-section compatibility checks
+    compat_valid, compat_errors = check_config_compatibility(config)
+    errors.extend(compat_errors)
+
+    # Basic sanity checks
+    if not config.description.strip():
+        errors.append("Experiment description cannot be empty")
+
+    if config.execution.num_runs <= 0:
+        errors.append("Number of runs must be positive")
+
+    is_valid = len(errors) == 0
+    return is_valid, errors
+
+
+def validate_model_config(config: torch.nn.Module) -> Tuple[bool, List[str]]:
+    """
+    Validate model configuration parameters.
+
+    Args:
+        config: Model configuration to validate
+
+    Returns:
+        Tuple of (is_valid, error_messages)
+    """
+    errors = []
+
     if config is None:
         errors.append("Model cannot be None")
         return False, errors
-    
+
     # Check that it's actually a PyTorch model
     if not isinstance(config, torch.nn.Module):
         errors.append("Model must be a torch.nn.Module instance")
-    
+
     # Check that it has parameters (not strictly required, but usually expected)
     try:
         param_count = sum(p.numel() for p in config.parameters())
@@ -448,17 +504,18 @@ def validate_model_config(config: torch.nn.Module) -> Tuple[bool, List[str]]:
             errors.append("Model has no parameters")
     except Exception as e:
         errors.append(f"Error counting model parameters: {e}")
-    
+
     is_valid = len(errors) == 0
     return is_valid, errors
+
 
 def validate_training_config(config: TrainingConfig) -> Tuple[bool, List[str]]:
     """
     Validate training configuration parameters.
-    
+
     Args:
         config: Training configuration to validate
-        
+
     Returns:
         Tuple of (is_valid, error_messages)
     """
@@ -468,10 +525,10 @@ def validate_training_config(config: TrainingConfig) -> Tuple[bool, List[str]]:
 def validate_data_config(config: DataConfig) -> Tuple[bool, List[str]]:
     """
     Validate data configuration parameters.
-    
+
     Args:
         config: Data configuration to validate
-        
+
     Returns:
         Tuple of (is_valid, error_messages)
     """
@@ -481,10 +538,10 @@ def validate_data_config(config: DataConfig) -> Tuple[bool, List[str]]:
 def validate_analysis_config(config: AnalysisConfig) -> Tuple[bool, List[str]]:
     """
     Validate analysis configuration parameters.
-    
+
     Args:
         config: Analysis configuration to validate
-        
+
     Returns:
         Tuple of (is_valid, error_messages)
     """
@@ -494,10 +551,10 @@ def validate_analysis_config(config: AnalysisConfig) -> Tuple[bool, List[str]]:
 def validate_execution_config(config: ExecutionConfig) -> Tuple[bool, List[str]]:
     """
     Validate execution configuration parameters.
-    
+
     Args:
         config: Execution configuration to validate
-        
+
     Returns:
         Tuple of (is_valid, error_messages)
     """
@@ -507,10 +564,10 @@ def validate_execution_config(config: ExecutionConfig) -> Tuple[bool, List[str]]
 def check_config_compatibility(config: ExperimentConfig) -> Tuple[bool, List[str]]:
     """
     Check for compatibility between different configuration sections.
-    
+
     Args:
         config: Complete experiment configuration
-        
+
     Returns:
         Tuple of (is_compatible, warning_messages)
     """
@@ -521,13 +578,14 @@ def check_config_compatibility(config: ExperimentConfig) -> Tuple[bool, List[str
 # Configuration Inheritance and Merging
 # ==============================================================================
 
+
 def resolve_config_inheritance(config_name: str) -> ExperimentConfig:
     """
     Resolve configuration inheritance and apply overrides.
-    
+
     Args:
         config_name: Name of configuration with potential inheritance
-        
+
     Returns:
         Fully resolved configuration
     """
@@ -537,11 +595,11 @@ def resolve_config_inheritance(config_name: str) -> ExperimentConfig:
 def merge_configs(base: ExperimentConfig, override: ExperimentConfig) -> ExperimentConfig:
     """
     Merge two configurations, with override taking precedence.
-    
+
     Args:
         base: Base configuration
         override: Override configuration
-        
+
     Returns:
         Merged configuration
     """
@@ -551,27 +609,26 @@ def merge_configs(base: ExperimentConfig, override: ExperimentConfig) -> Experim
 def apply_overrides(config: ExperimentConfig, overrides: Dict[str, Any]) -> ExperimentConfig:
     """
     Apply dictionary overrides to configuration.
-    
+
     Args:
         config: Base configuration
         overrides: Dictionary of override values
-        
+
     Returns:
         Configuration with overrides applied
     """
     pass
 
 
-def create_config_variant(base_config_name: str, modifications: Dict[str, Any], 
-                         new_name: str) -> ExperimentConfig:
+def create_config_variant(base_config_name: str, modifications: Dict[str, Any], new_name: str) -> ExperimentConfig:
     """
     Create variant of existing configuration with modifications.
-    
+
     Args:
         base_config_name: Name of base configuration
         modifications: Dictionary of modifications to apply
         new_name: Name for new variant configuration
-        
+
     Returns:
         New variant configuration
     """
@@ -582,47 +639,48 @@ def create_config_variant(base_config_name: str, modifications: Dict[str, Any],
 # Parameter Sweep Generation
 # ==============================================================================
 
-def generate_parameter_sweep(base_config: ExperimentConfig, 
-                           sweep_params: Dict[str, List[Any]]) -> List[ExperimentConfig]:
+
+def generate_parameter_sweep(
+    base_config: ExperimentConfig, sweep_params: Dict[str, List[Any]]
+) -> List[ExperimentConfig]:
     """
     Generate grid search configurations from parameter sweep specification.
-    
+
     Args:
         base_config: Base configuration for sweep
         sweep_params: Dictionary mapping parameter paths to value lists
-        
+
     Returns:
         List of configurations for grid search
     """
     pass
 
 
-def generate_random_search(base_config: ExperimentConfig,
-                          param_distributions: Dict[str, Any],
-                          num_samples: int) -> List[ExperimentConfig]:
+def generate_random_search(
+    base_config: ExperimentConfig, param_distributions: Dict[str, Any], num_samples: int
+) -> List[ExperimentConfig]:
     """
     Generate random search configurations from parameter distributions.
-    
+
     Args:
         base_config: Base configuration for search
         param_distributions: Dictionary mapping parameters to distributions
         num_samples: Number of random configurations to generate
-        
+
     Returns:
         List of configurations for random search
     """
     pass
 
 
-def create_ablation_study(base_config: ExperimentConfig,
-                         ablation_components: List[str]) -> List[ExperimentConfig]:
+def create_ablation_study(base_config: ExperimentConfig, ablation_components: List[str]) -> List[ExperimentConfig]:
     """
     Create ablation study configurations by systematically removing components.
-    
+
     Args:
         base_config: Complete configuration for ablation
         ablation_components: List of components to systematically remove
-        
+
     Returns:
         List of ablation configurations
     """
@@ -633,10 +691,11 @@ def create_ablation_study(base_config: ExperimentConfig,
 # Configuration I/O and Serialization
 # ==============================================================================
 
+
 def save_config(config: ExperimentConfig, filepath: Path, format: str = "yaml") -> None:
     """
     Save configuration to file in specified format.
-    
+
     Args:
         config: Configuration to save
         filepath: Output file path
@@ -648,11 +707,11 @@ def save_config(config: ExperimentConfig, filepath: Path, format: str = "yaml") 
 def load_config(filepath: Path, format: str = "auto") -> ExperimentConfig:
     """
     Load configuration from file with automatic format detection.
-    
+
     Args:
         filepath: Path to configuration file
         format: File format ("yaml", "json", "toml", "auto")
-        
+
     Returns:
         Loaded experiment configuration
     """
@@ -662,11 +721,11 @@ def load_config(filepath: Path, format: str = "auto") -> ExperimentConfig:
 def export_config_template(config_type: str = "basic", filepath: Optional[Path] = None) -> str:
     """
     Export configuration template for manual editing.
-    
+
     Args:
         config_type: Type of template ("basic", "advanced", "xor", "parity")
         filepath: Optional file path to save template
-        
+
     Returns:
         Configuration template as string
     """
@@ -676,10 +735,10 @@ def export_config_template(config_type: str = "basic", filepath: Optional[Path] 
 def import_config_from_dict(config_dict: Dict[str, Any]) -> ExperimentConfig:
     """
     Import configuration from dictionary format.
-    
+
     Args:
         config_dict: Configuration as nested dictionary
-        
+
     Returns:
         Structured experiment configuration
     """
@@ -689,10 +748,10 @@ def import_config_from_dict(config_dict: Dict[str, Any]) -> ExperimentConfig:
 def export_config_to_dict(config: ExperimentConfig) -> Dict[str, Any]:
     """
     Export configuration to dictionary format.
-    
+
     Args:
         config: Configuration to export
-        
+
     Returns:
         Configuration as nested dictionary
     """
@@ -703,14 +762,15 @@ def export_config_to_dict(config: ExperimentConfig) -> Dict[str, Any]:
 # Configuration Analysis and Comparison
 # ==============================================================================
 
+
 def compare_configs(config1: ExperimentConfig, config2: ExperimentConfig) -> Dict[str, Any]:
     """
     Compare two configurations and identify differences.
-    
+
     Args:
         config1: First configuration
         config2: Second configuration
-        
+
     Returns:
         Dictionary describing differences
     """
@@ -720,25 +780,26 @@ def compare_configs(config1: ExperimentConfig, config2: ExperimentConfig) -> Dic
 def analyze_config_space(configs: List[ExperimentConfig]) -> Dict[str, Any]:
     """
     Analyze configuration space covered by list of configurations.
-    
+
     Args:
         configs: List of configurations to analyze
-        
+
     Returns:
         Analysis of configuration space coverage
     """
     pass
 
 
-def suggest_missing_experiments(existing_configs: List[ExperimentConfig],
-                              coverage_criteria: Dict[str, Any]) -> List[ExperimentConfig]:
+def suggest_missing_experiments(
+    existing_configs: List[ExperimentConfig], coverage_criteria: Dict[str, Any]
+) -> List[ExperimentConfig]:
     """
     Suggest additional experiments to improve coverage of configuration space.
-    
+
     Args:
         existing_configs: Currently available configurations
         coverage_criteria: Criteria for comprehensive coverage
-        
+
     Returns:
         List of suggested additional configurations
     """
@@ -748,10 +809,10 @@ def suggest_missing_experiments(existing_configs: List[ExperimentConfig],
 def generate_config_summary(config: ExperimentConfig) -> str:
     """
     Generate human-readable summary of configuration.
-    
+
     Args:
         config: Configuration to summarize
-        
+
     Returns:
         Summary string describing key configuration elements
     """
@@ -762,13 +823,14 @@ def generate_config_summary(config: ExperimentConfig) -> str:
 # Utility Functions
 # ==============================================================================
 
+
 def get_config_hash(config: ExperimentConfig) -> str:
     """
     Generate unique hash for configuration identification.
-    
+
     Args:
         config: Configuration to hash
-        
+
     Returns:
         Unique hash string
     """
@@ -778,10 +840,10 @@ def get_config_hash(config: ExperimentConfig) -> str:
 def clone_config(config: ExperimentConfig) -> ExperimentConfig:
     """
     Create deep copy of configuration.
-    
+
     Args:
         config: Configuration to clone
-        
+
     Returns:
         Independent copy of configuration
     """
@@ -791,11 +853,11 @@ def clone_config(config: ExperimentConfig) -> ExperimentConfig:
 def update_config_metadata(config: ExperimentConfig, **metadata) -> ExperimentConfig:
     """
     Update configuration metadata fields.
-    
+
     Args:
         config: Configuration to update
         **metadata: Metadata fields to update
-        
+
     Returns:
         Configuration with updated metadata
     """
@@ -805,10 +867,10 @@ def update_config_metadata(config: ExperimentConfig, **metadata) -> ExperimentCo
 def get_config_dependencies(config: ExperimentConfig) -> List[str]:
     """
     Get list of dependencies for configuration (base configs, etc.).
-    
+
     Args:
         config: Configuration to analyze
-        
+
     Returns:
         List of dependency names
     """
@@ -819,29 +881,21 @@ def get_config_dependencies(config: ExperimentConfig) -> List[str]:
 # Experiment Configuration Factories
 # ==============================================================================
 
-def abs1_config() -> ExperimentConfig:
+
+def config_abs1_normal() -> ExperimentConfig:
     """Factory function for absolute value XOR experiment."""
-    model = models.Model_Abs1()
-    optimizer = torch.optim.Adam(model.parameters(), lr= 0.01, betas=(0.9, 0.99))
+    model = models.Model_Abs1().init_normal()
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01, betas=(0.9, 0.99))
     loss_function = nn.MSELoss()
 
     return ExperimentConfig(
         model=model,
-        training=TrainingConfig(
-            optimizer=optimizer,
-            loss_function=loss_function,
-            epochs=5000,
-            batch_size=4
-        ),
-        data=DataConfig(
-            problem_type=ExperimentType.XOR
-        ),
+        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=200),
+        data=DataConfig(x=xor_data_centered(), y=xor_labels_T1(), problem_type=ExperimentType.XOR),
         analysis=AnalysisConfig(),
-        execution=ExecutionConfig(
-            num_runs=10,
-            experiment_name="abs1"
-        ),
-        description="XOR with single absolute value unit"
+        execution=ExecutionConfig(num_runs=200, experiment_name="abs1", skip_existing=False),
+        description="Centered XOR with single absolute value unit",
+        logging=LoggingConfig(train_epochs=50)
     )
 
 

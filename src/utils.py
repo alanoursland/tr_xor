@@ -809,12 +809,13 @@ def create_experiment_directory_structure(base_path: Path, experiment_name: str)
    # Create subdirectories
    dirs = {
        "experiment": exp_dir,
-       "models": exp_dir / "models",
+    #    "models": exp_dir / "models",
        "logs": exp_dir / "logs", 
-       "plots": exp_dir / "plots",
-       "analysis": exp_dir / "analysis",
-       "configs": exp_dir / "configs",
-       "checkpoints": exp_dir / "checkpoints"
+    #    "plots": exp_dir / "plots",
+    #    "analysis": exp_dir / "analysis",
+       "runs": exp_dir / "runs",
+    #    "configs": exp_dir / "configs",
+    #    "checkpoints": exp_dir / "checkpoints"
    }
    
    # Create all directories

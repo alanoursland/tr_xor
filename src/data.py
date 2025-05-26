@@ -696,3 +696,31 @@ def save_dataset(x: torch.Tensor, y: torch.Tensor, filepath: Path,
         metadata: Optional metadata to save with dataset
     """
     pass
+
+# ==============================================================================
+# Simple Dataset Creation
+# ==============================================================================
+
+def xor_data_centered() -> torch.Tensor:
+    """
+    Generate centered XOR input data.
+    
+    Returns:
+        Tensor of shape (4, 2) with XOR input points: [-1,-1], [1,-1], [-1,1], [1,1]
+    """
+    return torch.tensor([
+        [-1.0, -1.0],
+        [ 1.0, -1.0], 
+        [-1.0,  1.0],
+        [ 1.0,  1.0]
+    ], dtype=torch.float32)
+
+
+def xor_labels_T1() -> torch.Tensor:
+    """
+    Generate XOR labels where True=1.
+    
+    Returns:
+        Tensor of shape (4,) with XOR labels: [0, 1, 1, 0]
+    """
+    return torch.tensor([0.0, 1.0, 1.0, 0.0], dtype=torch.float32)

@@ -17,6 +17,22 @@ from abc import ABC, abstractmethod
 
 
 # ==============================================================================
+# Custom Models
+# ==============================================================================
+
+class Model_Abs1(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.linear1 = nn.Linear(2, 1)
+    
+    def forward(self, x):
+        x = self.linear1(x)
+        x = torch.abs(x)
+        x = torch.clamp(x, 0.0, 1.0)
+        return x
+
+
+# ==============================================================================
 # Custom Activation Functions
 # ==============================================================================
 

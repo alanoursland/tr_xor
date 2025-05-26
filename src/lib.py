@@ -17,7 +17,7 @@ from dataclasses import asdict
 
 # Import all core modules
 from configs import (
-    ExperimentConfig, ModelConfig, TrainingConfig, DataConfig, AnalysisConfig, ExecutionConfig,
+    ExperimentConfig, TrainingConfig, DataConfig, AnalysisConfig, ExecutionConfig,
     get_experiment_config, list_experiments, validate_experiment_config
 )
 from models import (
@@ -38,7 +38,6 @@ from analyze import (
     analyze_experiment, analyze_single_model, compare_experiment_results,
     ComprehensiveAnalysisResult, create_hyperplane_plots, generate_analysis_report
 )
-from run import run_experiment, run_experiment_batch, run_parameter_sweep
 
 
 # ==============================================================================
@@ -393,21 +392,53 @@ def generate_summary_report(experiment_results: Dict[str, Any],
 # ==============================================================================
 
 def setup_experiment_environment(experiment_name: str, base_dir: Path = Path("./results"),
-                               seed: int = 42, device: str = "auto") -> Dict[str, Any]:
-    """
-    Setup complete experiment environment with logging, directories, and seeds.
-    
-    Args:
-        experiment_name: Name of experiment for organization
-        base_dir: Base directory for results
-        seed: Random seed for reproducibility
-        device: Target device ("auto", "cpu", "cuda")
-        
-    Returns:
-        Dictionary containing setup information (paths, device, logger)
-    """
-    pass
-
+                              seed: int = 42, device: str = "auto") -> Dict[str, Any]:
+   """
+   Setup complete experiment environment with logging, directories, and seeds.
+   
+   Args:
+       experiment_name: Name of experiment for organization
+       base_dir: Base directory for results
+       seed: Random seed for reproducibility
+       device: Target device ("auto", "cpu", "cuda")
+       
+   Returns:
+       Dictionary containing setup information (paths, device, logger)
+   """
+   # Set random seeds for reproducibility
+   set_global_random_seeds(seed)
+   
+   # Determine device
+   if device == "auto":
+       actual_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+   else:
+       actual_device = torch.device(device)
+   
+   # Create directory structure
+   experiment_dir = base_dir / experiment_name
+   output_dirs = create_experiment_directory_structure(experiment_dir, experiment_name)
+   
+   # Setup logging
+   logger = setup_experiment_logging(
+       output_dir=output_dirs.get("logs", experiment_dir), 
+       experiment_name=experiment_name,
+       verbosity="INFO"
+   )
+   
+   # Log setup information
+   logger.info(f"Experiment: {experiment_name}")
+   logger.info(f"Device: {actual_device}")
+   logger.info(f"Random seed: {seed}")
+   logger.info(f"Output directory: {experiment_dir}")
+   
+   return {
+       "experiment_name": experiment_name,
+       "device": actual_device,
+       "seed": seed,
+       "output_dirs": output_dirs,
+       "logger": logger,
+       "base_dir": base_dir
+   }
 
 def create_quick_config(model_type: str = "xor", activation: str = "relu",
                        hidden_units: int = 2, epochs: int = 1000,
@@ -696,7 +727,7 @@ def import_external_model(model_path: Path, model_type: str = "pytorch") -> nn.M
 
 
 def export_results_for_analysis(experiment_results: Dict[str, Any], 
-                               format: str = "csv", output_dir: Path) -> List[Path]:
+                               format: str = "csv", output_dir: Path = Path("./results")) -> List[Path]:
     """
     Export experiment results in format suitable for external analysis tools.
     

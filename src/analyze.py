@@ -865,7 +865,7 @@ def generate_technical_appendix(detailed_analysis: Dict[str, Any],
 
 
 def export_analysis_data(analysis_results: Dict[str, Any], 
-                        format: str = "csv", output_dir: Path) -> None:
+                        format: str = "csv", output_dir: Path = Path("./results")) -> None:
     """
     Export analysis data to various formats for external analysis.
     

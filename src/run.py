@@ -22,6 +22,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
+from lib import setup_experiment_environment
 
 # Import project modules
 from configs import ExperimentConfig, get_experiment_config, list_experiments, validate_experiment_config
@@ -677,23 +678,91 @@ def attempt_error_recovery(error: Exception, context: Dict[str, Any]) -> bool:
 # ==============================================================================
 
 def run_experiment(experiment_name: str, num_runs: Optional[int] = None,
-                  device: Optional[str] = None, verbose: bool = False,
-                  config_overrides: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """
-    Execute complete experiment with specified configuration.
-    
-    Args:
-        experiment_name: Name of experiment configuration to run
-        num_runs: Override number of runs (None uses config default)
-        device: Override device specification (None uses config default)
-        verbose: Enable verbose logging output
-        config_overrides: Optional configuration overrides
-        
-    Returns:
-        Complete experiment results and summary
-    """
-    pass
-
+                 device: Optional[str] = None, verbose: bool = False,
+                 config_overrides: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+   """
+   Execute complete experiment with specified configuration.
+   
+   Args:
+       experiment_name: Name of experiment configuration to run
+       num_runs: Override number of runs (None uses config default)
+       device: Override device specification (None uses config default)
+       verbose: Enable verbose logging output
+       config_overrides: Optional configuration overrides
+       
+   Returns:
+       Complete experiment results and summary
+   """
+   # Load configuration
+   config = get_experiment_config(experiment_name)
+   
+   # Apply overrides
+   if num_runs is not None:
+       config.execution.num_runs = num_runs
+   if device is not None:
+       config.execution.device = device
+   if config_overrides:
+       config = apply_overrides(config, config_overrides)
+   
+   # Setup environment
+   setup_info = setup_experiment_environment(
+       experiment_name=experiment_name,
+       seed=42,  # Could get from config
+       device=config.execution.device
+   )
+   
+   logger = setup_info["logger"]
+   output_dirs = setup_info["output_dirs"]
+   actual_device = setup_info["device"]
+   
+   # Run multiple training runs
+   all_results = []
+   successful_runs = 0
+   
+   for run_id in range(config.execution.num_runs):
+       if verbose:
+           print(f"Starting run {run_id + 1}/{config.execution.num_runs}")
+       
+       try:
+           # Create fresh model for each run (call config factory again)
+           fresh_config = get_experiment_config(experiment_name)
+           
+           # Execute single run
+           run_result = execute_single_training_run(
+               model=fresh_config.model,
+               training_config=fresh_config.training,
+               data_config=fresh_config.data,
+               run_id=run_id,
+               device=actual_device,
+               output_dir=output_dirs["models"],
+               logger=logger,
+               verbose=verbose
+           )
+           
+           all_results.append(run_result)
+           successful_runs += 1
+           
+       except Exception as e:
+           logger.error(f"Run {run_id} failed: {e}")
+           if verbose:
+               print(f"✗ Run {run_id + 1} failed: {e}")
+   
+   # Aggregate results
+   summary = {
+       "total_runs": config.execution.num_runs,
+       "successful_runs": successful_runs,
+       "avg_final_loss": sum(r["final_loss"] for r in all_results) / len(all_results) if all_results else 0,
+       "avg_accuracy": sum(r.get("accuracy", 0) for r in all_results) / len(all_results) if all_results else 0,
+       "total_time": sum(r["training_time"] for r in all_results),
+   }
+   
+   return {
+       "experiment_name": experiment_name,
+       "summary": summary,
+       "individual_runs": all_results,
+       "output_dir": setup_info["output_dirs"]["experiment"],
+       "config": config
+   }
 
 def run_experiment_batch(experiment_list: List[str], parallel: bool = False,
                         shared_config: Optional[Dict[str, Any]] = None) -> Dict[str, Dict[str, Any]]:

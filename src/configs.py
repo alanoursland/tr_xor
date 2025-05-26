@@ -7,12 +7,14 @@ capabilities. Designed to enable systematic investigation of PSL theory across d
 model architectures, activation functions, and training configurations.
 """
 
-from typing import Dict, List, Tuple, Any, Optional, Union
+from typing import Dict, List, Tuple, Any, Optional, Union, Callable
 from enum import Enum
 from dataclasses import dataclass, field
 from pathlib import Path
 import copy
-
+import torch
+import torch.nn as nn
+import models
 
 # ==============================================================================
 # Configuration Schema and Types
@@ -56,38 +58,12 @@ class SchedulerType(Enum):
 
 
 @dataclass
-class ModelConfig:
-    """Configuration for model architecture."""
-    architecture: str  # "mlp", "xor_net", "minimal_xor", "symmetric_xor", "dual_path_xor"
-    input_dim: int
-    hidden_dims: List[int]
-    output_dim: int
-    activation: str  # From ActivationType enum
-    initialization: str  # From InitializationType enum
-    bias: bool = True
-    dropout: float = 0.0
-    batch_norm: bool = False
-    layer_norm: bool = False
-    
-    # PSL-specific parameters
-    enforce_symmetry: bool = False
-    learnable_activation_params: bool = False
-    prototype_aware_init: bool = False
-    prototype_points: Optional[List[List[float]]] = None
-
-
-@dataclass
 class TrainingConfig:
     """Configuration for training procedure."""
-    optimizer: OptimizationType
-    learning_rate: float
-    weight_decay: float = 0.0
-    momentum: float = 0.9  # For SGD
-    betas: Tuple[float, float] = (0.9, 0.999)  # For Adam
+    optimizer: torch.optim.Optimizer = None
     eps: float = 1e-8
     
-    loss_function: LossType = None
-    loss_params: Dict[str, Any] = field(default_factory=dict)
+    loss_function: torch.nn.Module = None
     
     epochs: int = None
     batch_size: int = None
@@ -231,7 +207,7 @@ class ExecutionConfig:
 @dataclass
 class ExperimentConfig:
     """Complete experiment configuration."""
-    model: ModelConfig
+    model: torch.nn.Module
     training: TrainingConfig
     data: DataConfig
     analysis: AnalysisConfig
@@ -298,11 +274,15 @@ def _create_parameter_sweeps() -> None:
 # Main Experiments Registry
 # ==============================================================================
 
-EXPERIMENTS: Dict[str, ExperimentConfig] = {}
+experiments: Dict[str, Callable[[], ExperimentConfig]] = {}
 
 
 def initialize_experiments() -> None:
-    """Initialize all experiment configurations."""
+    global experiments
+    
+    experiments["abs1"] = abs1_config
+    
+    print(f"Initialized {len(experiments)} experiments: {list(experiments.keys())}")
     pass
 
 
@@ -316,22 +296,72 @@ def get_experiment_config(name: str) -> ExperimentConfig:
     Returns:
         Complete experiment configuration
     """
-    pass
-
+    if not experiments:
+        initialize_experiments()
+    
+    if name not in experiments:
+        available = list(experiments.keys())
+        raise KeyError(f"Unknown experiment '{name}'. Available experiments: {available}")
+    
+    # Call the factory function to create the config
+    config_factory = experiments[name]
+    config = config_factory()
+    
+    # Handle inheritance if needed
+    if config.base_config:
+        config = resolve_config_inheritance(name)
+    
+    return config
 
 def list_experiments(category: Optional[str] = None, tags: Optional[List[str]] = None) -> List[str]:
-    """
-    List available experiment configurations.
-    
-    Args:
-        category: Filter by experiment category
-        tags: Filter by experiment tags
-        
-    Returns:
-        List of experiment names matching criteria
-    """
-    pass
-
+   """
+   List available experiment configurations.
+   
+   Args:
+       category: Filter by experiment category
+       tags: Filter by experiment tags
+       
+   Returns:
+       List of experiment names matching criteria
+   """
+   if not experiments:
+       initialize_experiments()
+   
+   # Start with all experiment names
+   experiment_names = list(experiments.keys())
+   
+   # If no filtering requested, return all
+   if category is None and tags is None:
+       return sorted(experiment_names)
+   
+   # Filter by category and/or tags if requested
+   filtered_names = []
+   
+   for name in experiment_names:
+       # Create config to check its metadata
+       try:
+           config = experiments[name]()
+           
+           # Check category filter
+           if category is not None:
+               # Since we simplified, we can infer category from name or description
+               # Or you could add a category field to ExperimentConfig
+               if category.lower() not in name.lower() and category.lower() not in config.description.lower():
+                   continue
+           
+           # Check tags filter  
+           if tags is not None:
+               # Would need to add tags field to ExperimentConfig for this to work
+               # For now, skip tag filtering
+               pass
+           
+           filtered_names.append(name)
+           
+       except Exception:
+           # If config creation fails, skip this experiment
+           continue
+   
+   return sorted(filtered_names)
 
 def get_experiment_categories() -> Dict[str, List[str]]:
     """
@@ -387,22 +417,11 @@ def validate_experiment_config(config: ExperimentConfig) -> Tuple[bool, List[str
    
    if config.execution.num_runs <= 0:
        errors.append("Number of runs must be positive")
-   
-   # Model-data compatibility
-   if config.data.problem_type == ExperimentType.XOR and config.model.input_dim != 2:
-       errors.append("XOR problem requires input_dim = 2")
-   
-   if config.data.problem_type == ExperimentType.PARITY and config.model.input_dim != config.data.parity_n_bits:
-       errors.append(f"Parity problem with {config.data.parity_n_bits} bits requires input_dim = {config.data.parity_n_bits}")
-   
-   # Training-model compatibility
-   if config.model.dropout > 0 and len(config.model.hidden_dims) == 0:
-       errors.append("Dropout specified but no hidden layers defined")
-   
+      
    is_valid = len(errors) == 0
    return is_valid, errors
 
-def validate_model_config(config: ModelConfig) -> Tuple[bool, List[str]]:
+def validate_model_config(config: torch.nn.Module) -> Tuple[bool, List[str]]:
     """
     Validate model configuration parameters.
     
@@ -412,8 +431,26 @@ def validate_model_config(config: ModelConfig) -> Tuple[bool, List[str]]:
     Returns:
         Tuple of (is_valid, error_messages)
     """
-    pass
-
+    errors = []
+    
+    if config is None:
+        errors.append("Model cannot be None")
+        return False, errors
+    
+    # Check that it's actually a PyTorch model
+    if not isinstance(config, torch.nn.Module):
+        errors.append("Model must be a torch.nn.Module instance")
+    
+    # Check that it has parameters (not strictly required, but usually expected)
+    try:
+        param_count = sum(p.numel() for p in config.parameters())
+        if param_count == 0:
+            errors.append("Model has no parameters")
+    except Exception as e:
+        errors.append(f"Error counting model parameters: {e}")
+    
+    is_valid = len(errors) == 0
+    return is_valid, errors
 
 def validate_training_config(config: TrainingConfig) -> Tuple[bool, List[str]]:
     """
@@ -425,7 +462,7 @@ def validate_training_config(config: TrainingConfig) -> Tuple[bool, List[str]]:
     Returns:
         Tuple of (is_valid, error_messages)
     """
-    pass
+    return True, []
 
 
 def validate_data_config(config: DataConfig) -> Tuple[bool, List[str]]:
@@ -438,7 +475,7 @@ def validate_data_config(config: DataConfig) -> Tuple[bool, List[str]]:
     Returns:
         Tuple of (is_valid, error_messages)
     """
-    pass
+    return True, []
 
 
 def validate_analysis_config(config: AnalysisConfig) -> Tuple[bool, List[str]]:
@@ -451,7 +488,7 @@ def validate_analysis_config(config: AnalysisConfig) -> Tuple[bool, List[str]]:
     Returns:
         Tuple of (is_valid, error_messages)
     """
-    pass
+    return True, []
 
 
 def validate_execution_config(config: ExecutionConfig) -> Tuple[bool, List[str]]:
@@ -464,7 +501,7 @@ def validate_execution_config(config: ExecutionConfig) -> Tuple[bool, List[str]]
     Returns:
         Tuple of (is_valid, error_messages)
     """
-    pass
+    return True, []
 
 
 def check_config_compatibility(config: ExperimentConfig) -> Tuple[bool, List[str]]:
@@ -477,7 +514,7 @@ def check_config_compatibility(config: ExperimentConfig) -> Tuple[bool, List[str
     Returns:
         Tuple of (is_compatible, warning_messages)
     """
-    pass
+    return True, []
 
 
 # ==============================================================================
@@ -776,6 +813,36 @@ def get_config_dependencies(config: ExperimentConfig) -> List[str]:
         List of dependency names
     """
     pass
+
+
+# ==============================================================================
+# Experiment Configuration Factories
+# ==============================================================================
+
+def abs1_config() -> ExperimentConfig:
+    """Factory function for absolute value XOR experiment."""
+    model = models.Model_Abs1()
+    optimizer = torch.optim.Adam(model.parameters(), lr= 0.01, betas=(0.9, 0.99))
+    loss_function = nn.MSELoss()
+
+    return ExperimentConfig(
+        model=model,
+        training=TrainingConfig(
+            optimizer=optimizer,
+            loss_function=loss_function,
+            epochs=5000,
+            batch_size=4
+        ),
+        data=DataConfig(
+            problem_type=ExperimentType.XOR
+        ),
+        analysis=AnalysisConfig(),
+        execution=ExecutionConfig(
+            num_runs=10,
+            experiment_name="abs1"
+        ),
+        description="XOR with single absolute value unit"
+    )
 
 
 # Initialize configurations on module import

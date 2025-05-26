@@ -86,11 +86,11 @@ class TrainingConfig:
     betas: Tuple[float, float] = (0.9, 0.999)  # For Adam
     eps: float = 1e-8
     
-    loss_function: LossType
+    loss_function: LossType = None
     loss_params: Dict[str, Any] = field(default_factory=dict)
     
-    epochs: int
-    batch_size: int
+    epochs: int = None
+    batch_size: int = None
     
     # Learning rate scheduling
     scheduler: SchedulerType = SchedulerType.NONE
@@ -348,17 +348,59 @@ def get_experiment_categories() -> Dict[str, List[str]]:
 # ==============================================================================
 
 def validate_experiment_config(config: ExperimentConfig) -> Tuple[bool, List[str]]:
-    """
-    Validate experiment configuration for completeness and consistency.
-    
-    Args:
-        config: Experiment configuration to validate
-        
-    Returns:
-        Tuple of (is_valid, error_messages)
-    """
-    pass
+   """
+   Validate experiment configuration for completeness and consistency.
+   
+   Args:
+       config: Experiment configuration to validate
+       
+   Returns:
+       Tuple of (is_valid, error_messages)
+   """
+   errors = []
 
+   if not config:
+    errors.append(f"config is {config}")
+    return False, errors
+   
+   # Validate each section
+   model_valid, model_errors = validate_model_config(config.model)
+   training_valid, training_errors = validate_training_config(config.training)
+   data_valid, data_errors = validate_data_config(config.data)
+   analysis_valid, analysis_errors = validate_analysis_config(config.analysis)
+   execution_valid, execution_errors = validate_execution_config(config.execution)
+   
+   # Collect all errors
+   errors.extend(model_errors)
+   errors.extend(training_errors)
+   errors.extend(data_errors)
+   errors.extend(analysis_errors)
+   errors.extend(execution_errors)
+   
+   # Cross-section compatibility checks
+   compat_valid, compat_errors = check_config_compatibility(config)
+   errors.extend(compat_errors)
+   
+   # Basic sanity checks
+   if not config.description.strip():
+       errors.append("Experiment description cannot be empty")
+   
+   if config.execution.num_runs <= 0:
+       errors.append("Number of runs must be positive")
+   
+   # Model-data compatibility
+   if config.data.problem_type == ExperimentType.XOR and config.model.input_dim != 2:
+       errors.append("XOR problem requires input_dim = 2")
+   
+   if config.data.problem_type == ExperimentType.PARITY and config.model.input_dim != config.data.parity_n_bits:
+       errors.append(f"Parity problem with {config.data.parity_n_bits} bits requires input_dim = {config.data.parity_n_bits}")
+   
+   # Training-model compatibility
+   if config.model.dropout > 0 and len(config.model.hidden_dims) == 0:
+       errors.append("Dropout specified but no hidden layers defined")
+   
+   is_valid = len(errors) == 0
+   return is_valid, errors
 
 def validate_model_config(config: ModelConfig) -> Tuple[bool, List[str]]:
     """

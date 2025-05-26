@@ -34,7 +34,6 @@ from utils import (
     implement_early_stopping, detect_training_convergence
 )
 
-
 # ==============================================================================
 # Global State Management
 # ==============================================================================
@@ -763,19 +762,129 @@ def dry_run_experiment(experiment_name: str,
 # ==============================================================================
 
 def main() -> int:
-    """
-    Main entry point for experiment execution script.
-    
-    Returns:
-        Exit code (0 for success, non-zero for failure)
-    """
-    pass
-
+   """
+   Main entry point for experiment execution script.
+   
+   Returns:
+       Exit code (0 for success, non-zero for failure)
+   """
+   try:
+       # Parse command line arguments
+       if len(sys.argv) != 2:
+           print("Usage: python run.py <experiment_name>")
+           print("\nAvailable experiments:")
+           available_experiments = list_experiments()
+           for exp in available_experiments:
+               print(f"  - {exp}")
+           return 1
+       
+       experiment_name = sys.argv[1]
+       
+       print(f"Starting experiment: {experiment_name}")
+       print("=" * 50)
+       
+       # Load and validate experiment configuration
+       print("Loading experiment configuration...")
+       try:
+           config = get_experiment_config(experiment_name)
+           print(f"✓ Configuration loaded successfully")
+       except KeyError:
+           print(f"✗ Unknown experiment: {experiment_name}")
+           print("\nAvailable experiments:")
+           available_experiments = list_experiments()
+           for exp in available_experiments:
+               print(f"  - {exp}")
+           return 1
+       except Exception as e:
+           print(f"✗ Failed to load configuration: {e}")
+           return 1
+       
+       # Validate configuration
+       print("Validating configuration...")
+       is_valid, errors = validate_experiment_config(config)
+       if not is_valid:
+           print("✗ Configuration validation failed:")
+           for error in errors:
+               print(f"  - {error}")
+           return 1
+       print("✓ Configuration validated successfully")
+       
+       # Setup experiment environment
+       print("Setting up experiment environment...")
+       setup_info = setup_experiment_environment(
+           experiment_name=experiment_name,
+           seed=config.execution.random_seeds[0] if config.execution.random_seeds else 42,
+           device=config.execution.device
+       )
+       print(f"✓ Environment setup complete (device: {setup_info['device']})")
+       
+       # Run the experiment
+       print(f"Running experiment with {config.execution.num_runs} runs...")
+       print("-" * 30)
+       
+       results = run_experiment(
+           experiment_name=experiment_name,
+           num_runs=config.execution.num_runs,
+           device=config.execution.device,
+           verbose=True
+       )
+       
+       print("-" * 30)
+       print("✓ Experiment completed successfully")
+       
+       # Print summary results
+       if 'summary' in results:
+           summary = results['summary']
+           print(f"\nResults Summary:")
+           print(f"  Total runs: {summary.get('total_runs', 'N/A')}")
+           print(f"  Successful runs: {summary.get('successful_runs', 'N/A')}")
+           print(f"  Average final loss: {summary.get('avg_final_loss', 'N/A'):.6f}")
+           print(f"  Average accuracy: {summary.get('avg_accuracy', 'N/A'):.4f}")
+           print(f"  Total time: {summary.get('total_time', 'N/A'):.2f}s")
+       
+       print(f"\nResults saved to: {results.get('output_dir', 'N/A')}")
+       print("=" * 50)
+       print("Experiment completed successfully!")
+       
+       return 0
+       
+   except KeyboardInterrupt:
+       print("\n✗ Experiment interrupted by user")
+       cleanup_on_interruption(signal.SIGINT)
+       return 130
+       
+   except Exception as e:
+       print(f"\n✗ Unexpected error during experiment execution:")
+       print(f"  {type(e).__name__}: {e}")
+       import traceback
+       print("\nFull traceback:")
+       traceback.print_exc()
+       return 1
 
 def setup_signal_handlers() -> None:
-    """Setup signal handlers for graceful interruption handling."""
-    pass
-
+   """Setup signal handlers for graceful interruption handling."""
+   def signal_handler(signum, frame):
+       print(f"\n⚠️  Received signal {signum}")
+       if signum == signal.SIGINT:
+           print("Interrupt signal received (Ctrl+C)")
+       elif signum == signal.SIGTERM:
+           print("Termination signal received")
+       
+       print("Attempting graceful shutdown...")
+       _experiment_state.interrupted = True
+       _experiment_state.signal_handler(signum, frame)
+       
+       # Give a moment for cleanup, then exit
+       time.sleep(0.5)
+       sys.exit(130 if signum == signal.SIGINT else 1)
+   
+   # Register handlers for common signals
+   signal.signal(signal.SIGINT, signal_handler)   # Ctrl+C
+   signal.signal(signal.SIGTERM, signal_handler)  # Termination request
+   
+   # On Windows, also handle Ctrl+Break
+   if hasattr(signal, 'SIGBREAK'):
+       signal.signal(signal.SIGBREAK, signal_handler)
 
 def print_experiment_banner(experiment_name: str, config: ExperimentConfig) -> None:
     """

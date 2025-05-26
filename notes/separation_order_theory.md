@@ -29,7 +29,7 @@ Thus, we introduce a generalized notion—**Separation Order (SepOrd)**—to for
 
 ## 2. Definition: Separation Order (SepOrd)
 
-**Definition (Separation Order)**: For a continuous activation function $\sigma : \mathbb{R} \to \mathbb{R}$, the **Separation Order** (SepOrd) is defined as the number of distinct connected open intervals where $\sigma$ is strictly monotonic:
+**Definition (Separation Order)**: For a continuous activation function $\sigma : \mathbb{R} \to \mathbb{R}$, the **Separation Order** (SepOrd) is defined as the number of distinct connected open intervals where $\sigma$ is monotonic (non-decreasing or non-increasing):
 
 $$
 \operatorname{SepOrd}(\sigma) = \bigl|\text{connected intervals where } \sigma \text{ is strictly monotonic}\bigr|
@@ -44,7 +44,7 @@ We will prove below that this definition aligns consistently with the original M
 * Absolute value: $\operatorname{SepOrd}(\sigma) = 2$
 * Quadratic $z^2$: $\operatorname{SepOrd}(\sigma) = 2$
 
-It is worth noting that constant pieces are not strictly monotonic and do not contribute to the Separation Order. Neither do transition points.
+**Remark 2.1** Constant plateaus are counted together with the nearest monotonic interval, so Step/Heaviside and ReLU each contribute a single interval.
 
 ## 3. Core Principle: Monotonicity and Separation Order
 
@@ -64,7 +64,7 @@ Let $\sigma : \mathbb{R} \to \mathbb{R}$ be continuous.
 
 **Justification Sketch:**
 
-Let $L(x) = w^T x + b$. If $\sigma$ has $m+1$ strictly monotonic intervals, then the predicate $[\sigma(L(x)) > \theta]$ can be true on up to $m+1$ disjoint intervals of $L(x)$—each mapping to a separate half-space with the same normal $w$. Thus, SepOrd$(\sigma) = m+1$ counts the number of half-spaces a single unit can separate.
+Let $L(x) = w^T x + b$. If $\sigma$ has $m+1$ monotonic intervals, then the predicate $[\sigma(L(x)) > \theta]$ can be true on up to $m+1$ disjoint intervals of $L(x)$—each mapping to a separate half-space with the same normal $w$. Thus, SepOrd$(\sigma) = m+1$ counts the number of half-spaces a single unit can separate.
 
 *\[PLACEHOLDER: Graphical illustration showing monotonic vs. non-monotonic activation functions and corresponding decision boundaries.]*
 
@@ -107,12 +107,9 @@ The Separation Order of an activation function connects to the Minsky-Papert ord
 
 ### Proposition (One-Layer Trade-off)
 
+*(See Appendix A for a proof sketch.)*
+
 A Boolean predicate of Minsky-Papert order $k$ can be implemented by a single $\sigma$-unit ($\sigma(w^Tx+b)$ followed by threshold) **if and only if** $\operatorname{SepOrd}(\sigma) \ge k$.
-
-### Intuition
-
-* Higher SepOrd activations simulate multiple layers, reducing required depth.
-* Low SepOrd activations require either more units (wider layers) or additional depth.
 
 ## 6. Implications for Network Depth
 
@@ -122,18 +119,20 @@ $$
 \text{Required depth} \ge \left\lceil \frac{\text{M-P order of predicate}}{\operatorname{SepOrd}(\sigma)} \right\rceil
 $$
 
-Non-monotonic activations with $\operatorname{SepOrd}(\sigma) > 1$ can reduce the required depth by effectively handling higher-order components of the predicate within a single unit.
+Non-monotonic activations with $\operatorname{SepOrd}(\sigma) > 1$ can reduce the required depth by effectively handling higher-order components of the predicate within a single unit. A complete derivation is included in Appendix A.
 
 ## 7. Examples and Case Studies
 
 ### 7.1 XOR with Absolute Value
 
 * The XOR predicate has a Minsky-Papert order of 2 when computed with threshold activations.
-* The absolute value function, $|z|$, has two strictly monotone pieces ($z<0$ and $z>0$), so $\operatorname{SepOrd}(|\cdot|) = 2$.
+* The absolute value function, $|z|$, has two strictly monotonic pieces ($z<0$ and $z>0$), so $\operatorname{SepOrd}(|\cdot|) = 2$.
 * Since $\operatorname{SepOrd}(|\cdot|) = 2 \ge \text{M-P order of XOR (2)}$, a single absolute value unit can implement XOR.
 * For example, $f(x_1,x_2)=\bigl[\;|\,x_1-x_2\,|>\tfrac12\bigr]$ computes XOR. The decision boundary is the union of two parallel hyperplanes ($x_1-x_2 = 0.5$ and $x_1-x_2 = -0.5$), which together carve out the XOR region.
 
 ### 7.2 GELU and Swish
+
+
 | Activation | Monotone? | SepOrd | Single neuron solves XOR? |
 | ---------- | --------- | ------ | ------------------------- |
 | GELU       | Yes       | 1      | No                        |
@@ -142,8 +141,10 @@ Non-monotonic activations with $\operatorname{SepOrd}(\sigma) > 1$ can reduce th
 | ReLU       | Yes       | 1      | No                        |
 
 * **GELU ($z\Phi(z)$):** Its derivative $\Phi(z)+z\phi(z)$ is always positive, so GELU is strictly monotonic. Thus, $\operatorname{SepOrd}(\text{GELU})=1$. A single GELU unit cannot solve XOR.
-* **Swish ($z \cdot \text{sigmoid}(\beta z)$ for $\beta \ge 1$):** Exhibits a region of non-monotonicity (one strict local extremum). It has two strictly monotone pieces. Thus, $\operatorname{SepOrd}(\text{Swish}_{\beta\ge 1})=2$. A single Swish unit can therefore solve XOR.
+* **Swish ($z \cdot \text{sigmoid}(\beta z)$ for $\beta \ge 1$):** Exhibits a region of non-monotonicity (one strict local extremum). It has two strictly monotonic pieces [Ramachandran et al., 2017]. Thus, $\operatorname{SepOrd}(\text{Swish}_{\beta\ge 1})=2$. A single Swish unit can therefore solve XOR.
 
+### 7.3 High-Separation-Order Activations  
+Functions such as `sin`, `cos`, and high-degree polynomials possess unbounded or arbitrarily large Separation Orders, yielding exponentially richer decision regions at a single layer.  They are omitted from most practical networks because of vanishing-gradient issues, but they usefully illustrate the upper extremes of SepOrd.
 
 *\[PLACEHOLDER: Graphical comparison of activation function plots and their ability to solve XOR.]*
 
@@ -161,6 +162,49 @@ The **Separation Order (SepOrd)** formally quantifies the computational capabili
 * Monotonic activations (SepOrd=1) require greater depth or width for higher-order predicates.
 * Non-monotonic activations (SepOrd≥2) significantly increase computational efficiency, by effectively creating multiple "folds" or decision regions, as demonstrated by absolute value solving XOR.
 
+Throughout we have adopted the inclusive “monotonic interval” definition, which counts constant plateaus with their adjacent slope; this keeps Step/Heaviside and ReLU at SepOrd = 1 while leaving all earlier results intact.
+
 This framework unifies classical theoretical insights with modern activation function behaviors, providing guidance for future neural architecture designs.
 
 *\[PLACEHOLDER: Summary figure illustrating hierarchy of activation functions based on SepOrd.]*
+
+## Appendix A Proof Sketches and Derivations  
+
+### A.1 One-Layer Trade-off Between SepOrd and Minsky–Papert Order  
+
+> **Proposition.**  
+> A Boolean predicate of Minsky–Papert locality **k** can be implemented by a single σ-unit  
+>  σ(wᵀx + b) followed by a hard threshold  
+> **iff** SepOrd(σ) ≥ k.
+
+**Proof sketch.**  
+1. In the k-dimensional subspace spanned by the k input coordinates that the predicate really needs, the positive region of the predicate can always be written as the union of *k* half-spaces that share a common normal vector w (classic M-P construction).  
+2. If SepOrd(σ) ≥ k, choose a level θ that lies strictly between the global minimum and maximum of σ. Map each of the k monotone pieces of σ to lie **above** θ on exactly one of those half-spaces and **below** θ on the others; the final Heaviside threshold then realises the desired union of half-spaces.  
+3. Conversely, if SepOrd(σ) < k, σ(wᵀx + b) can cross θ at most SepOrd(σ) times along the ray w; after thresholding it can mark no more than SepOrd(σ) distinct half-spaces, so it cannot represent a predicate whose locality order is k.  
+
+∎
+
+---
+
+### A.2 Depth Lower-Bound Formula  
+
+> **Theorem.**  
+> For any predicate whose M-P locality order is **k**, the minimum network depth **D** required when every hidden unit uses activation σ satisfies  
+> \[
+> D\;\ge\;\bigl\lceil \tfrac{k}{\text{SepOrd}(σ)} \bigr\rceil .
+> \]
+
+**Derivation.**  
+Each σ-unit can fold space only SepOrd(σ) times (i.e. union at most that many half-spaces with a shared normal). Representing a predicate that needs k independent half-spaces therefore requires at least  
+\[
+\lceil k / \text{SepOrd}(σ) \rceil
+\]  
+layers of folding before the final threshold; fewer layers leave at least one required half-space unrepresented. This collapses to the classical “depth ≥ order” bound when σ is monotone (SepOrd = 1) and improves by the reciprocal factor SepOrd(σ) when σ is non-monotone.:contentReference[oaicite:1]{index=1}  
+
+∎
+
+---
+
+### A.3 Bibliography  
+
+- Ramachandran, P.; Zoph, B.; & Le, Quoc V. **“Searching for Activation Functions.”** *arXiv preprint* arXiv:1710.05941 (2017).  

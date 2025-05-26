@@ -49,6 +49,17 @@ class Model_Abs1(nn.Module):
         nn.init.zeros_(self.linear1.bias)
         return self
 
+    def init_tiny(self):
+        nn.init.normal_(self.linear1.weight, mean=0.0, std=0.1)
+        nn.init.zeros_(self.linear1.bias)
+        return self
+
+    def init_large(self):
+        nn.init.normal_(self.linear1.weight, mean=0.0, std=4.0)
+        nn.init.zeros_(self.linear1.bias)
+        return self
+    
+
 
 # ==============================================================================
 # Custom Activation Functions

@@ -939,6 +939,45 @@ def run_experiment(
     
     print("=" * 60)
 
+    # Save overall experiment statistics to JSON
+    stats_file = output_dirs["experiment"] / "stats.json"
+
+    experiment_stats = {
+        "experiment_name": experiment_name,
+        "total_runs": summary["total_runs"],
+        "successful_runs": summary["successful_runs"],
+        "avg_final_loss": summary["avg_final_loss"],
+        "avg_accuracy": summary["avg_accuracy"],
+        "total_time": summary["total_time"],
+        "avg_time_per_run": summary["total_time"] / summary["total_runs"],
+        
+        # Accuracy distribution
+        "accuracy_distribution": {
+            "100_percent": acc_counts[1.0],
+            "75_percent": acc_counts[0.75], 
+            "50_percent": acc_counts[0.5],
+            "25_percent": acc_counts[0.25],
+            "0_percent": acc_counts[0.0]
+        },
+        
+        # Convergence stats
+        "convergence": {
+            "converged_runs": converged_runs,
+            "convergence_rate": converged_runs / len(all_results),
+            "best_final_loss": min(final_losses),
+            "worst_final_loss": max(final_losses)
+        },
+        
+        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "config_description": config.description
+    }
+
+    with open(stats_file, 'w') as f:
+        json.dump(experiment_stats, f, indent=2)
+
+    if verbose:
+        print(f"Experiment statistics saved to: {stats_file}")
+
     return {
         "experiment_name": experiment_name,
         "summary": summary,

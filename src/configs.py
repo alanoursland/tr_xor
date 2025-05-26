@@ -326,18 +326,6 @@ def _create_parameter_sweeps() -> None:
 # Main Experiments Registry
 # ==============================================================================
 
-experiments: Dict[str, Callable[[], ExperimentConfig]] = {}
-
-
-def initialize_experiments() -> None:
-    global experiments
-
-    experiments["abs1_normal"] = config_abs1_normal
-
-    print(f"Initialized {len(experiments)} experiments: {list(experiments.keys())}")
-    pass
-
-
 def get_experiment_config(name: str) -> ExperimentConfig:
     """
     Retrieve experiment configuration by name.
@@ -348,9 +336,6 @@ def get_experiment_config(name: str) -> ExperimentConfig:
     Returns:
         Complete experiment configuration
     """
-    if not experiments:
-        initialize_experiments()
-
     if name not in experiments:
         available = list(experiments.keys())
         raise KeyError(f"Unknown experiment '{name}'. Available experiments: {available}")
@@ -377,9 +362,6 @@ def list_experiments(category: Optional[str] = None, tags: Optional[List[str]] =
     Returns:
         List of experiment names matching criteria
     """
-    if not experiments:
-        initialize_experiments()
-
     # Start with all experiment names
     experiment_names = list(experiments.keys())
 
@@ -881,7 +863,17 @@ def get_config_dependencies(config: ExperimentConfig) -> List[str]:
 # Experiment Configuration Factories
 # ==============================================================================
 
+experiments: Dict[str, Callable[[], ExperimentConfig]] = {}
 
+def experiment(name: str):
+    """Decorator to automatically register experiment configuration functions."""
+    def decorator(func: Callable[[], ExperimentConfig]):
+        experiments[name] = func
+        return func
+    return decorator
+
+
+@experiment("abs1_normal")
 def config_abs1_normal() -> ExperimentConfig:
     """Factory function for absolute value XOR experiment."""
     model = models.Model_Abs1().init_normal()
@@ -893,11 +885,75 @@ def config_abs1_normal() -> ExperimentConfig:
         training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=200),
         data=DataConfig(x=xor_data_centered(), y=xor_labels_T1(), problem_type=ExperimentType.XOR),
         analysis=AnalysisConfig(),
-        execution=ExecutionConfig(num_runs=200, experiment_name="abs1", skip_existing=False),
-        description="Centered XOR with single absolute value unit",
-        logging=LoggingConfig(train_epochs=50)
+        execution=ExecutionConfig(num_runs=500, experiment_name="abs1", skip_existing=False),
+        description="Centered XOR with single absolute value unit and normal init.",
+        logging=LoggingConfig(train_epochs=200)
     )
 
+@experiment("abs1_tiny")
+def config_abs1_normal() -> ExperimentConfig:
+    """Factory function for absolute value XOR experiment."""
+    model = models.Model_Abs1().init_tiny()
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01, betas=(0.9, 0.99))
+    loss_function = nn.MSELoss()
 
-# Initialize configurations on module import
-initialize_experiments()
+    return ExperimentConfig(
+        model=model,
+        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=200),
+        data=DataConfig(x=xor_data_centered(), y=xor_labels_T1(), problem_type=ExperimentType.XOR),
+        analysis=AnalysisConfig(),
+        execution=ExecutionConfig(num_runs=500, experiment_name="abs1", skip_existing=False),
+        description="Centered XOR with single absolute value unit and normal init.",
+        logging=LoggingConfig(train_epochs=200)
+    )
+
+@experiment("abs1_large")
+def config_abs1_normal() -> ExperimentConfig:
+    """Factory function for absolute value XOR experiment."""
+    model = models.Model_Abs1().init_large()
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01, betas=(0.9, 0.99))
+    loss_function = nn.MSELoss()
+
+    return ExperimentConfig(
+        model=model,
+        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=200),
+        data=DataConfig(x=xor_data_centered(), y=xor_labels_T1(), problem_type=ExperimentType.XOR),
+        analysis=AnalysisConfig(),
+        execution=ExecutionConfig(num_runs=500, experiment_name="abs1", skip_existing=False),
+        description="Centered XOR with single absolute value unit and normal init.",
+        logging=LoggingConfig(train_epochs=200)
+    )
+
+@experiment("abs1_kaiming")
+def config_abs1_kaiming() -> ExperimentConfig:
+    """Factory function for absolute value XOR experiment."""
+    model = models.Model_Abs1().init_kaiming()
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01, betas=(0.9, 0.99))
+    loss_function = nn.MSELoss()
+
+    return ExperimentConfig(
+        model=model,
+        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=200),
+        data=DataConfig(x=xor_data_centered(), y=xor_labels_T1(), problem_type=ExperimentType.XOR),
+        analysis=AnalysisConfig(),
+        execution=ExecutionConfig(num_runs=500, experiment_name="abs1", skip_existing=False),
+        description="Centered XOR with single absolute value unit and kaiming init.",
+        logging=LoggingConfig(train_epochs=200)
+    )
+
+@experiment("abs1_xavier")
+def config_abs1_xavier() -> ExperimentConfig:
+    """Factory function for absolute value XOR experiment."""
+    model = models.Model_Abs1().init_xavier()
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01, betas=(0.9, 0.99))
+    loss_function = nn.MSELoss()
+
+    return ExperimentConfig(
+        model=model,
+        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=200),
+        data=DataConfig(x=xor_data_centered(), y=xor_labels_T1(), problem_type=ExperimentType.XOR),
+        analysis=AnalysisConfig(),
+        execution=ExecutionConfig(num_runs=500, experiment_name="abs1", skip_existing=False),
+        description="Centered XOR with single absolute value unit xavier init.",
+        logging=LoggingConfig(train_epochs=200)
+    )

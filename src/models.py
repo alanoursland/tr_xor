@@ -31,7 +31,7 @@ class Model_Abs1(nn.Module):
     def forward(self, x):
         x = self.linear1(x)
         x = torch.abs(x)
-        x = torch.clamp(x, 0.0, 1.0)
+        # x = torch.clamp(x, 0.0, 1.0)
         return x.squeeze()
     
     def init_normal(self):

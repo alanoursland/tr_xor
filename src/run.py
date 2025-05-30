@@ -25,7 +25,7 @@ from torch.utils.data import DataLoader
 from lib import setup_experiment_environment
 
 # Import project modules
-from configs import ExperimentConfig, get_experiment_config, list_experiments, validate_experiment_config, apply_overrides
+from configs import ExperimentConfig, get_experiment_config, list_experiments, apply_overrides
 from models import create_xor_model, create_parity_model, create_custom_model
 from data import generate_xor_data, generate_parity_data, create_training_batches
 from utils import (
@@ -1092,16 +1092,6 @@ def main() -> int:
             print(f"✗ Failed to load configuration: {e}")
             return 1
 
-        # Validate configuration
-        print("Validating configuration...")
-        is_valid, errors = validate_experiment_config(config)
-        if not is_valid:
-            print("✗ Configuration validation failed:")
-            for error in errors:
-                print(f"  - {error}")
-            return 1
-        print("✓ Configuration validated successfully")
-
         # Setup experiment environment
         print("Setting up experiment environment...")
         setup_info = setup_experiment_environment(
@@ -1222,16 +1212,6 @@ def show_experiment_info(experiment_name: str, detailed: bool = False) -> None:
     Args:
         experiment_name: Name of experiment to show info for
         detailed: Whether to show detailed configuration
-    """
-    pass
-
-
-def validate_experiment_config_cli(experiment_name: str) -> None:
-    """
-    Validate experiment configuration and report results.
-
-    Args:
-        experiment_name: Name of experiment configuration to validate
     """
     pass
 

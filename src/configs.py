@@ -410,153 +410,6 @@ def get_experiment_categories() -> Dict[str, List[str]]:
 
 
 # ==============================================================================
-# Configuration Validation
-# ==============================================================================
-
-
-def validate_experiment_config(config: ExperimentConfig) -> Tuple[bool, List[str]]:
-    """
-    Validate experiment configuration for completeness and consistency.
-
-    Args:
-        config: Experiment configuration to validate
-
-    Returns:
-        Tuple of (is_valid, error_messages)
-    """
-    errors = []
-
-    if not config:
-        errors.append(f"config is {config}")
-        return False, errors
-
-    # Validate each section
-    model_valid, model_errors = validate_model_config(config.model)
-    training_valid, training_errors = validate_training_config(config.training)
-    data_valid, data_errors = validate_data_config(config.data)
-    analysis_valid, analysis_errors = validate_analysis_config(config.analysis)
-    execution_valid, execution_errors = validate_execution_config(config.execution)
-
-    # Collect all errors
-    errors.extend(model_errors)
-    errors.extend(training_errors)
-    errors.extend(data_errors)
-    errors.extend(analysis_errors)
-    errors.extend(execution_errors)
-
-    # Cross-section compatibility checks
-    compat_valid, compat_errors = check_config_compatibility(config)
-    errors.extend(compat_errors)
-
-    # Basic sanity checks
-    if not config.description.strip():
-        errors.append("Experiment description cannot be empty")
-
-    if config.execution.num_runs <= 0:
-        errors.append("Number of runs must be positive")
-
-    is_valid = len(errors) == 0
-    return is_valid, errors
-
-
-def validate_model_config(config: torch.nn.Module) -> Tuple[bool, List[str]]:
-    """
-    Validate model configuration parameters.
-
-    Args:
-        config: Model configuration to validate
-
-    Returns:
-        Tuple of (is_valid, error_messages)
-    """
-    errors = []
-
-    if config is None:
-        errors.append("Model cannot be None")
-        return False, errors
-
-    # Check that it's actually a PyTorch model
-    if not isinstance(config, torch.nn.Module):
-        errors.append("Model must be a torch.nn.Module instance")
-
-    # Check that it has parameters (not strictly required, but usually expected)
-    try:
-        param_count = sum(p.numel() for p in config.parameters())
-        if param_count == 0:
-            errors.append("Model has no parameters")
-    except Exception as e:
-        errors.append(f"Error counting model parameters: {e}")
-
-    is_valid = len(errors) == 0
-    return is_valid, errors
-
-
-def validate_training_config(config: TrainingConfig) -> Tuple[bool, List[str]]:
-    """
-    Validate training configuration parameters.
-
-    Args:
-        config: Training configuration to validate
-
-    Returns:
-        Tuple of (is_valid, error_messages)
-    """
-    return True, []
-
-
-def validate_data_config(config: DataConfig) -> Tuple[bool, List[str]]:
-    """
-    Validate data configuration parameters.
-
-    Args:
-        config: Data configuration to validate
-
-    Returns:
-        Tuple of (is_valid, error_messages)
-    """
-    return True, []
-
-
-def validate_analysis_config(config: AnalysisConfig) -> Tuple[bool, List[str]]:
-    """
-    Validate analysis configuration parameters.
-
-    Args:
-        config: Analysis configuration to validate
-
-    Returns:
-        Tuple of (is_valid, error_messages)
-    """
-    return True, []
-
-
-def validate_execution_config(config: ExecutionConfig) -> Tuple[bool, List[str]]:
-    """
-    Validate execution configuration parameters.
-
-    Args:
-        config: Execution configuration to validate
-
-    Returns:
-        Tuple of (is_valid, error_messages)
-    """
-    return True, []
-
-
-def check_config_compatibility(config: ExperimentConfig) -> Tuple[bool, List[str]]:
-    """
-    Check for compatibility between different configuration sections.
-
-    Args:
-        config: Complete experiment configuration
-
-    Returns:
-        Tuple of (is_compatible, warning_messages)
-    """
-    return True, []
-
-
-# ==============================================================================
 # Configuration Inheritance and Merging
 # ==============================================================================
 
@@ -885,7 +738,7 @@ def config_abs1_normal() -> ExperimentConfig:
         training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=200),
         data=DataConfig(x=xor_data_centered(), y=xor_labels_T1(), problem_type=ExperimentType.XOR),
         analysis=AnalysisConfig(),
-        execution=ExecutionConfig(num_runs=500, experiment_name="abs1", skip_existing=False),
+        execution=ExecutionConfig(num_runs=50, experiment_name="abs1", skip_existing=False),
         description="Centered XOR with single absolute value unit and normal init.",
         logging=LoggingConfig(train_epochs=200)
     )
@@ -902,8 +755,8 @@ def config_abs1_normal() -> ExperimentConfig:
         training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=200),
         data=DataConfig(x=xor_data_centered(), y=xor_labels_T1(), problem_type=ExperimentType.XOR),
         analysis=AnalysisConfig(),
-        execution=ExecutionConfig(num_runs=500, experiment_name="abs1", skip_existing=False),
-        description="Centered XOR with single absolute value unit and normal init.",
+        execution=ExecutionConfig(num_runs=50, experiment_name="abs1", skip_existing=False),
+        description="Centered XOR with single absolute value unit and tiny normal init.",
         logging=LoggingConfig(train_epochs=200)
     )
 
@@ -919,8 +772,8 @@ def config_abs1_normal() -> ExperimentConfig:
         training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=200),
         data=DataConfig(x=xor_data_centered(), y=xor_labels_T1(), problem_type=ExperimentType.XOR),
         analysis=AnalysisConfig(),
-        execution=ExecutionConfig(num_runs=500, experiment_name="abs1", skip_existing=False),
-        description="Centered XOR with single absolute value unit and normal init.",
+        execution=ExecutionConfig(num_runs=50, experiment_name="abs1", skip_existing=False),
+        description="Centered XOR with single absolute value unit and large normal init.",
         logging=LoggingConfig(train_epochs=200)
     )
 
@@ -936,7 +789,7 @@ def config_abs1_kaiming() -> ExperimentConfig:
         training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=200),
         data=DataConfig(x=xor_data_centered(), y=xor_labels_T1(), problem_type=ExperimentType.XOR),
         analysis=AnalysisConfig(),
-        execution=ExecutionConfig(num_runs=500, experiment_name="abs1", skip_existing=False),
+        execution=ExecutionConfig(num_runs=50, experiment_name="abs1", skip_existing=False),
         description="Centered XOR with single absolute value unit and kaiming init.",
         logging=LoggingConfig(train_epochs=200)
     )
@@ -953,7 +806,7 @@ def config_abs1_xavier() -> ExperimentConfig:
         training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=200),
         data=DataConfig(x=xor_data_centered(), y=xor_labels_T1(), problem_type=ExperimentType.XOR),
         analysis=AnalysisConfig(),
-        execution=ExecutionConfig(num_runs=500, experiment_name="abs1", skip_existing=False),
+        execution=ExecutionConfig(num_runs=50, experiment_name="abs1", skip_existing=False),
         description="Centered XOR with single absolute value unit xavier init.",
         logging=LoggingConfig(train_epochs=200)
     )

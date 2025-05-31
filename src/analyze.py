@@ -2229,7 +2229,7 @@ def main() -> int:
         report = generate_analysis_report(analysis_results, config, template="comprehensive")
         
         # Save report
-        report_path = results_dir / "analysis_report.md"
+        report_path = results_dir / f"analysis_{experiment_name}.md"
         with open(report_path, "w", encoding="utf-8") as f:
             f.write(report)
         print(f"  ✓ Report saved to {report_path}")

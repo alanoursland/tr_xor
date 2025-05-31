@@ -284,12 +284,15 @@ def list_experiments(category: Optional[str] = None, tags: Optional[List[str]] =
 experiments: Dict[str, Callable[[], ExperimentConfig]] = {}
 
 def experiment(name: str):
-    """Decorator to automatically register experiment configuration functions."""
+    """Decorator to register and label experiment configuration functions."""
     def decorator(func: Callable[[], ExperimentConfig]):
-        experiments[name] = func
-        return func
+        def wrapped_func():
+            config = func()
+            config.execution.experiment_name = name  # Inject decorator name
+            return config
+        experiments[name] = wrapped_func
+        return wrapped_func
     return decorator
-
 
 @experiment("abs1_normal")
 def config_abs1_normal() -> ExperimentConfig:
@@ -303,7 +306,7 @@ def config_abs1_normal() -> ExperimentConfig:
         training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=200),
         data=DataConfig(x=xor_data_centered(), y=xor_labels_T1(), problem_type=ExperimentType.XOR),
         analysis=AnalysisConfig(),
-        execution=ExecutionConfig(num_runs=50, experiment_name="abs1", skip_existing=False),
+        execution=ExecutionConfig(num_runs=50, skip_existing=False),
         description="Centered XOR with single absolute value unit and normal init.",
         logging=LoggingConfig(train_epochs=200)
     )
@@ -320,7 +323,7 @@ def config_abs1_normal() -> ExperimentConfig:
         training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=200),
         data=DataConfig(x=xor_data_centered(), y=xor_labels_T1(), problem_type=ExperimentType.XOR),
         analysis=AnalysisConfig(),
-        execution=ExecutionConfig(num_runs=50, experiment_name="abs1", skip_existing=False),
+        execution=ExecutionConfig(num_runs=50, skip_existing=False),
         description="Centered XOR with single absolute value unit and tiny normal init.",
         logging=LoggingConfig(train_epochs=200)
     )
@@ -337,7 +340,7 @@ def config_abs1_normal() -> ExperimentConfig:
         training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=200),
         data=DataConfig(x=xor_data_centered(), y=xor_labels_T1(), problem_type=ExperimentType.XOR),
         analysis=AnalysisConfig(),
-        execution=ExecutionConfig(num_runs=50, experiment_name="abs1", skip_existing=False),
+        execution=ExecutionConfig(num_runs=50, skip_existing=False),
         description="Centered XOR with single absolute value unit and large normal init.",
         logging=LoggingConfig(train_epochs=200)
     )
@@ -354,7 +357,7 @@ def config_abs1_kaiming() -> ExperimentConfig:
         training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=200),
         data=DataConfig(x=xor_data_centered(), y=xor_labels_T1(), problem_type=ExperimentType.XOR),
         analysis=AnalysisConfig(),
-        execution=ExecutionConfig(num_runs=50, experiment_name="abs1", skip_existing=False),
+        execution=ExecutionConfig(num_runs=50, skip_existing=False),
         description="Centered XOR with single absolute value unit and kaiming init.",
         logging=LoggingConfig(train_epochs=200)
     )
@@ -371,7 +374,7 @@ def config_abs1_xavier() -> ExperimentConfig:
         training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=200),
         data=DataConfig(x=xor_data_centered(), y=xor_labels_T1(), problem_type=ExperimentType.XOR),
         analysis=AnalysisConfig(),
-        execution=ExecutionConfig(num_runs=50, experiment_name="abs1", skip_existing=False),
+        execution=ExecutionConfig(num_runs=50, skip_existing=False),
         description="Centered XOR with single absolute value unit xavier init.",
         logging=LoggingConfig(train_epochs=200)
     )

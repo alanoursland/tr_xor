@@ -1826,6 +1826,75 @@ def analyze_xor_accuracy_distribution(accuracies: List[float]) -> Dict[str, Any]
         'level_descriptions': xor_levels,        
     }
 
+def plot_single_hyperplane_model(model, x, y, title, filename=None):
+    import matplotlib.pyplot as plt
+    import matplotlib as mpl
+    import torch
+
+    model.eval()
+
+    mpl.rcParams['font.family'] = 'DejaVu Sans'
+    mpl.rcParams['axes.titlesize'] = 16
+    mpl.rcParams['axes.labelsize'] = 14
+    mpl.rcParams['xtick.labelsize'] = 12
+    mpl.rcParams['ytick.labelsize'] = 12
+    mpl.rcParams['legend.fontsize'] = 12
+
+    x_cpu = x.detach().cpu()
+    y_cpu = y.detach().cpu()
+
+    W = model.linear1.weight.detach()[0].cpu()  # (2,)
+    b = model.linear1.bias.detach()[0].cpu()    # scalar
+
+    mean = torch.zeros(2)
+
+    plt.figure(figsize=(6, 6))
+
+    # XOR input points
+    for xi, yi in zip(x_cpu, y_cpu):
+        marker = 'o' if yi == 0 else '^'
+        plt.scatter(xi[0], xi[1], marker=marker, s=100, color='black', edgecolors='k', linewidths=1)
+
+    # Draw the hyperplane and normal
+    norm = torch.norm(W)
+    normal = W / norm
+    distance = (W @ mean + b) / norm
+    projection_on_plane = mean - distance * normal
+    perp = torch.tensor([-normal[1], normal[0]])
+
+    scale_factor = 5
+    pt1 = projection_on_plane + perp * scale_factor
+    pt2 = projection_on_plane - perp * scale_factor
+
+    plt.plot([pt1[0], pt2[0]], [pt1[1], pt2[1]],
+             color='#333333', linewidth=1.5, linestyle='--')
+
+    plt.arrow(
+        projection_on_plane[0].item(), projection_on_plane[1].item(),
+        normal[0].item() * 0.5, normal[1].item() * 0.5,
+        head_width=0.15, head_length=0.2,
+        fc='#333333', ec='#333333', alpha=1.0,
+        length_includes_head=True, width=0.03, zorder=3
+    )
+
+    # Final plot adjustments
+    plt.title(title, fontsize=16, weight='bold', pad=12)
+    plt.xlabel("x0")
+    plt.ylabel("x1")
+    plt.grid(True, linestyle='--', linewidth=0.5, alpha=0.5)
+    plt.axis('equal')
+    plt.xlim(-2, 2)
+    plt.ylim(-2, 2)
+    plt.tight_layout()
+
+    if filename:
+        Path(filename).parent.mkdir(parents=True, exist_ok=True)
+        plt.savefig(filename, dpi=150)
+    else:
+        plt.show()
+
+    plt.close()
+
 def generate_experiment_visualizations(
     run_results: List[Dict],
     config: ExperimentConfig,
@@ -1838,56 +1907,39 @@ def generate_experiment_visualizations(
 
     for run_result in run_results:
         run_id = run_result.get("run_id")
-        if run_id is None:
-            continue
+        config_summary = run_result.get("config_summary")
+        experiment_name = config_summary.get("experiment_name")
 
-        run_dir = output_dir / "runs" / f"{run_id:03d}"
-        model_path = run_dir / "model.pt"
-        if not model_path.exists():
-            continue
-
-        # Load a fresh instance of the model with state dict
+        # Load a fresh instance of the model from state dict
         model = config.model
-        model.load_state_dict(torch.load(model_path))
+        state_dict = {
+            k: v.clone().detach() if isinstance(v, torch.Tensor) else torch.tensor(v)
+            for k, v in run_result["model_state_dict"].items()
+        }
+        model.load_state_dict(state_dict)
         model.eval()
 
-        # Extract first layer weights
-        W = model.linear1.weight.detach().cpu().numpy()
-        b = model.linear1.bias.detach().cpu().numpy()
+        # Create output directory
+        plot_dir = output_dir / f"{run_id:03d}"
+        plot_dir.mkdir(parents=True, exist_ok=True)
+        plot_path = plot_dir / "hyperplanes.png"
 
-        fig, ax = plt.subplots()
-        ax.set_title(f"Run {run_id:03d} - Prototype Surfaces")
-        ax.set_xlim(-2, 2)
-        ax.set_ylim(-2, 2)
-        ax.set_aspect("equal")
-        ax.grid(True)
+        # Prepare XOR data
+        x = config.data.x
+        y = config.data.y
 
-        # XOR data
-        x_data = config.data.x.cpu().numpy()
-        y_data = config.data.y.cpu().numpy()
-        colors = ['red' if y == 1.0 else 'blue' for y in y_data]
-        ax.scatter(x_data[:, 0], x_data[:, 1], c=colors, s=100, edgecolors='black')
-
-        # Plot hyperplanes Wx + b = 0
-        x_vals = torch.linspace(-2, 2, 200).numpy()
-        for j in range(W.shape[0]):
-            w = W[j]
-            bias = b[j]
-            if abs(w[1]) > 1e-6:
-                y_vals = -(w[0] * x_vals + bias) / w[1]
-                ax.plot(x_vals, y_vals, '--', label=f'Neuron {j}')
-            else:
-                x_vert = -bias / w[0]
-                ax.axvline(x=x_vert, linestyle='--', label=f'Neuron {j}')
-
-        ax.legend()
-        plot_path = run_dir / "hyperplanes.png"
-        fig.savefig(plot_path, dpi=150)
-        plt.close(fig)
+        # Plot using the styled helper
+        plot_single_hyperplane_model(
+            model=model,
+            x=x,
+            y=y,
+            title=f"{experiment_name} Run {run_id:03d}",
+            filename=plot_path
+        )
 
 def generate_analysis_report(
-    analysis_results: Dict,
-    config: ExperimentConfig,
+    analysis_results: Dict[str, Any],
+    config: Any,  # Replace Any with actual ExperimentConfig type
     template: str = "comprehensive"
 ) -> str:
     """
@@ -1904,41 +1956,121 @@ def generate_analysis_report(
     if template != "comprehensive":
         raise ValueError(f"Unsupported template: {template}")
 
-    name = config.execution.experiment_name
-    description = config.description or "No description provided."
-    summary = analysis_results.get("summary", {})
-    acc_dist = analysis_results.get("accuracy_distribution", {})
-    convergence = analysis_results.get("convergence", {})
+    # Extract top-level blocks from analysis_results
+    # Path: basic_stats
+    stats = analysis_results.get("basic_stats", {})
+    # Path: basic_stats.summary
+    summary = stats.get("summary", {})
+    # Path: basic_stats.experiment_info
+    experiment_info = stats.get("experiment_info", {})
+    # Path: basic_stats.distributions
+    distributions = stats.get("distributions", {})
+    # Path: basic_stats.distributions.accuracy_distribution.bins
+    acc_bins = distributions.get("accuracy_distribution", {}).get("bins", {})
+    # Path: basic_stats.success_metrics
+    success_metrics = stats.get("success_metrics", {})
+    # Path: basic_stats.summary.final_losses
+    final_losses = summary.get("final_losses", {})
 
-    # Header
+    # Extract PSL validation from analysis_results
+    # Path: psl_validation
+    psl_validation = analysis_results.get("psl_validation", {})
+    # Path: psl_validation.mirror_test
+    mirror_test = psl_validation.get("mirror_test", [])
+    # Path: psl_validation.distance_test
+    distance_test = psl_validation.get("distance_test", [])
+
+    # Core experiment metadata from config and experiment_info
+    name = config.execution.experiment_name
+    # Path: basic_stats.experiment_info.description
+    description = config.description or experiment_info.get("description", "No description provided.")
+
+    # Metrics extraction
+    # Path: basic_stats.experiment_info.total_runs
+    total_runs = experiment_info.get("total_runs", "N/A")
+    # Path: basic_stats.success_metrics.perfect_accuracy_rate
+    avg_acc = success_metrics.get("perfect_accuracy_rate", 0.0)
+    # Path: basic_stats.distributions.accuracy_distribution.bins."1.0"
+    success_runs = acc_bins.get(1.0, 0)
+    # Path: basic_stats.success_metrics.convergence_rate
+    conv_rate = success_metrics.get("convergence_rate", 0.0) * 100
+    # Path: basic_stats.summary.final_losses.min
+    best_loss = final_losses.get("min", 0.0)
+    # Path: basic_stats.summary.final_losses.max
+    worst_loss = final_losses.get("max", 0.0)
+
+    # Mirror pattern check
+    # Accesses 'mirror_count' within each item of psl_validation.mirror_test[]
+    mirror_detected = any(run.get("mirror_count", 0) > 0 for run in mirror_test)
+    mirror_flag = "✅ Detected" if mirror_detected else "❌ None detected"
+
+    # PSL interpretation flags
+    proto_surface_ok = "✔️" if distance_test else "⚠️ Not available"
+    geometry_ok = "✔️" if distance_test else "⚠️ Not available"
+    psl_support = "✅" if (avg_acc == 1.0 and distance_test) else "⚠️ Partial"
+
+
+    # Extract PSL distance test results
+    distance_entries = analysis_results.get("psl_validation", {}).get("distance_test", [])
+
+    # Accumulate distances per class
+    class0_distances = []
+    class1_distances = []
+
+    for entry in distance_entries:
+        dists = entry["distances"]
+        labels = entry["labels"]
+        for dist, label in zip(dists, labels):
+            if label == 0.0:
+                class0_distances.append(dist)
+            elif label == 1.0:
+                class1_distances.append(dist)
+
+    # Convert to numpy arrays for stats
+    d0 = np.array(class0_distances)
+    d1 = np.array(class1_distances)
+
+    # Compute stats
+    class0_mean = d0.mean()
+    class0_std = d0.std()
+    class1_mean = d1.mean()
+    class1_std = d1.std()
+
+    # Start Markdown report
     report = f"# 🧪 PSL Experiment Report: `{name}`\n\n"
     report += f"**Description**: {description}\n\n"
 
-    # Summary
     report += "## 🎯 Summary\n"
-    report += f"- Total runs: {summary.get('total_runs', 'N/A')}\n"
-    report += f"- Successful runs (100% accuracy): {acc_dist.get('100_percent', 0)}\n"
-    report += f"- Average accuracy: {summary.get('avg_accuracy', 0.0):.2f}\n"
-    report += f"- Convergence rate (< 0.01 loss): {convergence.get('convergence_rate', 0.0) * 100:.1f}%\n\n"
+    report += f"- Total runs: {total_runs}\n"
+    report += f"- Successful runs (100% accuracy): {success_runs}\n"
+    report += f"- Average accuracy: {avg_acc:.2f}\n"
+    report += f"- Convergence rate (< 0.01 loss): {conv_rate:.1f}%\n\n"
 
-    # Accuracy Table
     report += "## 📊 Accuracy Distribution\n"
     report += "| Accuracy | Runs |\n|----------|------|\n"
-    for k, label in [("100_percent", "100%"), ("75_percent", "75%"),
-                     ("50_percent", "50%"), ("25_percent", "25%"), ("0_percent", "0%")]:
-        report += f"| {label} | {acc_dist.get(k, 0)} |\n"
+    accuracy_labels = {
+        1.0: "100%",
+        0.75: "75%",
+        0.5: "50%",
+        0.25: "25%",
+        0.0: "0%"
+    }
+    # Accesses keys like "1.0", "0.75" etc. within basic_stats.distributions.accuracy_distribution.bins
+    for key, label in accuracy_labels.items():
+        report += f"| {label} | {acc_bins.get(key, 0)} |\n"
 
-    # Convergence Stats
+    weight_stats = analysis_results.get("basic_stats", {}).get("summary", {}).get("weight_norms", {})
+    weight_mean = weight_stats.get("mean", 0.0)
+    weight_std = weight_stats.get("std", 0.0)
+
     report += "\n## 🔍 Convergence Statistics\n"
-    report += f"- Best final loss: {convergence.get('best_final_loss', 0.0):.6f}\n"
-    report += f"- Worst final loss: {convergence.get('worst_final_loss', 0.0):.6f}\n"
+    report += f"- Best final loss: {best_loss:.8e}\n"
+    report += f"- Worst final loss: {worst_loss:.8e}\n"
 
-    # PSL Interpretation
-    report += "\n## 🧠 PSL Interpretation\n"
-    report += "- Prototype region emergence: ✔️\n"
-    report += "- Activation surface geometry: ✔️\n"
-    report += "- Mirror weight patterns: ⚠️ Not yet analyzed\n"
-    report += "- Supports PSL predictions: ✅\n"
+    report += "\n## 🧠 Hyperplane Analysis\n"
+    report += f"- Class 0 points mean distance to hyperplane: {class0_mean:.4e} ± {class0_std:.1e}\n"
+    report += f"- Class 1 points mean distance to hyperplane: {class1_mean:.5f} ± {class1_std:.1e}\n"
+    report += f"- Mean ||W|| (weight norm): {weight_mean:.6f} ± {weight_std:.1e}\n"
 
     return report
 
@@ -2087,7 +2219,7 @@ def main() -> int:
             
             generate_experiment_visualizations(
                 run_results=run_results,
-                config=experiment_data,
+                config=config,
                 output_dir=plots_dir
             )
             print(f"  ✓ Visualizations plots saved to {plots_dir}")

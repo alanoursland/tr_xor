@@ -1,6 +1,6 @@
 # coding\_style.md
 
-## Coding Philosophy for PSL Experiments
+## Coding Philosophy for Experiments
 
 This project embraces a coding philosophy rooted in minimalism, clarity, and functional necessity. It intentionally resists speculative overengineering, favoring infrastructure that emerges naturally from use. This approach draws on decades of software engineering experience and is heavily influenced by Guy Steele's *Growing a Language*.
 

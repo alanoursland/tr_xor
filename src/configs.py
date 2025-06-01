@@ -1,9 +1,9 @@
-# configs.py - Experiment Configuration for PSL Experiments
+# configs.py - Experiment Configuration for Prototype Surface Experiments
 
 """
-Comprehensive experiment configuration system for Prototype Surface Learning (PSL) research.
+Comprehensive experiment configuration system for prototype surface research.
 Provides structured experiment definitions, validation, inheritance, and parameter sweep
-capabilities. Designed to enable systematic investigation of PSL theory across different
+capabilities. Designed to enable systematic investigation of prototype surface theory across different
 model architectures, activation functions, and training configurations.
 """
 
@@ -122,7 +122,7 @@ class AnalysisConfig:
     analysis_bounds: List[Tuple[float, float]] = field(default_factory=lambda: [(-2.5, 2.5), (-2.5, 2.5)])
     analysis_resolution: int = 100
 
-    # PSL-specific analysis
+    # Prototype surface specific analysis
     prototype_surface_validation: bool = True
     separation_order_analysis: bool = True
     minsky_papert_metrics: bool = True
@@ -181,7 +181,7 @@ class ExperimentConfig:
     description: str = ""
     tags: List[str] = field(default_factory=list)
     version: str = "1.0"
-    created_by: str = "psl_framework"
+    created_by: str = "prototype_framework"
     notes: str = ""
 
     # Dependencies and inheritance

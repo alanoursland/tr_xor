@@ -4,25 +4,25 @@
 
 **2. Introduction**
     * **2.1. Core Research Context:**
-        * Briefly introduce the Prototype Surface Learning (PSL) theory: Neural networks (particularly those with linear layers and ReLU activations) are hypothesized to learn "prototype surfaces" or regions.
-        * Emphasize the key PSL tenet: Classification is based on proximity/inclusion relative to these surfaces, where 0=Wx+b with an activation defines one or more prototype surfaces. An activation value of zero indicates maximal membership or inclusion within a learned feature/prototype region.
+        * Briefly introduce the Prototype Surface theory: Neural networks (particularly those with linear layers and ReLU activations) are hypothesized to learn "prototype surfaces" or regions.
+        * Emphasize the key thesis: Classification is based on proximity/inclusion relative to these surfaces, where 0=Wx+b with an activation defines one or more prototype surfaces. An activation value of zero indicates maximal membership or inclusion within a learned feature/prototype region.
     * **2.2. The XOR Problem as a Testbed:**
         * Highlight the XOR problem as a classic, simple, non-linearly separable task. Its low dimensionality is ideal for visualizing learned geometric structures.
-        * Position this investigation as a foundational step: Applying PSL to XOR, a problem that historically demonstrated the limitations of linear classifiers and motivated the need for non-linear solutions (like MLPs), offers a chance to reinterpret learning mechanisms from the PSL perspective.
-        * XOR as a primary foundational linear separation theory vs Prototype Surface Learning.
+        * Position this investigation as a foundational step: Investigation using XOR, a problem that historically demonstrated the limitations of linear classifiers and motivated the need for non-linear solutions (like MLPs), offers a chance to reinterpret learning mechanisms from the prototype surface perspective.
+        * XOR as a primary foundational linear separation theory vs prototype surface theory.
         * Exploritory work. Illustrative evidence.
     * **2.3. Experiment Goals and Exploratory Nature:**
-        * Primary Goal: To empirically investigate, visualize, and document how a Multi-Layer Perceptron (MLP) trained on XOR learns representations and performs classification in a manner consistent with the PSL theory.
-        * Nature of Work: This is exploratory research. It's not an attempt to definitively prove PSL theory but rather to provide supporting evidence, generate explanatory examples, and identify new research questions.
+        * Primary Goal: To empirically investigate, visualize, and document how a Multi-Layer Perceptron (MLP) trained on XOR learns representations and performs classification in a manner consistent with the prototype surface theory.
+        * Nature of Work: This is exploratory research. It's not an attempt to definitively prove prototype surface theory but rather to provide supporting evidence, generate explanatory examples, and identify new research questions.
         * Iterative Approach: This experiment is part of an anticipated series. Findings and new questions will inform subsequent experiments (e.g., exploring different architectures, activations, error functions, optimizers, initialization strategies, data normalization, and higher-dimensional Parity problems).
     * **2.4. Scope of This Document:**
         * This document details the plan for initial experiments focused on analyzing the internal geometric representations (hyperplanes and "prototype regions" where `ReLU(Wx+b)=0`) of hidden neurons in an MLP successfully trained on the XOR problem.
 
-**3. Theoretical Application: PSL Applied to XOR**
-    * Describe how the general PSL theory is expected to manifest specifically for an MLP solving XOR.
+**3. Theoretical Application: Prototype Surface Theory Applied to XOR**
+    * Describe how the general prototype surface theory is expected to manifest specifically for an MLP solving XOR.
     * How hidden neurons are predicted to define prototype regions (`Activation(Wx+b) = 0`).
     * How the combination of these regions (and the signals of inclusion/exclusion) allows the output neuron to solve the XOR logic.
-    * Discuss the interpretation of the output layer's function within the PSL framework for this binary classification task.
+    * Discuss the interpretation of the output layer's function within the prototype surface theory for this binary classification task.
     * ReLU's zero-activation regions encapsulating prototypes (and positive activation signaling non-prototypical inputs) 
     * Abs's zero-activation decision boundary encapsulating prototypes (and positive activation signaling non-prototypical inputs) 
     * Sigmoids's positive and negative extremes.
@@ -68,7 +68,7 @@
         * **Representation Analysis:** Examine hidden layer activation patterns for each XOR input.
     * **5.6. Discussion of Results (for each experiment):**
         * Observations on learned representations.
-        * Alignment (or divergence) with PSL predictions.
+        * Alignment (or divergence) with prototype surface theory predictions.
         * New questions or insights gained.
 
 **6. Experiment Enumeration and Log**

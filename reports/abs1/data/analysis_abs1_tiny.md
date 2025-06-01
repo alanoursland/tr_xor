@@ -1,4 +1,4 @@
-# 🧪 PSL Experiment Report: `abs1_tiny`
+# 🧪 Experiment Report: `abs1_tiny`
 
 **Description**: Centered XOR with single absolute value unit and tiny normal init.
 

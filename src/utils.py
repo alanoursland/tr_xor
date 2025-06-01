@@ -1,7 +1,7 @@
-# utils.py - General Utility Functions for PSL Experiments
+# utils.py - General Utility Functions for Prototype Surface Experiments
 
 """
-Comprehensive utility library supporting all aspects of the Prototype Surface Learning (PSL)
+Comprehensive utility library supporting all aspects of the prototype surface
 experimentation framework. This module provides foundation services used across all other
 components including file I/O, logging, mathematical computations, and reproducibility management.
 """

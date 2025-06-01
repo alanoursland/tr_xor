@@ -1,7 +1,7 @@
-# lib.py - Common Library Functions for PSL Experiments
+# lib.py - Common Library Functions for Prototype Surface Experiments
 
 """
-Common library functions and utilities for Prototype Surface Learning (PSL) experiments.
+Common library functions and utilities for prototype surface experiments.
 Provides high-level convenience functions, common workflows, and integration utilities
 that simplify interaction between the core modules (models, data, configs, utils, analyze).
 This module serves as a user-friendly API layer for researchers and practitioners.

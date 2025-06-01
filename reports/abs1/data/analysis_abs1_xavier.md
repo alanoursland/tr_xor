@@ -1,4 +1,4 @@
-# 🧪 PSL Experiment Report: `abs1_xavier`
+# 🧪 Experiment Report: `abs1_xavier`
 
 **Description**: Centered XOR with single absolute value unit xavier init.
 

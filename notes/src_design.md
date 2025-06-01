@@ -2,13 +2,13 @@
 
 ## Overview
 
-This document outlines the source code structure for investigating the Prototype Surface Learning (PSL) theory through systematic experimentation, beginning with the XOR problem. The design emphasizes modularity, reproducibility, and extensibility for future experiments on higher-dimensional problems.
+This document outlines the source code structure. The design emphasizes modularity, reproducibility, and extensibility for future experiments on higher-dimensional problems.
 
 ## File Structure
 
 ### `models.py` - Neural Network Definitions
 
-Contains all neural network model architectures used in experiments, with specialized focus on geometric interpretability and PSL theory validation.
+Contains all neural network model architectures used in experiments, with specialized focus on geometric interpretability.
 
 **Core Classes:**
 
@@ -199,7 +199,7 @@ Results directory structure:
 
 ### `analyze.py` - Post-Experiment Analysis and Visualization
 
-Comprehensive analysis system specifically designed for PSL theory investigation with rich visualization capabilities.
+Analysis system with rich visualization capabilities.
 
 **Geometric Analysis Functions**:
 
@@ -215,8 +215,6 @@ Comprehensive analysis system specifically designed for PSL theory investigation
 - plot_distance_contours(distance_field, model, data_points): Contour plots of distance functions
 - analyze_prototype_proximity(data_points, model): Measure proximity of data to prototype surfaces
 - visualize_activation_landscapes(model, input_bounds): 3D visualization of activation functions
-
-**PSL-Specific Metrics**:
 
 **Prototype Region Analysis**:
 - identify_prototype_regions(model, input_bounds): Map regions where activations are zero
@@ -279,8 +277,6 @@ Comprehensive analysis system specifically designed for PSL theory investigation
 - --interactive: Generate interactive visualizations
 
 ### `utils.py` - General Utility Functions
-
-Comprehensive utility library supporting all aspects of the PSL experimentation framework.
 
 **File I/O Operations**:
 
@@ -387,8 +383,8 @@ The architecture easily accommodates future extensions including new activation 
 ### Reproducibility
 Complete reproducibility is ensured through consistent random seed handling across all components, comprehensive configuration logging with version tracking, deterministic experiment execution with checkpoint support, and complete audit trails of all experimental procedures.
 
-### PSL Theory Focus
-The entire pipeline is specifically designed to facilitate investigation of prototype surface learning through specialized geometric interpretation tools, surface-based analysis rather than traditional decision boundary analysis, distance-based metrics aligned with PSL predictions, and visualization systems optimized for prototype surface theory validation.
+### Prototype Surface Theory Focus
+The entire pipeline is specifically designed to facilitate investigation of prototype surface learning through specialized geometric interpretation tools, surface-based analysis rather than traditional decision boundary analysis, distance-based metrics, and visualization systems optimized around prototype surface theory predictions.
 
 ## Implementation Priorities
 
@@ -399,7 +395,7 @@ Implement basic versions of models.py, data.py, and utils.py to establish the fo
 Complete configs.py and run.py to enable systematic experimentation with proper logging and state management.
 
 ### Phase 3: Analysis System
-Implement analyze.py with comprehensive geometric analysis and visualization capabilities specifically focused on PSL theory validation.
+Implement analyze.py with comprehensive geometric analysis and visualization capabilities specifically focused on prototype surface theory validation.
 
 ### Phase 4: Advanced Features
 Add interactive visualizations, real-time training monitoring, automated report generation, and integration with external analysis tools.

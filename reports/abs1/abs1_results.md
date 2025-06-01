@@ -16,6 +16,8 @@ This document presents empirical results from five experiments testing different
 | Kaiming        | 98%                | 0.98         | 86%                           | 0.7284 ± 1.2e-01 | 4.6e-02 ± 1.0e-01 | 1.4097 ± 1.2e-02  |
 | Large          | 20%                | 0.20         | 14%                           | 2.8043 ± 2.1e+00 | 7.8e-02 ± 8.3e-02 | 1.4096 ± 6.7e-03  |
 
+Convergence Rate refers to the percentage of runs that achieved final loss below 0.01.
+
 ---
 
 ## 3. Accuracy Distribution
@@ -69,3 +71,4 @@ For successful runs:
 * **Loss**: Converged runs reached extremely low final loss values (often < $10^{-10}$), indicating near-perfect output matching.
 * **Distance to Surface**: Class-0 points consistently lie near the learned surface, while class-1 points lie approximately √2 units away, as expected from the geometric formulation.
 * **Weight Norm**: Successful runs yield weight norms close to 0.707, consistent with scaling the output of off surface classes to one.
+

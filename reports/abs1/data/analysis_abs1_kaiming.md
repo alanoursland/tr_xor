@@ -1,4 +1,4 @@
-# 🧪 PSL Experiment Report: `abs1_kaiming`
+# 🧪 Experiment Report: `abs1_kaiming`
 
 **Description**: Centered XOR with single absolute value unit and kaiming init.
 

@@ -8,7 +8,7 @@ This experiment investigates whether a minimal neural network—a single linear 
 
 ### Network Structure
 
-The architecture consists of a single linear transformation followed by an absolute value activation:
+We test a minimal model architecture consists of a single linear transformation followed by an absolute value activation:
 
 ```
 Input (2D) → Linear Layer (1 unit) → Absolute Value → Output
@@ -34,7 +34,7 @@ The output $y$ represents a scalar field over the input space, increasing with d
 
 ## Theoretical Foundation
 
-This experiment is grounded in the Prototype Surface Learning (PSL) theory, which reinterprets the role of neurons in terms of geometry. Rather than acting as simple threshold gates, neurons are seen as surface detectors. The linear component $Wx + b$ defines a hyperplane in input space. The absolute value activation then transforms this into a symmetric distance function: zero on the surface, positive elsewhere.
+This experiment is grounded in prototype surface theory, which reinterprets the role of neurons in terms of geometry. Rather than acting as simple threshold gates, neurons are hyperplanes that intersect feature prototypes. The linear component $Wx + b$ defines a hyperplane in input space. The absolute value activation then transforms this into a symmetric distance function: zero on the surface, positive elsewhere.
 
 Under this interpretation:
 
@@ -75,6 +75,14 @@ The dataset uses a centered form of the XOR problem:
 * **Labels**: $[0, 1, 1, 0]$
 
 Centering ensures that the data is symmetric around the origin. With the bias initialized to zero, the initial prototype surface passes through the mean of the data. This follows standard practice in neural network training where centering inputs or activations is known to improve optimization dynamics. For background on this practice, see LeCun et al. (2012) or Ioffe & Szegedy (2015) on normalization in deep networks.
+
+## Comments
+
+1. MSE is an uncommon choice for classification problems. We are trying to keep this model simple by using a single output that returns either 0 or 1. XOR is simple enough that this works. It may not be possible in more complex datasets.
+
+2. While we use MSE for error, for classification we use nearest neighbor to the target values 0 and 1.
+
+3. With four data points, we are looking for perfect learning on the training set. We are not studying the generalization problem in this experiment. We are studing the geometric representation of solutions.
 
 ## Experimental Objectives
 
@@ -127,9 +135,7 @@ To evaluate whether the model successfully learns the XOR task through the lens 
   $$
   |d(x_i)| = \frac{|w_1 x_{i1} + w_2 x_{i2} + b|}{\|w\|}
   $$
-* **Purpose**: Validates PSL predictions. Class-0 points should lie near the surface (small distance), while class-1 points should lie far (large distance). These distances directly reflect the learned geometry.
-
-Thanks for the clarification. Here's the corrected version of that metric description, now aligned with the correct geometric interpretation:
+* **Purpose**: Validates prototype surface theory predictions. Class-0 points should lie near the surface (small distance), while class-1 points should lie far (large distance). These distances directly reflect the learned geometry.
 
 ### 5. **Hyperplane Normal Length**
 

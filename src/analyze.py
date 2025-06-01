@@ -1,8 +1,8 @@
-# analyze.py - Post-Experiment Analysis and Visualization for PSL Experiments
+# analyze.py - Post-Experiment Analysis and Visualization for Prototype Surface Experiments
 
 """
-Comprehensive analysis module for Prototype Surface Learning (PSL) experiments.
-Provides geometric analysis, visualization, and PSL theory validation tools.
+Comprehensive analysis module for prototype surface experiments.
+Provides geometric analysis, visualization, and prototype surface validation tools.
 Focuses on prototype surface investigation, distance field analysis, and
 comparative studies across activation functions and training runs.
 """
@@ -103,9 +103,9 @@ def configure_analysis_from_config(config: ExperimentConfig) -> Tuple[List[str],
         if config.analysis.stability_analysis:
             analysis_plan.append('stability_metrics')
     
-    # PSL theory validation
+    # Prototype surface theory validation
     if config.analysis.prototype_surface_validation:
-        analysis_plan.append('psl_validation')
+        analysis_plan.append('prototype_validation')
         
         if config.analysis.separation_order_analysis:
             analysis_plan.append('separation_order')
@@ -1606,7 +1606,7 @@ def analyze_loss_curve_patterns(loss_histories: List[List[float]]) -> Dict[str, 
         'early_convergence_rate': early_convergence / total_curves
     }
 
-def validate_psl_theory(run_results, experiment_data, config):
+def validate_prototype_theory(run_results, experiment_data, config):
     # Test 1: Distance of points to hyperplanes
     distance_test = test_distance_to_hyperplanes(run_results, experiment_data)
     
@@ -1972,13 +1972,13 @@ def generate_analysis_report(
     # Path: basic_stats.summary.final_losses
     final_losses = summary.get("final_losses", {})
 
-    # Extract PSL validation from analysis_results
-    # Path: psl_validation
-    psl_validation = analysis_results.get("psl_validation", {})
-    # Path: psl_validation.mirror_test
-    mirror_test = psl_validation.get("mirror_test", [])
-    # Path: psl_validation.distance_test
-    distance_test = psl_validation.get("distance_test", [])
+    # Extract prototype surface validation from analysis_results
+    # Path: prototype_validation
+    prototype_validation = analysis_results.get("prototype_validation", {})
+    # Path: prototype_validation.mirror_test
+    mirror_test = prototype_validation.get("mirror_test", [])
+    # Path: prototype_validation.distance_test
+    distance_test = prototype_validation.get("distance_test", [])
 
     # Core experiment metadata from config and experiment_info
     name = config.execution.experiment_name
@@ -2000,18 +2000,18 @@ def generate_analysis_report(
     worst_loss = final_losses.get("max", 0.0)
 
     # Mirror pattern check
-    # Accesses 'mirror_count' within each item of psl_validation.mirror_test[]
+    # Accesses 'mirror_count' within each item of prototype_validation.mirror_test[]
     mirror_detected = any(run.get("mirror_count", 0) > 0 for run in mirror_test)
     mirror_flag = "✅ Detected" if mirror_detected else "❌ None detected"
 
-    # PSL interpretation flags
+    # prototype surface interpretation flags
     proto_surface_ok = "✔️" if distance_test else "⚠️ Not available"
     geometry_ok = "✔️" if distance_test else "⚠️ Not available"
-    psl_support = "✅" if (avg_acc == 1.0 and distance_test) else "⚠️ Partial"
+    prototype_support = "✅" if (avg_acc == 1.0 and distance_test) else "⚠️ Partial"
 
 
-    # Extract PSL distance test results
-    distance_entries = analysis_results.get("psl_validation", {}).get("distance_test", [])
+    # Extract prototype surface distance test results
+    distance_entries = analysis_results.get("prototype_validation", {}).get("distance_test", [])
 
     # Accumulate distances per class
     class0_distances = []
@@ -2037,7 +2037,7 @@ def generate_analysis_report(
     class1_std = d1.std()
 
     # Start Markdown report
-    report = f"# 🧪 PSL Experiment Report: `{name}`\n\n"
+    report = f"# 🧪 Experiment Report: `{name}`\n\n"
     report += f"**Description**: {description}\n\n"
 
     report += "## 🎯 Summary\n"
@@ -2203,13 +2203,13 @@ def main() -> int:
         #     )
         #     print("  ✓ Weight analysis completed")
 
-        # 5. PSL theory validation
-        if "psl_validation" in analysis_plan:
-            print("🔬 Validating PSL theory predictions...")
-            analysis_results["psl_validation"] = validate_psl_theory(
+        # 5. Prototype surface validation
+        if "prototype_validation" in analysis_plan:
+            print("🔬 Validating prototype surface predictions...")
+            analysis_results["prototype_validation"] = validate_prototype_theory(
                 run_results, experiment_data, config
             )
-            print("  ✓ PSL validation completed")
+            print("  ✓ Prototype surface validation completed")
 
         # 6. Generate visualizations
         if config.analysis.save_plots:

@@ -1,7 +1,7 @@
-# data.py - Dataset Generation and Management for PSL Experiments
+# data.py - Dataset Generation and Management for Prototype Surface Experiments
 
 """
-Dataset generation and management module for Prototype Surface Learning (PSL) experiments.
+Dataset generation and management module for prototype surface experiments.
 Handles creation of XOR datasets, higher-dimensional parity problems, input space sampling
 for visualization, and data preprocessing utilities with emphasis on geometric properties.
 """

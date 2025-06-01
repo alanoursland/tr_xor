@@ -1,9 +1,9 @@
-# models.py - Neural Network Definitions for PSL Experiments
+# models.py - Neural Network Definitions for Prototype Surface Experiments
 
 """
-Neural network model architectures for Prototype Surface Learning (PSL) experiments.
+Neural network model architectures for prototype surface experiments.
 Provides configurable multi-layer perceptrons with specialized focus on geometric
-interpretability and PSL theory validation. Includes custom activation functions
+interpretability and prototype surface theory validation. Includes custom activation functions
 and analysis methods for prototype surface investigation.
 """
 
@@ -31,7 +31,6 @@ class Model_Abs1(nn.Module):
     def forward(self, x):
         x = self.linear1(x)
         x = torch.abs(x)
-        # x = torch.clamp(x, 0.0, 1.0)
         return x.squeeze()
     
     def init_normal(self):
@@ -312,7 +311,7 @@ def orthogonal_init(layer: nn.Linear, gain: float = 1.0) -> None:
 
 class MLP(nn.Module):
     """
-    Multi-layer perceptron with configurable architecture and PSL analysis capabilities.
+    Multi-layer perceptron with configurable architecture and prototype surface analysis capabilities.
 
     Designed for prototype surface learning experiments with geometric interpretability.
     """
@@ -774,16 +773,16 @@ def compute_model_complexity_metrics(model: nn.Module) -> Dict[str, float]:
     pass
 
 
-def validate_psl_predictions(
+def validate_prototype_predictions(
     model: nn.Module, test_data: torch.Tensor, expected_properties: Dict[str, Any]
 ) -> Dict[str, bool]:
     """
-    Validate whether model exhibits properties predicted by PSL theory.
+    Validate whether model exhibits properties predicted by prototype surface theory.
 
     Args:
         model: Trained model to validate
         test_data: Data for validation
-        expected_properties: Expected PSL properties
+        expected_properties: Expected prototype surface properties
 
     Returns:
         Dictionary of validation results

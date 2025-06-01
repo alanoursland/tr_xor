@@ -1,7 +1,7 @@
-# run.py - Experiment Execution for PSL Experiments
+# run.py - Experiment Execution for Prototype Surface Experiments
 
 """
-Central orchestration system for running Prototype Surface Learning (PSL) experiments.
+Central orchestration system for running prototype surface experiments.
 Provides command-line interface, experiment management, training coordination, and
 comprehensive state management with logging and reproducibility features.
 """

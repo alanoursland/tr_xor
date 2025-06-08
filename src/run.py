@@ -179,7 +179,7 @@ def execute_training_run(
         "best_loss": best_loss,
         "accuracy": accuracy,
         "training_time": training_time,
-        "epochs_completed": config.training.epochs,
+        "epochs_completed": epoch + 1,
         "loss_history": losses,
     }
 

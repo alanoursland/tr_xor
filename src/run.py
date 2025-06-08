@@ -266,6 +266,13 @@ def run_experiment(
             if fresh_config.model is None:
                 raise ValueError(f"Config factory returned None model for experiment '{experiment_name}'")
 
+            # Create run directory before training
+            run_dir = output_dirs["experiment"] / "runs" / f"{run_id:03d}"
+            run_dir.mkdir(parents=True, exist_ok=True)
+
+            # Save initial (untrained) model state
+            torch.save(fresh_config.model.state_dict(), run_dir / "model_init.pt")
+
             # Execute single run
             model, run_result = execute_training_run(
                 model=fresh_config.model,

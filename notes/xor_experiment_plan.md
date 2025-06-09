@@ -55,23 +55,36 @@
             * Batch Size (e.g., full batch for XOR).
             * Number of Epochs (or convergence criteria).
             * Number of training runs (with different random seeds).
-    * **5.4. Data Collection:**
-        * Final trained model parameters (weights and biases).
-        * Training curves (loss and accuracy over epochs).
-        * Accuracy histogram across multiple runs.
-        * Activations (pre and post-ReLU for hidden, pre-sigmoid and post-sigmoid for output) for all XOR inputs.
-    * **5.5. Analysis, Metrics, and Visualization:**
-        * **Geometric Visualization:** Plot 2D hyperplanes (`Wx+b=0`) of hidden neurons against training data. Identify the "prototype regions" for different activations.
-        * **Quantitative Metrics (Examples):**
-            * Distance of each input point to each hidden neuron's hyperplane (`Wx+b=0`).
-            * Analysis of weight "mirror pairs" (W_0 = -W_1).
-        * **Representation Analysis:** Examine hidden layer activation patterns for each XOR input.
-    * **5.6. Discussion of Results (for each experiment):**
-        * Observations on learned representations.
-        * Alignment (or divergence) with prototype surface theory predictions.
-        * New questions or insights gained.
+* **5.4. Data Collection:**
+    * Final trained model parameters (weights and biases).
+    * Training curves (loss over epochs).
+    * Number of epochs completed per run.
+    * Activations (pre and post-activation) for all XOR inputs.
+    * Class-wise distances of inputs to prototype surfaces (`|Wx + b| / ‖W‖`).
+    * Initial and final weight vectors for each run.
+    * Angle between initial and final weights.
+    * Norm ratio (`‖W_init‖ / ‖W_final‖`).
+    * Accuracy distribution across discrete XOR levels (0%, 25%, 50%, 75%, 100%).
+    * Initialization method used in each run.
+
+* **5.5. Analysis, Metrics, and Visualization:**
+    * **Geometric Visualization:** Plot 2D hyperplanes (`Wx + b = 0`) of hidden neurons against training data. Visualize prototype surfaces for each activation.
+    * **Quantitative Metrics:**
+        * Distance of each input point to each hidden neuron's hyperplane (`|Wx + b| / ‖W‖`), grouped by class.
+        * Angle between initial and final weight vectors.
+        * Norm ratio between initial and final weights.
+        * Epoch count distribution (mean, quantiles, extremes).
+        * Accuracy histogram using discrete XOR outcome bins.
+    * **Representation Analysis:** Examine activation patterns across XOR inputs.
+    * **Initialization Impact:** Compare training behavior and solution geometry across different initialization regimes.
+
+* **5.6. Discussion of Results (for each experiment):**
+    * Observations on learned representations.
+    * Notable geometric or activation patterns.
+    * Relationships between initialization, convergence, and solution structure.
+    * New questions or anomalies revealed by empirical behavior.
 
 **6. Experiment Enumeration and Log**
     * This section will list specific experiments conducted under this plan.
-    * Each experiment entry will detail its specific configuration (from 5.3), link to results/visualizations, and summarize key observations and discussion points.
-    * This list will be updated iteratively as experiments are performed and new questions arise.
+    * Each experiment entry will detail its configuration (from 5.3), initialization strategy, convergence statistics, geometric metrics, and a summary of observations.
+    * The list will be updated iteratively as experiments are performed and new hypotheses emerge.

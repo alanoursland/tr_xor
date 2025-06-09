@@ -42,7 +42,10 @@ class TrainingConfig:
     epochs: int = None
     batch_size: int = None
 
-    # Early stopping
+    # Convergence Detection
+    stop_training_loss_threshold: Optional[float] = None
+
+    # Nonconvergence Detection
     early_stopping: bool = False
     patience: int = 50
     min_delta: float = 1e-6
@@ -303,7 +306,7 @@ def config_abs1_normal() -> ExperimentConfig:
 
     return ExperimentConfig(
         model=model,
-        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=200),
+        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=400, stop_training_loss_threshold=1e-7),
         data=DataConfig(x=xor_data_centered(), y=xor_labels_T1(), problem_type=ExperimentType.XOR),
         analysis=AnalysisConfig(),
         execution=ExecutionConfig(num_runs=50, skip_existing=False),
@@ -320,7 +323,7 @@ def config_abs1_normal() -> ExperimentConfig:
 
     return ExperimentConfig(
         model=model,
-        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=200),
+        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=200, stop_training_loss_threshold=1e-7),
         data=DataConfig(x=xor_data_centered(), y=xor_labels_T1(), problem_type=ExperimentType.XOR),
         analysis=AnalysisConfig(),
         execution=ExecutionConfig(num_runs=50, skip_existing=False),
@@ -337,7 +340,7 @@ def config_abs1_normal() -> ExperimentConfig:
 
     return ExperimentConfig(
         model=model,
-        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=200),
+        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=2000, stop_training_loss_threshold=1e-7),
         data=DataConfig(x=xor_data_centered(), y=xor_labels_T1(), problem_type=ExperimentType.XOR),
         analysis=AnalysisConfig(),
         execution=ExecutionConfig(num_runs=50, skip_existing=False),
@@ -354,7 +357,7 @@ def config_abs1_kaiming() -> ExperimentConfig:
 
     return ExperimentConfig(
         model=model,
-        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=200),
+        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=1000, stop_training_loss_threshold=1e-7),
         data=DataConfig(x=xor_data_centered(), y=xor_labels_T1(), problem_type=ExperimentType.XOR),
         analysis=AnalysisConfig(),
         execution=ExecutionConfig(num_runs=50, skip_existing=False),
@@ -371,7 +374,7 @@ def config_abs1_xavier() -> ExperimentConfig:
 
     return ExperimentConfig(
         model=model,
-        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=200),
+        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=1000, stop_training_loss_threshold=1e-7),
         data=DataConfig(x=xor_data_centered(), y=xor_labels_T1(), problem_type=ExperimentType.XOR),
         analysis=AnalysisConfig(),
         execution=ExecutionConfig(num_runs=50, skip_existing=False),

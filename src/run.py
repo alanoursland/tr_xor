@@ -16,6 +16,7 @@ import json
 import torch
 import torch.nn as nn
 from lib import setup_experiment_environment
+import numpy as np
 
 # Import project modules
 from configs import ExperimentConfig, get_experiment_config, list_experiments
@@ -143,6 +144,13 @@ def execute_training_run(
         if current_loss < best_loss:
             best_loss = current_loss
 
+        # Early exit if loss is low enough
+        if config.training.stop_training_loss_threshold is not None:
+            if current_loss < config.training.stop_training_loss_threshold:
+                if config.logging.train_epochs > 0:
+                    print(f"  Early stopping at epoch {epoch} (loss {current_loss:.6f} <= {config.training.stop_training_loss_threshold})")
+                break
+
         # Log progress occasionally
         if epoch % config.logging.train_epochs == 0 or epoch == config.training.epochs - 1:
             # Compute current accuracy
@@ -234,6 +242,7 @@ def run_experiment(
     """
     # Load configuration
     config = get_experiment_config(experiment_name)
+    convergence_threshold = config.training.convergence_threshold
 
     # Apply overrides
     if num_runs is not None:
@@ -337,6 +346,16 @@ def run_experiment(
         "total_time": sum(r["training_time"] for r in all_results),
     }
 
+    # calculating epoch quantiles
+    epoch_counts = [r.get("epochs_completed", 0) for r in all_results]
+    if epoch_counts:
+        avg_epochs = np.mean(epoch_counts)
+        q25, q50, q75 = np.percentile(epoch_counts, [25, 50, 75])
+        min_epochs = np.min(epoch_counts)
+        max_epochs = np.max(epoch_counts)
+    else:
+        avg_epochs, q25, q50, q75 = 0, 0, 0, 0, 0, 0
+
 
     # Print detailed run summary
     print("\n" + "=" * 60)
@@ -368,10 +387,14 @@ def run_experiment(
     
     # Loss distribution  
     final_losses = [r["final_loss"] for r in all_results]
-    converged_runs = sum(1 for loss in final_losses if loss < 0.01)
+    converged_runs = sum(1 for loss in final_losses if loss < convergence_threshold)
     
+    print(f"\nEpoch Statistics:")
+    print(f"  Mean epochs completed: {avg_epochs:.1f}")
+    print(f"  Quantiles: {min_epochs:.0f} {q25:.0f} {q50:.0f} {q75:.0f} {max_epochs:.0f}")
+
     print(f"\nConvergence:")
-    print(f"  Converged (<0.01):  {converged_runs:2d} runs ({converged_runs/len(all_results)*100:.1f}%)")
+    print(f"  Converged (<{convergence_threshold}):  {converged_runs:2d} runs ({converged_runs/len(all_results)*100:.1f}%)")
     print(f"  Best final loss:    {min(final_losses):.6f}")
     print(f"  Worst final loss:   {max(final_losses):.6f}")
     

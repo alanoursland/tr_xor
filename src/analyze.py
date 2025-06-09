@@ -16,6 +16,7 @@ import sys
 from configs import ExperimentConfig, ExperimentType, get_experiment_config, list_experiments
 import matplotlib.pyplot as plt
 import json
+import math
 
 
 def configure_analysis_from_config(config: ExperimentConfig) -> Tuple[List[str], Dict[str, Any]]:
@@ -805,6 +806,8 @@ def validate_and_enhance_run_result(result: Dict[str, Any]) -> Dict[str, Any]:
     Returns:
         Enhanced run result with validation and derived metrics
     """
+    convergence_threshold = 0.01 # replaced with config.training.convergence_threshold
+
     # Ensure required fields exist
     required_fields = ['run_id', 'model_state_dict']
     for field in required_fields:
@@ -825,7 +828,7 @@ def validate_and_enhance_run_result(result: Dict[str, Any]) -> Dict[str, Any]:
         result['training_time'] = 0.0
     
     # Add derived metrics
-    result['converged'] = result['final_loss'] < 0.01  # Default convergence threshold
+    result['converged'] = result['final_loss'] < convergence_threshold
     result['perfect_accuracy'] = result['accuracy'] >= 0.99
     
     # Compute training efficiency metrics
@@ -939,7 +942,7 @@ def analyze_model_state_dict(state_dict: Dict[str, torch.Tensor]) -> Dict[str, A
         all_biases = torch.cat([b.flatten() for b in bias_tensors])
         analysis['bias_statistics'] = {
             'mean': all_biases.mean().item(),
-            'std': all_biases.std().item(),
+            'std': all_biases.std(unbiased=False).item(),
             'min': all_biases.min().item(),
             'max': all_biases.max().item(),
             'norm': torch.norm(all_biases).item()
@@ -1244,6 +1247,7 @@ def compute_distribution_statistics(metrics: Dict[str, List[float]], config: Exp
         Dictionary of distribution statistics
     """
     distributions = {}
+    convergence_threshold = 0.01 # replaced with config.training.convergence_threshold
     
     # Accuracy distribution (especially important for XOR)
     if metrics['accuracies']:
@@ -1288,7 +1292,7 @@ def compute_distribution_statistics(metrics: Dict[str, List[float]], config: Exp
         loss_tensor = torch.tensor(metrics['final_losses'])
         distributions['loss_distribution'] = {
             'histogram': compute_histogram(loss_tensor, bins=20),
-            'convergence_rate': sum(1 for loss in metrics['final_losses'] if loss < 0.01) / len(metrics['final_losses']),
+            'convergence_rate': sum(1 for loss in metrics['final_losses'] if loss < convergence_threshold) / len(metrics['final_losses']),
             'low_loss_rate': sum(1 for loss in metrics['final_losses'] if loss < 0.1) / len(metrics['final_losses'])
         }
     
@@ -1937,6 +1941,105 @@ def generate_experiment_visualizations(
             filename=plot_path
         )
 
+def plot_epoch_distribution(run_results: List[Dict[str, Any]], plot_config: Dict[str, Any], output_dir: Path, experiment_name: str) -> None:
+    """
+    Plot a sorted curve of training epoch counts across all runs.
+
+    Args:
+        run_results: List of results from all runs
+        plot_config: Dictionary with plot settings (from configure_analysis_from_config)
+        output_dir: Path to save plots if enabled
+    """
+    epoch_counts = [r.get("epochs_completed", 0) for r in run_results]
+    sorted_epochs = sorted(epoch_counts)
+
+    # Plot settings
+    plt.style.use(plot_config.get("style", "default"))
+    dpi = plot_config.get("dpi", 300)
+
+    # Create plot
+    fig, ax = plt.subplots(figsize=(6, 4), dpi=dpi)
+    ax.plot(sorted_epochs, marker="o", linestyle="-", linewidth=1.5)
+    ax.set_title(f"Sorted Epoch Counts: {experiment_name}")
+    ax.set_xlabel("Run (sorted)")
+    ax.set_ylabel("Epochs Completed")
+    ax.grid(True)
+
+    plt.tight_layout()
+
+    # Save if configured
+    if plot_config.get("save_plots", False):
+        output_dir.mkdir(parents=True, exist_ok=True)
+        filename = output_dir / f"epoch_distribution.{plot_config.get('format', 'png')}"
+        plt.savefig(filename, format=plot_config.get("format", "png"))
+        print(f"✓ Saved epoch distribution plot to {filename}")
+
+    # Optionally show plot if interactive
+    if plot_config.get("interactive", False):
+        plt.show()
+
+    plt.close()
+
+def compute_angle_between(v1: torch.Tensor, v2: torch.Tensor) -> float:
+    """Compute angle (in degrees) between two vectors."""
+    v1_norm = v1 / v1.norm()
+    v2_norm = v2 / v2.norm()
+    cos_theta = torch.clamp(torch.dot(v1_norm, v2_norm), -1.0, 1.0)
+    return math.degrees(math.acos(cos_theta.item()))
+
+def plot_weight_angle_and_magnitude_vs_epochs(run_results: List[Dict[str, Any]], output_dir: Path, experiment_name: str):
+    angles = []
+    ratios = []
+    epochs = []
+
+    for result in run_results:
+        run_dir = result["run_dir"]
+        run_id = result["run_id"]
+        epochs_completed = result.get("epochs_completed", None)
+        if epochs_completed is None:
+            continue
+
+        try:
+            w_final = torch.load(run_dir / "model.pt", map_location="cpu")["linear1.weight"].squeeze()
+            w_init = torch.load(run_dir / "model_init.pt", map_location="cpu")["linear1.weight"].squeeze()
+        except Exception as e:
+            print(f"⚠️ Run {run_id}: Failed to load weight vectors: {e}")
+            continue
+
+        angle = compute_angle_between(w_init, w_final)
+        norm_ratio = w_init.norm().item() / w_final.norm().item()
+
+        angles.append(angle)
+        ratios.append(norm_ratio)
+        epochs.append(epochs_completed)
+
+    # === Plot 1: Angle vs Epochs ===
+    fig_angle, ax_angle = plt.subplots(figsize=(6, 4), dpi=300)
+    ax_angle.scatter(angles, epochs, alpha=0.8)
+    ax_angle.set_title(f"Angle Between W_init and W_final\n{experiment_name}")
+    ax_angle.set_xlabel("Angle (degrees)")
+    ax_angle.set_ylabel("Epochs Completed")
+    ax_angle.grid(True)
+    plt.tight_layout()
+    angle_path = output_dir / f"{experiment_name}_angle_vs_epochs.png"
+    fig_angle.savefig(angle_path)
+    plt.close(fig_angle)
+
+    # === Plot 2: Norm Ratio vs Epochs ===
+    fig_ratio, ax_ratio = plt.subplots(figsize=(6, 4), dpi=300)
+    ax_ratio.scatter(ratios, epochs, alpha=0.8)
+    ax_ratio.set_title(f"Norm(W_init)/Norm(W_final) vs Epochs\n{experiment_name}")
+    ax_ratio.set_xlabel("Norm Ratio")
+    ax_ratio.set_ylabel("Epochs Completed")
+    ax_ratio.grid(True)
+    plt.tight_layout()
+    ratio_path = output_dir / f"{experiment_name}_normratio_vs_epochs.png"
+    fig_ratio.savefig(ratio_path)
+    plt.close(fig_ratio)
+
+    print(f"✓ Saved angle plot to:     {angle_path}")
+    print(f"✓ Saved norm ratio plot to: {ratio_path}")
+
 def generate_analysis_report(
     analysis_results: Dict[str, Any],
     config: Any,  # Replace Any with actual ExperimentConfig type
@@ -1955,6 +2058,8 @@ def generate_analysis_report(
     """
     if template != "comprehensive":
         raise ValueError(f"Unsupported template: {template}")
+
+    convergence_threshold = 0.01 # replaced with config.training.convergence_threshold
 
     # Extract top-level blocks from analysis_results
     # Path: basic_stats
@@ -2044,7 +2149,7 @@ def generate_analysis_report(
     report += f"- Total runs: {total_runs}\n"
     report += f"- Successful runs (100% accuracy): {success_runs}\n"
     report += f"- Average accuracy: {avg_acc:.2f}\n"
-    report += f"- Convergence rate (< 0.01 loss): {conv_rate:.1f}%\n\n"
+    report += f"- Convergence rate (< {convergence_threshold} loss): {conv_rate:.1f}%\n\n"
 
     report += "## 📊 Accuracy Distribution\n"
     report += "| Accuracy | Runs |\n|----------|------|\n"
@@ -2161,7 +2266,7 @@ def main() -> int:
         print("\nConfiguring analysis pipeline...")
         analysis_plan, plot_config = configure_analysis_from_config(config)
         print(f"✓ Analysis plan configured ({len(analysis_plan)} analysis types)")
-        print(analysis_plan)
+        # print(analysis_plan)
         
         # Load experiment data and results
         print("Loading experiment data and results...")
@@ -2175,19 +2280,19 @@ def main() -> int:
         
         analysis_results = {}
 
-        # 1. Basic statistics and aggregation
+        # Basic statistics and aggregation
         if "basic_stats" in analysis_plan:
             print("📊 Computing basic statistics...")
             analysis_results["basic_stats"] = compute_basic_statistics(run_results, config)
             print("  ✓ Basic statistics computed")
 
-        # 2. Accuracy and convergence analysis
+        # Accuracy and convergence analysis
         if "accuracy_analysis" in analysis_plan:
             print("🎯 Analyzing accuracy patterns...")
             analysis_results["accuracy"] = analyze_accuracy_distribution(run_results, config)
             print("  ✓ Accuracy analysis completed")
             
-        # # 3. Geometric analysis (hyperplanes, prototype regions)
+        # # Geometric analysis (hyperplanes, prototype regions)
         # if "geometric_analysis" in analysis_plan:
         #     print("📐 Performing geometric analysis...")
         #     analysis_results["geometric"] = analyze_learned_geometry(
@@ -2195,7 +2300,7 @@ def main() -> int:
         #     )
         #     print("  ✓ Geometric analysis completed")
 
-        # # 4. Weight pattern analysis
+        # # Weight pattern analysis
         # if "weight_analysis" in analysis_plan:
         #     print("⚖️  Analyzing weight patterns...")
         #     analysis_results["weights"] = analyze_weight_patterns(
@@ -2203,7 +2308,7 @@ def main() -> int:
         #     )
         #     print("  ✓ Weight analysis completed")
 
-        # 5. Prototype surface validation
+        # Prototype surface validation
         if "prototype_validation" in analysis_plan:
             print("🔬 Validating prototype surface predictions...")
             analysis_results["prototype_validation"] = validate_prototype_theory(
@@ -2211,7 +2316,7 @@ def main() -> int:
             )
             print("  ✓ Prototype surface validation completed")
 
-        # 6. Generate visualizations
+        # Generate visualizations
         if config.analysis.save_plots:
             print("📈 Generating visualizations...")
             plots_dir = results_dir / "plots"
@@ -2224,7 +2329,24 @@ def main() -> int:
             )
             print(f"  ✓ Visualizations plots saved to {plots_dir}")
 
-        # 7. Generate comprehensive report
+        # Generate convergence plots
+        if config.analysis.convergence_analysis:
+            output_dir = Path("results") / config.execution.experiment_name
+            plot_epoch_distribution(run_results, plot_config={
+                'save_plots': config.analysis.save_plots,
+                'format': config.analysis.plot_format,
+                'dpi': config.analysis.plot_dpi,
+                'interactive': config.analysis.interactive_plots,
+                'style': config.analysis.plot_style
+            }, 
+            output_dir=output_dir,
+            experiment_name=config.execution.experiment_name)
+
+        if config.analysis.convergence_analysis:
+            output_dir = Path("results") / config.execution.experiment_name
+            plot_weight_angle_and_magnitude_vs_epochs(run_results, output_dir, config.execution.experiment_name)
+
+        # Generate comprehensive report
         print("📄 Generating analysis report...")
         report = generate_analysis_report(analysis_results, config, template="comprehensive")
         
@@ -2234,7 +2356,7 @@ def main() -> int:
             f.write(report)
         print(f"  ✓ Report saved to {report_path}")
 
-        # 8. Export analysis data
+        # Export analysis data
         if "export_data" in analysis_plan:
             print("💾 Exporting analysis data...")
             export_analysis_data(analysis_results, results_dir, "analysis_data.json")

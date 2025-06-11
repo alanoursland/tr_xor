@@ -39,6 +39,9 @@ def configure_analysis_from_config(config: ExperimentConfig) -> Tuple[List[str],
     # Always analyze accuracy and convergence for training experiments
     analysis_plan.append('accuracy_analysis')
     
+    analysis_plan.append('convergence_timing')
+    analysis_plan.append('weight_reorientation')
+    
     # Geometric analysis
     if config.analysis.geometric_analysis:
         analysis_plan.extend([
@@ -572,7 +575,6 @@ def remove_duplicate_points(points: torch.Tensor, tolerance: float = 1e-3) -> to
     
     return torch.stack(unique_points)
 
-
 def count_model_parameters(model: torch.nn.Module) -> Dict[str, int]:
     """
     Count total and trainable parameters in model.
@@ -591,7 +593,6 @@ def count_model_parameters(model: torch.nn.Module) -> Dict[str, int]:
         'trainable': trainable_params,
         'non_trainable': total_params - trainable_params
     }
-
 
 def generate_config_hash(config: ExperimentConfig) -> str:
     """
@@ -671,7 +672,6 @@ def load_all_run_results(results_dir: Path) -> List[Dict[str, Any]]:
     
     return all_results
 
-
 def load_single_run_result(run_dir: Path, run_id: int) -> Dict[str, Any]:
     """
     Load results from a single training run.
@@ -749,7 +749,6 @@ def load_single_run_result(run_dir: Path, run_id: int) -> Dict[str, Any]:
     
     return result
 
-
 def load_run_checkpoints(checkpoints_dir: Path) -> List[Dict[str, Any]]:
     """
     Load training checkpoints from a run.
@@ -775,7 +774,6 @@ def load_run_checkpoints(checkpoints_dir: Path) -> List[Dict[str, Any]]:
     
     return checkpoints
 
-
 def extract_epoch_from_filename(filename: str) -> int:
     """
     Extract epoch number from checkpoint filename.
@@ -794,7 +792,6 @@ def extract_epoch_from_filename(filename: str) -> int:
         # Try to extract any number from filename
         numbers = re.findall(r'\d+', filename)
         return int(numbers[0]) if numbers else 0
-
 
 def validate_and_enhance_run_result(result: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -848,7 +845,6 @@ def validate_and_enhance_run_result(result: Dict[str, Any]) -> Dict[str, Any]:
     
     return result
 
-
 def compute_training_efficiency(loss_history: List[float]) -> Dict[str, float]:
     """
     Compute training efficiency metrics from loss history.
@@ -895,7 +891,6 @@ def compute_training_efficiency(loss_history: List[float]) -> Dict[str, float]:
         'convergence_epoch': convergence_epoch,
         'total_epochs': epochs
     }
-
 
 def analyze_model_state_dict(state_dict: Dict[str, torch.Tensor]) -> Dict[str, Any]:
     """
@@ -953,7 +948,6 @@ def analyze_model_state_dict(state_dict: Dict[str, torch.Tensor]) -> Dict[str, A
     
     return analysis
 
-
 def detect_model_issues(state_dict: Dict[str, torch.Tensor], analysis: Dict[str, Any]) -> List[str]:
     """
     Detect potential issues in trained model.
@@ -991,7 +985,6 @@ def detect_model_issues(state_dict: Dict[str, torch.Tensor], analysis: Dict[str,
                 issues.append(f"Potential dead neuron in {name}")
     
     return issues
-
 
 def summarize_all_runs(all_results: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
@@ -1110,12 +1103,11 @@ def compute_basic_statistics(run_results: List[Dict[str, Any]], config: Experime
         'training_dynamics': training_stats,
         'model_properties': model_stats,
         
-        # Raw metrics for further analysis
+        # Raw metrics for further analysis - MAKE SURE THIS LINE EXISTS
         'raw_metrics': metrics
     }
-    
-    return basic_stats
 
+    return basic_stats
 
 def extract_run_metrics(run_results: List[Dict[str, Any]]) -> Dict[str, List[float]]:
     """
@@ -1188,7 +1180,6 @@ def extract_run_metrics(run_results: List[Dict[str, Any]]) -> Dict[str, List[flo
     
     return metrics
 
-
 def compute_summary_statistics(metrics: Dict[str, List[float]]) -> Dict[str, Dict[str, float]]:
     """
     Compute summary statistics (mean, std, min, max, etc.) for each metric.
@@ -1233,7 +1224,6 @@ def compute_summary_statistics(metrics: Dict[str, List[float]]) -> Dict[str, Dic
             summary[metric_name]['cv'] = 0.0
     
     return summary
-
 
 def compute_distribution_statistics(metrics: Dict[str, List[float]], config: ExperimentConfig) -> Dict[str, Any]:
     """
@@ -1306,7 +1296,6 @@ def compute_distribution_statistics(metrics: Dict[str, List[float]], config: Exp
     
     return distributions
 
-
 def compute_success_statistics(run_results: List[Dict[str, Any]], config: ExperimentConfig) -> Dict[str, Any]:
     """
     Compute success/failure statistics with problem-specific criteria.
@@ -1364,7 +1353,6 @@ def compute_success_statistics(run_results: List[Dict[str, Any]], config: Experi
     
     return success_metrics
 
-
 def compute_training_dynamics_statistics(run_results: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
     Compute statistics about training dynamics across runs.
@@ -1403,7 +1391,6 @@ def compute_training_dynamics_statistics(run_results: List[Dict[str, Any]]) -> D
         dynamics_stats['loss_curves'] = analyze_loss_curve_patterns(loss_histories)
     
     return dynamics_stats
-
 
 def compute_model_statistics(run_results: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
@@ -1470,7 +1457,6 @@ def compute_model_statistics(run_results: List[Dict[str, Any]]) -> Dict[str, Any
     
     return model_stats
 
-
 def compute_histogram(data: torch.Tensor, bins: int = 10) -> Dict[str, Any]:
     """
     Compute histogram of data for distribution analysis.
@@ -1494,7 +1480,6 @@ def compute_histogram(data: torch.Tensor, bins: int = 10) -> Dict[str, Any]:
         'bin_centers': bin_centers.tolist(),
         'normalized_counts': (counts / counts.sum()).tolist()
     }
-
 
 def compute_consistency_score(run_results: List[Dict[str, Any]]) -> float:
     """
@@ -1528,7 +1513,6 @@ def compute_consistency_score(run_results: List[Dict[str, Any]]) -> float:
     
     return np.mean(consistency_scores) if consistency_scores else 0.0
 
-
 def compute_reliability_score(run_results: List[Dict[str, Any]]) -> float:
     """
     Compute reliability score based on success rate and consistency.
@@ -1553,7 +1537,6 @@ def compute_reliability_score(run_results: List[Dict[str, Any]]) -> float:
     reliability = 0.7 * success_rate + 0.3 * consistency
     
     return reliability
-
 
 def analyze_loss_curve_patterns(loss_histories: List[List[float]]) -> Dict[str, Any]:
     """
@@ -1695,7 +1678,6 @@ def test_mirror_weights(run_results):
     
     return mirror_results
 
-
 def analyze_accuracy_distribution(run_results: List[Dict[str, Any]], config: ExperimentConfig) -> Dict[str, Any]:
     """
     Analyze accuracy distribution patterns across training runs.
@@ -1731,6 +1713,112 @@ def analyze_accuracy_distribution(run_results: List[Dict[str, Any]], config: Exp
     
     return accuracy_analysis
 
+def analyze_weight_reorientation(run_results: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Analyze weight reorientation patterns: angles and norm ratios between initial and final weights.
+    
+    Args:
+        run_results: List of results from all training runs
+        
+    Returns:
+        Dictionary containing weight reorientation analysis
+    """
+    angles = []
+    norm_ratios = []
+    epochs_completed = []
+    
+    for result in run_results:
+        run_dir = result["run_dir"]
+        run_id = result["run_id"]
+        epochs = result.get("epochs_completed", None)
+        
+        if epochs is None:
+            continue
+            
+        try:
+            # Load initial and final weights
+            w_final = torch.load(run_dir / "model.pt", map_location="cpu")["linear1.weight"].squeeze()
+            w_init = torch.load(run_dir / "model_init.pt", map_location="cpu")["linear1.weight"].squeeze()
+            
+            # Compute angle between vectors
+            angle = compute_angle_between(w_init, w_final)
+            
+            # Compute norm ratio (initial/final)
+            norm_ratio = w_init.norm().item() / w_final.norm().item()
+            
+            angles.append(angle)
+            norm_ratios.append(norm_ratio)
+            epochs_completed.append(epochs)
+            
+        except Exception as e:
+            print(f"⚠️ Run {run_id}: Failed to load weight vectors: {e}")
+            continue
+    
+    # Create percentile bins and compute statistics
+    angle_percentile_stats = compute_percentile_bins(angles, epochs_completed, "angle")
+    norm_ratio_percentile_stats = compute_percentile_bins(norm_ratios, epochs_completed, "norm_ratio")
+    
+    return {
+        "angle_analysis": angle_percentile_stats,
+        "norm_ratio_analysis": norm_ratio_percentile_stats,
+        "raw_data": {
+            "angles": angles,
+            "norm_ratios": norm_ratios, 
+            "epochs_completed": epochs_completed
+        }
+    }
+
+def compute_percentile_bins(values: List[float], epochs: List[int], metric_name: str) -> Dict[str, Any]:
+    """
+    Bin data by percentiles and compute mean epochs for each bin.
+    
+    Args:
+        values: List of metric values (angles or norm ratios)
+        epochs: List of corresponding epochs completed
+        metric_name: Name of the metric for labeling
+        
+    Returns:
+        Dictionary with percentile bin statistics
+    """
+    if not values:
+        return {}
+    
+    # Convert to numpy for percentile calculations
+    values_array = np.array(values)
+    epochs_array = np.array(epochs)
+    
+    # Define percentile boundaries
+    percentiles = [0, 10, 25, 50, 75, 90, 100]
+    boundaries = np.percentile(values_array, percentiles)
+    
+    bin_stats = {}
+    
+    # Create bins: 0-10%, 10-25%, 25-50%, 50-75%, 75-90%, 90-100%
+    bin_ranges = [
+        (0, 10), (10, 25), (25, 50), (50, 75), (75, 90), (90, 100)
+    ]
+    
+    for i, (low_pct, high_pct) in enumerate(bin_ranges):
+        low_val = boundaries[percentiles.index(low_pct)]
+        high_val = boundaries[percentiles.index(high_pct)]
+        
+        # Find values in this range
+        if i == len(bin_ranges) - 1:  # Last bin includes upper boundary
+            mask = (values_array >= low_val) & (values_array <= high_val)
+        else:
+            mask = (values_array >= low_val) & (values_array < high_val)
+        
+        if np.any(mask):
+            bin_epochs = epochs_array[mask]
+            mean_epochs = np.mean(bin_epochs)
+            
+            bin_stats[f"{low_pct}–{high_pct}%"] = {
+                "range": (low_val, high_val),
+                "mean_epochs": mean_epochs,
+                "count": len(bin_epochs)
+            }
+    
+    return bin_stats
 
 def compute_accuracy_summary_stats(accuracies: List[float]) -> Dict[str, float]:
     """
@@ -1780,7 +1868,6 @@ def compute_accuracy_summary_stats(accuracies: List[float]) -> Dict[str, float]:
         stats['skewness'] = 0.0
     
     return stats
-
 
 def analyze_xor_accuracy_distribution(accuracies: List[float]) -> Dict[str, Any]:
     """
@@ -2059,21 +2146,23 @@ def generate_analysis_report(
     if template != "comprehensive":
         raise ValueError(f"Unsupported template: {template}")
 
+    ############################################################################################
+
     convergence_threshold = 0.01 # replaced with config.training.convergence_threshold
 
     # Extract top-level blocks from analysis_results
     # Path: basic_stats
-    stats = analysis_results.get("basic_stats", {})
+    basic_stats = analysis_results.get("basic_stats", {})
     # Path: basic_stats.summary
-    summary = stats.get("summary", {})
+    summary = basic_stats.get("summary", {})
     # Path: basic_stats.experiment_info
-    experiment_info = stats.get("experiment_info", {})
+    experiment_info = basic_stats.get("experiment_info", {})
     # Path: basic_stats.distributions
-    distributions = stats.get("distributions", {})
+    distributions = basic_stats.get("distributions", {})
     # Path: basic_stats.distributions.accuracy_distribution.bins
     acc_bins = distributions.get("accuracy_distribution", {}).get("bins", {})
     # Path: basic_stats.success_metrics
-    success_metrics = stats.get("success_metrics", {})
+    success_metrics = basic_stats.get("success_metrics", {})
     # Path: basic_stats.summary.final_losses
     final_losses = summary.get("final_losses", {})
 
@@ -2141,41 +2230,123 @@ def generate_analysis_report(
     class1_mean = d1.mean()
     class1_std = d1.std()
 
+    # Accuracy validation
+    failed_runs = total_runs - success_runs if isinstance(total_runs, int) and isinstance(success_runs, int) else "?"
+    all_success = success_runs == total_runs if isinstance(total_runs, int) and isinstance(success_runs, int) else False
+    stop_threshold = getattr(config.training, "stop_training_loss_threshold", convergence_threshold)
+
+    # Extract convergence timing data
+    convergence_timing = analysis_results.get("convergence_timing", {})
+    # print(f"convergence_timing = {convergence_timing}")
+    percentiles = convergence_timing.get("percentiles", {})
+
+    # Extract weight reorientation data
+    weight_reorientation = analysis_results.get("weight_reorientation", {})
+    angle_analysis = weight_reorientation.get("angle_analysis", {})
+    norm_ratio_analysis = weight_reorientation.get("norm_ratio_analysis", {})
+
+    ############################################################################################
+
     # Start Markdown report
     report = f"# 🧪 Experiment Report: `{name}`\n\n"
     report += f"**Description**: {description}\n\n"
 
-    report += "## 🎯 Summary\n"
-    report += f"- Total runs: {total_runs}\n"
-    report += f"- Successful runs (100% accuracy): {success_runs}\n"
-    report += f"- Average accuracy: {avg_acc:.2f}\n"
-    report += f"- Convergence rate (< {convergence_threshold} loss): {conv_rate:.1f}%\n\n"
+    ############################################################################################
 
-    report += "## 📊 Accuracy Distribution\n"
-    report += "| Accuracy | Runs |\n|----------|------|\n"
-    accuracy_labels = {
-        1.0: "100%",
-        0.75: "75%",
-        0.5: "50%",
-        0.25: "25%",
-        0.0: "0%"
-    }
-    # Accesses keys like "1.0", "0.75" etc. within basic_stats.distributions.accuracy_distribution.bins
-    for key, label in accuracy_labels.items():
-        report += f"| {label} | {acc_bins.get(key, 0)} |\n"
+    report += "## 🎯 Overview\n\n"
+    report += f"* **Total runs**: {total_runs}\n"
+    report += f"* **Training stops when loss < {stop_threshold:.1e}**\n"
+    if all_success:
+        report += "* ✅ All runs achieved 100% classification accuracy\n"
+    else:
+        report += f"* ⚠️ {failed_runs} runs did not reach 100% classification accuracy\n"
 
-    weight_stats = analysis_results.get("basic_stats", {}).get("summary", {}).get("weight_norms", {})
-    weight_mean = weight_stats.get("mean", 0.0)
-    weight_std = weight_stats.get("std", 0.0)
+    report += "\n---\n\n"
 
-    report += "\n## 🔍 Convergence Statistics\n"
-    report += f"- Best final loss: {best_loss:.8e}\n"
-    report += f"- Worst final loss: {worst_loss:.8e}\n"
+    ############################################################################################
 
-    report += "\n## 🧠 Hyperplane Analysis\n"
-    report += f"- Class 0 points mean distance to hyperplane: {class0_mean:.4e} ± {class0_std:.1e}\n"
-    report += f"- Class 1 points mean distance to hyperplane: {class1_mean:.5f} ± {class1_std:.1e}\n"
-    report += f"- Mean ||W|| (weight norm): {weight_mean:.6f} ± {weight_std:.1e}\n"
+    report += "## ⏱️ Convergence Timing (Epochs to MSE < 1e-7)\n\n"
+    report += "| Percentile | Epochs |\n| ---------- | ------ |\n"
+
+    if percentiles:
+        labels = ["0th", "10th", "25th", "50th", "75th", "90th", "100th"]
+        for label in labels:
+            value = percentiles.get(label, "N/A")
+            report += f"| {label:<10} | {value}     |\n"
+    else:
+        report += "| N/A        | No convergence data available |\n"
+
+    report += "\n---\n\n"
+
+    ############################################################################################
+
+    report += "\n## 🧠 Prototype Surface Geometry\n\n"
+    report += f"* **Mean absolute distance of class 0 points to surface**: {class0_mean:.1e} ± {class0_std:.1e}\n\n"
+    report += f"* **Mean absolute distance of class 1 points to surface**: {class1_mean:.5f} ± {class1_std:.1e}\n\n"
+
+    report += "\n---\n\n"
+
+    ############################################################################################
+
+    report += "## 🔁 Weight Reorientation\n\n"
+
+    report += "### ◼ Angle Between Initial and Final Weights (Degrees)\n\n"
+    report += "| Percentile | Angle Range (°) | Mean Epochs to Convergence |\n"
+    report += "| ---------- | --------------- | -------------------------- |\n"
+
+    if angle_analysis:
+        for percentile_range, stats in angle_analysis.items():
+            low_val, high_val = stats["range"]
+            mean_epochs = stats["mean_epochs"]
+            report += f"| {percentile_range:<10} | {low_val:.1f} – {high_val:.1f}     | {mean_epochs:.1f}                       |\n"
+    else:
+        report += "| N/A        | No data available | N/A                        |\n"
+
+    report += "\n---\n\n"
+
+    ############################################################################################
+
+    report += "### ◼ Initial / Final Norm Ratio\n\n"
+    report += "| Percentile | Ratio Range | Mean Epochs to Convergence |\n"
+    report += "| ---------- | ----------- | -------------------------- |\n"
+
+    if norm_ratio_analysis:
+        for percentile_range, stats in norm_ratio_analysis.items():
+            low_val, high_val = stats["range"]
+            mean_epochs = stats["mean_epochs"]
+            report += f"| {percentile_range:<10} | {low_val:.2f} – {high_val:.2f} | {mean_epochs:.1f}                       |\n"
+    else:
+        report += "| N/A        | No data available | N/A                        |\n"
+
+    report += "\n---\n\n"
+
+    ############################################################################################
+
+    report += "## 📉 Final Loss Distribution\n\n"
+
+    if final_losses:
+        # Extract additional statistics we need
+        mean_loss = final_losses.get("mean", 0.0)
+        min_loss = final_losses.get("min", 0.0) 
+        max_loss = final_losses.get("max", 0.0)
+        
+        # Calculate variance from the raw metrics if available
+        raw_metrics = basic_stats['raw_metrics']
+        final_loss_values = raw_metrics['final_losses']
+        
+        variance = np.var(final_loss_values)
+        
+        report += f"* **Mean final loss**: {mean_loss:.2e}\n\n"
+        report += f"* **Variance**: {variance:.2e}\n\n"
+        report += f"* **Range**:\n\n"
+        report += f"  * 0th percentile: {min_loss:.2e}\n"
+        report += f"  * 100th percentile: {max_loss:.2e}\n\n"
+    else:
+        report += "* **No final loss data available**\n\n"
+
+    report += "\n---\n\n"
+
+    ############################################################################################
 
     return report
 
@@ -2292,6 +2463,31 @@ def main() -> int:
             analysis_results["accuracy"] = analyze_accuracy_distribution(run_results, config)
             print("  ✓ Accuracy analysis completed")
             
+        # Convergence timing analysis  
+        if "convergence_timing" in analysis_plan:  # Add this to your analysis plan
+            print("⏱️ Analyzing convergence timing...")
+            convergence_epochs = [run_data.get("epochs_completed", None) for run_data in run_results]
+            percentiles_data = {
+                        "0th": int(np.percentile(convergence_epochs, 0)),
+                        "10th": int(np.percentile(convergence_epochs, 10)),
+                        "25th": int(np.percentile(convergence_epochs, 25)),
+                        "50th": int(np.percentile(convergence_epochs, 50)),
+                        "75th": int(np.percentile(convergence_epochs, 75)),
+                        "90th": int(np.percentile(convergence_epochs, 90)),
+                        "100th": int(np.percentile(convergence_epochs, 100))
+                    }
+            analysis_results["convergence_timing"] = {
+                "epochs_list": convergence_epochs,
+                "percentiles": percentiles_data
+            }
+            print("  ✓ Convergence timing analysis completed")
+
+        # Weight reorientation analysis
+        if "weight_reorientation" in analysis_plan:
+            print("🔄 Analyzing weight reorientation...")
+            analysis_results["weight_reorientation"] = analyze_weight_reorientation(run_results)
+            print("  ✓ Weight reorientation analysis completed")
+
         # # Geometric analysis (hyperplanes, prototype regions)
         # if "geometric_analysis" in analysis_plan:
         #     print("📐 Performing geometric analysis...")
@@ -2316,18 +2512,18 @@ def main() -> int:
             )
             print("  ✓ Prototype surface validation completed")
 
-        # Generate visualizations
-        if config.analysis.save_plots:
-            print("📈 Generating visualizations...")
-            plots_dir = results_dir / "plots"
-            plots_dir.mkdir(exist_ok=True)
+        # # Generate visualizations
+        # if config.analysis.save_plots:
+        #     print("📈 Generating visualizations...")
+        #     plots_dir = results_dir / "plots"
+        #     plots_dir.mkdir(exist_ok=True)
             
-            generate_experiment_visualizations(
-                run_results=run_results,
-                config=config,
-                output_dir=plots_dir
-            )
-            print(f"  ✓ Visualizations plots saved to {plots_dir}")
+        #     generate_experiment_visualizations(
+        #         run_results=run_results,
+        #         config=config,
+        #         output_dir=plots_dir
+        #     )
+        #     print(f"  ✓ Visualizations plots saved to {plots_dir}")
 
         # Generate convergence plots
         if config.analysis.convergence_analysis:

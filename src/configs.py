@@ -126,7 +126,7 @@ class AnalysisConfig:
     analysis_resolution: int = 100
 
     # Prototype surface specific analysis
-    prototype_surface_validation: bool = True
+    prototype_surface_analysis: bool = True
     separation_order_analysis: bool = True
     minsky_papert_metrics: bool = True
 
@@ -393,9 +393,9 @@ def config_relu1_normal() -> ExperimentConfig:
         model=model,
         training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=800, 
                                 stop_training_loss_threshold=1e-7,
-                                convergence_threshold=1e-7, convergence_patience=10),
+                                convergence_threshold=1e-24, convergence_patience=10),
         data=DataConfig(x=xor_data_centered(), y=xor_labels_T1(), problem_type=ExperimentType.XOR),
-        analysis=AnalysisConfig(),
+        analysis=AnalysisConfig(convergence_analysis=False),
         execution=ExecutionConfig(num_runs=50, skip_existing=False, random_seeds=[18]),
         description="Centered XOR with two nodes, ReLU,  sums, and kaiming init.",
         logging=LoggingConfig(train_epochs=50)

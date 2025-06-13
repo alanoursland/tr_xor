@@ -109,8 +109,8 @@ def configure_analysis_from_config(config: ExperimentConfig) -> Tuple[List[str],
             analysis_plan.append('stability_metrics')
     
     # Prototype surface theory validation
-    if config.analysis.prototype_surface_validation:
-        analysis_plan.append('prototype_validation')
+    if config.analysis.prototype_surface_analysis:
+        analysis_plan.append('prototype_surface')
         
         if config.analysis.separation_order_analysis:
             analysis_plan.append('separation_order')
@@ -1594,7 +1594,7 @@ def analyze_loss_curve_patterns(loss_histories: List[List[float]]) -> Dict[str, 
         'early_convergence_rate': early_convergence / total_curves
     }
 
-def validate_prototype_theory(run_results, experiment_data, config):
+def analyze_prototype_surface(run_results, experiment_data, config):
     # Test 1: Distance of points to hyperplanes
     distance_test = test_distance_to_hyperplanes(run_results, experiment_data)
     
@@ -1741,15 +1741,16 @@ def analyze_weight_reorientation(run_results: List[Dict[str, Any]]) -> Dict[str,
             w_final = torch.load(run_dir / "model.pt", map_location="cpu")["linear1.weight"].squeeze()
             w_init = torch.load(run_dir / "model_init.pt", map_location="cpu")["linear1.weight"].squeeze()
             
-            # Compute angle between vectors
-            angle = compute_angle_between(w_init, w_final)
+            # Compute angles and norm ratios per hyperplane
+            angles_per_unit = compute_angles_between(w_init, w_final)
+            ratios_per_unit = compute_norm_ratios(w_init, w_final)
             
-            # Compute norm ratio (initial/final)
-            norm_ratio = w_init.norm().item() / w_final.norm().item()
-            
-            angles.append(angle)
-            norm_ratios.append(norm_ratio)
-            epochs_completed.append(epochs)
+
+            angles.extend(angles_per_unit)
+            norm_ratios.extend(ratios_per_unit)
+
+            # Duplicate epochs for each unit
+            epochs_completed.extend([epochs] * len(angles_per_unit))
             
         except Exception as e:
             print(f"⚠️ Run {run_id}: Failed to load weight vectors: {e}")
@@ -2002,7 +2003,7 @@ def analyze_xor_accuracy_distribution(accuracies: List[float]) -> Dict[str, Any]
         'level_descriptions': xor_levels,        
     }
 
-def plot_single_hyperplane_model(model, x, y, title, filename=None):
+def plot_hyperplanes(model, x, y, title, filename=None):
     import matplotlib.pyplot as plt
     import matplotlib as mpl
     import torch
@@ -2019,9 +2020,8 @@ def plot_single_hyperplane_model(model, x, y, title, filename=None):
     x_cpu = x.detach().cpu()
     y_cpu = y.detach().cpu()
 
-    W = model.linear1.weight.detach()[0].cpu()  # (2,)
-    b = model.linear1.bias.detach()[0].cpu()    # scalar
-
+    weights = model.linear1.weight.detach().cpu()  # (n_units, 2)
+    biases = model.linear1.bias.detach().cpu()     # (n_units,)
     mean = torch.zeros(2)
 
     plt.figure(figsize=(6, 6))
@@ -2031,27 +2031,28 @@ def plot_single_hyperplane_model(model, x, y, title, filename=None):
         marker = 'o' if yi == 0 else '^'
         plt.scatter(xi[0], xi[1], marker=marker, s=100, color='black', edgecolors='k', linewidths=1)
 
-    # Draw the hyperplane and normal
-    norm = torch.norm(W)
-    normal = W / norm
-    distance = (W @ mean + b) / norm
-    projection_on_plane = mean - distance * normal
-    perp = torch.tensor([-normal[1], normal[0]])
+    # Draw each hyperplane and normal
+    for i, (W, b) in enumerate(zip(weights, biases)):
+        norm = torch.norm(W)
+        normal = W / norm
+        distance = (W @ mean + b) / norm
+        projection_on_plane = mean - distance * normal
+        perp = torch.tensor([-normal[1], normal[0]])
 
-    scale_factor = 5
-    pt1 = projection_on_plane + perp * scale_factor
-    pt2 = projection_on_plane - perp * scale_factor
+        scale_factor = 5
+        pt1 = projection_on_plane + perp * scale_factor
+        pt2 = projection_on_plane - perp * scale_factor
 
-    plt.plot([pt1[0], pt2[0]], [pt1[1], pt2[1]],
-             color='#333333', linewidth=1.5, linestyle='--')
+        plt.plot([pt1[0], pt2[0]], [pt1[1], pt2[1]],
+                 color='black', linewidth=1.5, linestyle='--', label=f'Neuron {i}')
 
-    plt.arrow(
-        projection_on_plane[0].item(), projection_on_plane[1].item(),
-        normal[0].item() * 0.5, normal[1].item() * 0.5,
-        head_width=0.15, head_length=0.2,
-        fc='#333333', ec='#333333', alpha=1.0,
-        length_includes_head=True, width=0.03, zorder=3
-    )
+        plt.arrow(
+            projection_on_plane[0].item(), projection_on_plane[1].item(),
+            normal[0].item() * 0.5, normal[1].item() * 0.5,
+            head_width=0.15, head_length=0.2,
+            fc='#333333', ec='#333333', alpha=1.0,
+            length_includes_head=True, width=0.03, zorder=3
+        )
 
     # Final plot adjustments
     plt.title(title, fontsize=16, weight='bold', pad=12)
@@ -2105,7 +2106,7 @@ def generate_experiment_visualizations(
         y = config.data.y
 
         # Plot using the styled helper
-        plot_single_hyperplane_model(
+        plot_hyperplanes(
             model=model,
             x=x,
             y=y,
@@ -2152,17 +2153,61 @@ def plot_epoch_distribution(run_results: List[Dict[str, Any]], plot_config: Dict
 
     plt.close()
 
-def compute_angle_between(v1: torch.Tensor, v2: torch.Tensor) -> float:
-    """Compute angle (in degrees) between two vectors."""
-    v1_norm = v1 / v1.norm()
-    v2_norm = v2 / v2.norm()
-    cos_theta = torch.clamp(torch.dot(v1_norm, v2_norm), -1.0, 1.0)
-    return math.degrees(math.acos(cos_theta.item()))
+def compute_angles_between(w_init: torch.Tensor, w_final: torch.Tensor) -> List[float]:
+    """
+    Vectorized computation of angles (in degrees) between corresponding rows of two weight matrices.
+
+    Args:
+        w_init: Tensor of shape [n_units, n_features]
+        w_final: Tensor of same shape
+
+    Returns:
+        List of angles in degrees
+    """
+    if w_init.dim() == 1:
+        w_init = w_init.unsqueeze(0)
+        w_final = w_final.unsqueeze(0)
+
+    assert w_init.shape == w_final.shape, "Mismatched weight shapes"
+
+    # Normalize each row (unit vector per neuron)
+    w1_norm = w_init / (w_init.norm(dim=1, keepdim=True) + 1e-8)
+    w2_norm = w_final / (w_final.norm(dim=1, keepdim=True) + 1e-8)
+
+    # Compute dot products per row
+    cos_theta = (w1_norm * w2_norm).sum(dim=1).clamp(-1.0, 1.0)
+
+    # Convert to degrees
+    angles = torch.acos(cos_theta) * (180.0 / math.pi)
+    return angles.tolist()
+
+def compute_norm_ratios(w_init: torch.Tensor, w_final: torch.Tensor) -> List[float]:
+    """
+    Vectorized computation of norm ratios (init / final) per row.
+
+    Args:
+        w_init: Tensor of shape [n_units, n_features]
+        w_final: Tensor of same shape
+
+    Returns:
+        List of norm ratios per neuron
+    """
+    if w_init.dim() == 1:
+        w_init = w_init.unsqueeze(0)
+        w_final = w_final.unsqueeze(0)
+
+    assert w_init.shape == w_final.shape, "Mismatched weight shapes"
+
+    init_norms = w_init.norm(dim=1)
+    final_norms = w_final.norm(dim=1) + 1e-8  # prevent divide-by-zero
+    ratios = init_norms / final_norms
+
+    return ratios.tolist()
 
 def plot_weight_angle_and_magnitude_vs_epochs(run_results: List[Dict[str, Any]], output_dir: Path, experiment_name: str):
-    angles = []
-    ratios = []
-    epochs = []
+    all_angles = []
+    all_ratios = []
+    all_epochs = []
 
     for result in run_results:
         run_dir = result["run_dir"]
@@ -2178,16 +2223,20 @@ def plot_weight_angle_and_magnitude_vs_epochs(run_results: List[Dict[str, Any]],
             print(f"⚠️ Run {run_id}: Failed to load weight vectors: {e}")
             continue
 
-        angle = compute_angle_between(w_init, w_final)
-        norm_ratio = w_init.norm().item() / w_final.norm().item()
+        angles = compute_angles_between(w_init, w_final)
+        norm_ratios = compute_norm_ratios(w_init, w_final)  # w_init.norm().item() / w_final.norm().item()
 
-        angles.append(angle)
-        ratios.append(norm_ratio)
-        epochs.append(epochs_completed)
+        all_angles.append(angles)
+        all_ratios.append(norm_ratios)
+        all_epochs.append(epochs_completed)
+
+    max_angles = [max(run_angles) for run_angles in all_angles]
+    mean_ratios = [np.mean(r) for r in all_ratios]
+
 
     # === Plot 1: Angle vs Epochs ===
     fig_angle, ax_angle = plt.subplots(figsize=(6, 4), dpi=300)
-    ax_angle.scatter(angles, epochs, alpha=0.8)
+    ax_angle.scatter(max_angles, all_epochs, alpha=0.8)
     ax_angle.set_title(f"Angle Between W_init and W_final\n{experiment_name}")
     ax_angle.set_xlabel("Angle (degrees)")
     ax_angle.set_ylabel("Epochs Completed")
@@ -2199,7 +2248,7 @@ def plot_weight_angle_and_magnitude_vs_epochs(run_results: List[Dict[str, Any]],
 
     # === Plot 2: Norm Ratio vs Epochs ===
     fig_ratio, ax_ratio = plt.subplots(figsize=(6, 4), dpi=300)
-    ax_ratio.scatter(ratios, epochs, alpha=0.8)
+    ax_ratio.scatter(mean_ratios, all_epochs, alpha=0.8)
     ax_ratio.set_title(f"Norm(W_init)/Norm(W_final) vs Epochs\n{experiment_name}")
     ax_ratio.set_xlabel("Norm Ratio")
     ax_ratio.set_ylabel("Epochs Completed")
@@ -2251,13 +2300,13 @@ def generate_analysis_report(
     # Path: basic_stats.summary.final_losses
     final_losses = summary.get("final_losses", {})
 
-    # Extract prototype surface validation from analysis_results
-    # Path: prototype_validation
-    prototype_validation = analysis_results.get("prototype_validation", {})
-    # Path: prototype_validation.mirror_test
-    mirror_test = prototype_validation.get("mirror_test", [])
-    # Path: prototype_validation.distance_test
-    distance_test = prototype_validation.get("distance_test", [])
+    # Extract prototype surface data from analysis_results
+    # Path: prototype_surface
+    prototype_surface = analysis_results.get("prototype_surface", {})
+    # Path: prototype_surface.mirror_test
+    mirror_test = prototype_surface.get("mirror_test", [])
+    # Path: prototype_surface.distance_test
+    distance_test = prototype_surface.get("distance_test", [])
 
     # Core experiment metadata from config and experiment_info
     name = config.execution.experiment_name
@@ -2279,7 +2328,7 @@ def generate_analysis_report(
     worst_loss = final_losses.get("max", 0.0)
 
     # Mirror pattern check
-    # Accesses 'mirror_count' within each item of prototype_validation.mirror_test[]
+    # Accesses 'mirror_count' within each item of prototype_surface.mirror_test[]
     mirror_detected = any(run.get("mirror_count", 0) > 0 for run in mirror_test)
     mirror_flag = "✅ Detected" if mirror_detected else "❌ None detected"
 
@@ -2290,7 +2339,7 @@ def generate_analysis_report(
 
 
     # Extract prototype surface distance test results
-    distance_entries = analysis_results.get("prototype_validation", {}).get("distance_test", [])
+    distance_entries = analysis_results.get("prototype_surface", {}).get("distance_test", [])
 
     # Accumulate distances per class
     class0_distances = []
@@ -2629,13 +2678,13 @@ def main() -> int:
         #     )
         #     print("  ✓ Weight analysis completed")
 
-        # Prototype surface validation
-        if "prototype_validation" in analysis_plan:
-            print("🔬 Validating prototype surface predictions...")
-            analysis_results["prototype_validation"] = validate_prototype_theory(
+        # Prototype surface tests
+        if "prototype_surface" in analysis_plan:
+            print("🔬 Analyzing prototype surface ...")
+            analysis_results["prototype_surface"] = analyze_prototype_surface(
                 run_results, experiment_data, config
             )
-            print("  ✓ Prototype surface validation completed")
+            print("  ✓ Prototype surface analysis completed")
 
         # Generate visualizations
         if config.analysis.save_plots:

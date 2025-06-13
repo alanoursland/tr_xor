@@ -59,12 +59,6 @@ The model learns a hyperplane that acts as a prototype surface. Points for one c
 | **Large** | 3.8e-04 ± 5.8e-05 | 1.41421 ± 1.3e-07 |
 ---
 
-You're right, the previous tables were too condensed and lost important detail. Organizing the data by percentile bins for each initialization strategy is an excellent way to show the full picture.
-
-Here are the rewritten tables for the **Weight Reorientation and Scaling Dynamics** section, structured as you suggested.
-
-***
-
 ## 6. Weight Reorientation and Scaling Dynamics
 
 The following tables show how the training dynamics correlate with two key geometric measures: the degree of **reorientation** (angle change between initial and final weights) and the amount of **rescaling** (ratio of initial to final weight norm). The data is binned by percentiles to show how runs with different degrees of change correspond to different convergence speeds.
@@ -146,12 +140,6 @@ These tables correlate the ratio of the initial to final weight vector norm ($||
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Ratio Range** | 1.85 – 2.57 | 2.57 – 4.21 | 4.21 – 6.26 | 6.26 – 8.46 | 8.46 – 11.45 | 11.45 – 17.79|
 | **Mean Epochs** | 203.4 | 393.6 | 584.6 | 775.4 | 950.8 | 1316.2 |
-
-That's a much clearer way to present the clustering data. Grouping by the final solution rather than the initialization highlights the consistency of the outcomes.
-
-Here is the rewritten **Final Hyperplane Clustering** section with the tables structured as you've laid out.
-
-***
 
 ## 7. Final Hyperplane Clustering
 

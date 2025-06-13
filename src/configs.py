@@ -52,8 +52,8 @@ class TrainingConfig:
     restore_best_weights: bool = True
 
     # Convergence criteria
-    convergence_threshold: float = 1e-6
-    convergence_window: int = 10
+    convergence_threshold: Optional[float] = None
+    convergence_patience: int = 10
 
     # Gradient clipping
     gradient_clipping: bool = False
@@ -381,3 +381,23 @@ def config_abs1_xavier() -> ExperimentConfig:
         description="Centered XOR with single absolute value unit xavier init.",
         logging=LoggingConfig(train_epochs=200)
     )
+
+@experiment("relu1_normal")
+def config_relu1_normal() -> ExperimentConfig:
+    """Factory function for ReLU XOR experiment."""
+    model = models.Model_ReLU1().init_normal()
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01, betas=(0.9, 0.99))
+    loss_function = nn.MSELoss()
+
+    return ExperimentConfig(
+        model=model,
+        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=800, 
+                                stop_training_loss_threshold=1e-7,
+                                convergence_threshold=1e-7, convergence_patience=10),
+        data=DataConfig(x=xor_data_centered(), y=xor_labels_T1(), problem_type=ExperimentType.XOR),
+        analysis=AnalysisConfig(),
+        execution=ExecutionConfig(num_runs=50, skip_existing=False, random_seeds=[18]),
+        description="Centered XOR with two nodes, ReLU,  sums, and kaiming init.",
+        logging=LoggingConfig(train_epochs=50)
+    )
+

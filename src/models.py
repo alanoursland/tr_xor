@@ -58,6 +58,44 @@ class Model_Abs1(nn.Module):
         nn.init.zeros_(self.linear1.bias)
         return self
     
+class Model_ReLU1(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.linear1 = nn.Linear(2, 2)
+        nn.init.kaiming_normal_(self.linear1.weight, nonlinearity='relu')
+        nn.init.zeros_(self.linear1.bias)
+
+    def forward(self, x):
+        x = self.linear1(x)
+        x = torch.relu(x)
+        x = x.sum(dim=1, keepdim=True)
+        return x.squeeze()
+    
+    def init_normal(self):
+        nn.init.normal_(self.linear1.weight, mean=0.0, std=0.5)
+        nn.init.zeros_(self.linear1.bias)
+        return self
+    
+    def init_kaiming(self):
+        nn.init.kaiming_normal_(self.linear1.weight, nonlinearity='relu')
+        nn.init.zeros_(self.linear1.bias)
+        return self
+    
+    def init_xavier(self):
+        nn.init.xavier_normal_(self.linear1.weight)
+        nn.init.zeros_(self.linear1.bias)
+        return self
+
+    def init_tiny(self):
+        nn.init.normal_(self.linear1.weight, mean=0.0, std=0.1)
+        nn.init.zeros_(self.linear1.bias)
+        return self
+
+    def init_large(self):
+        nn.init.normal_(self.linear1.weight, mean=0.0, std=4.0)
+        nn.init.zeros_(self.linear1.bias)
+        return self
+    
 
 
 # ==============================================================================

@@ -59,32 +59,6 @@ _experiment_state = ExperimentState()
 # ==============================================================================
 
 
-class TrainingTracker:
-    """Track training progress and manage training state."""
-
-    def __init__(self, config: Any):
-        self.config = config
-        self.epoch = 0
-        self.best_loss = float("inf")
-        self.best_accuracy = 0.0
-        self.patience_counter = 0
-        self.training_history = []
-        self.should_stop = False
-        self.start_time = None
-
-    def update(self, loss: float, accuracy: float, learning_rate: float) -> None:
-        """Update training metrics and check stopping criteria."""
-        pass
-
-    def should_early_stop(self) -> bool:
-        """Check if training should stop early."""
-        pass
-
-    def get_summary(self) -> Dict[str, Any]:
-        """Get training summary statistics."""
-        pass
-
-
 def execute_training_run(
     model: nn.Module,
     data: Tuple[torch.Tensor, torch.Tensor],
@@ -123,6 +97,9 @@ def execute_training_run(
     losses = []
     start_time = time.time()
     best_loss = float("inf")
+    patience_counter = 0
+    convergence_threshold = config.training.convergence_threshold
+    convergence_patience = config.training.convergence_patience
 
     # Training loop
     for epoch in range(config.training.epochs):
@@ -141,15 +118,30 @@ def execute_training_run(
         current_loss = loss.item()
         losses.append(current_loss)
 
-        if current_loss < best_loss:
-            best_loss = current_loss
-
         # Early exit if loss is low enough
         if config.training.stop_training_loss_threshold is not None:
             if current_loss < config.training.stop_training_loss_threshold:
                 if config.logging.train_epochs > 0:
                     print(f"  Early stopping at epoch {epoch} (loss {current_loss:.6f} <= {config.training.stop_training_loss_threshold})")
                 break
+
+        # Early exit if model isn't improving.
+        if convergence_threshold is not None and convergence_patience:
+            loss_delta = best_loss - current_loss
+            # print(f"loss_delta = {loss_delta}, patience_counter = {patience_counter}")
+            if loss_delta > convergence_threshold:
+                best_loss = current_loss
+                patience_counter = 0
+            else:
+                patience_counter += 1
+
+            if patience_counter > convergence_patience:
+                print(f"  Convergence-based early stopping at epoch {epoch} "
+                      f"(loss did not improve below {convergence_threshold} for {convergence_patience} steps)")
+                break
+
+        if current_loss < best_loss:
+            best_loss = current_loss
 
         # Log progress occasionally
         if epoch % config.logging.train_epochs == 0 or epoch == config.training.epochs - 1:
@@ -257,11 +249,10 @@ def run_experiment(
 
     # Run multiple training runs
     all_results = []
-    successful_runs = 0
 
     for run_id in range(config.execution.num_runs):
         if verbose:
-            print(f"Starting run {run_id + 1}/{config.execution.num_runs}")
+            print(f"Starting run {run_id}/{config.execution.num_runs}")
 
         try:
             # Create fresh model for each run (call config factory again)
@@ -292,7 +283,6 @@ def run_experiment(
             )
 
             all_results.append(run_result)
-            successful_runs += 1
 
             # Save each run as it completes
             run_dir = output_dirs["experiment"] / "runs" / f"{run_id:03d}"
@@ -316,7 +306,7 @@ def run_experiment(
             torch.save(config_summary, run_dir / "config_summary.pt")
             
             if verbose:
-                print(f"✓ Run {run_id + 1} saved to {run_dir}")
+                print(f"✓ Run {run_id} saved to {run_dir}")
             
         except Exception as e:
             import traceback
@@ -325,7 +315,7 @@ def run_experiment(
             logger.error(f"Run {run_id} failed with {type(e).__name__}: {e}")
             logger.error(f"Full traceback:\n{error_details}")
             if verbose:
-                print(f"✗ Run {run_id + 1} failed: {type(e).__name__}: {e}")
+                print(f"✗ Run {run_id} failed: {type(e).__name__}: {e}")
                 print(f"Traceback:\n{error_details}")
         finally:
             # Always clean up, even if there was an error
@@ -336,7 +326,6 @@ def run_experiment(
     # Aggregate results
     summary = {
         "total_runs": config.execution.num_runs,
-        "successful_runs": successful_runs,
         "avg_final_loss": sum(r["final_loss"] for r in all_results) / len(all_results) if all_results else 0,
         "avg_accuracy": sum(r.get("accuracy", 0) for r in all_results) / len(all_results) if all_results else 0,
         "total_time": sum(r["training_time"] for r in all_results),
@@ -406,7 +395,6 @@ def run_experiment(
     experiment_stats = {
         "experiment_name": experiment_name,
         "total_runs": summary["total_runs"],
-        "successful_runs": summary["successful_runs"],
         "avg_final_loss": summary["avg_final_loss"],
         "avg_accuracy": summary["avg_accuracy"],
         "total_time": summary["total_time"],
@@ -519,7 +507,6 @@ def main() -> int:
             summary = results["summary"]
             print(f"\nResults Summary:")
             print(f"  Total runs: {summary.get('total_runs', 'N/A')}")
-            print(f"  Successful runs: {summary.get('successful_runs', 'N/A')}")
             print(f"  Average final loss: {summary.get('avg_final_loss', 'N/A'):.6f}")
             print(f"  Average accuracy: {summary.get('avg_accuracy', 'N/A'):.4f}")
             print(f"  Total time: {summary.get('total_time', 'N/A'):.2f}s")

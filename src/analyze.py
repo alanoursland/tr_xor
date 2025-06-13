@@ -41,6 +41,7 @@ def configure_analysis_from_config(config: ExperimentConfig) -> Tuple[List[str],
     
     analysis_plan.append('convergence_timing')
     analysis_plan.append('weight_reorientation')
+    analysis_plan.append('hyperplane_clustering')
     
     # Geometric analysis
     if config.analysis.geometric_analysis:
@@ -1820,6 +1821,90 @@ def compute_percentile_bins(values: List[float], epochs: List[int], metric_name:
     
     return bin_stats
 
+def analyze_hyperplane_clustering(run_results: List[Dict[str, Any]], eps: float = 0.1, min_samples: int = 2) -> Dict[str, Any]:
+    """
+    Cluster final hyperplane weights across runs using DBSCAN.
+    
+    Args:
+        run_results: List of results from all training runs
+        eps: DBSCAN epsilon parameter (distance threshold)
+        min_samples: DBSCAN minimum samples per cluster
+        
+    Returns:
+        Dictionary containing clustering analysis results
+    """
+    from sklearn.cluster import DBSCAN
+    import numpy as np
+    
+    # Extract final weights and biases from all runs
+    weights = []
+    biases = []
+    run_ids = []
+    
+    for result in run_results:
+        try:
+            # Get final weights and biases
+            w_final = result["model_state_dict"]["linear1.weight"].cpu().numpy()
+            b_final = result["model_state_dict"]["linear1.bias"].cpu().numpy()
+            
+            # Handle different shapes
+            if w_final.ndim == 2:
+                w_final = w_final.flatten()
+            if b_final.ndim > 0:
+                b_final = b_final.flatten()
+            
+            weights.append(w_final)
+            biases.append(b_final)
+            run_ids.append(result["run_id"])
+            
+        except Exception as e:
+            print(f"⚠️ Run {result.get('run_id', '?')}: Failed to extract weights: {e}")
+            continue
+    
+    if len(weights) < 2:
+        return {"error": "Insufficient weight data for clustering"}
+    
+    weights_array = np.array(weights)
+    biases_array = np.array(biases)
+    
+    # Perform DBSCAN clustering on weights only
+    clustering = DBSCAN(eps=eps, min_samples=min_samples).fit(weights_array)
+    
+    # Analyze clusters
+    labels = clustering.labels_
+    unique_labels = set(labels)
+    n_clusters = len(unique_labels) - (1 if -1 in unique_labels else 0)
+    
+    # Compute cluster statistics
+    cluster_info = {}
+    for label in unique_labels:
+        if label == -1:  # Skip noise points
+            continue
+            
+        mask = labels == label
+        cluster_weights = weights_array[mask]
+        cluster_biases = biases_array[mask]
+        cluster_run_ids = [run_ids[i] for i in range(len(run_ids)) if mask[i]]
+        
+        cluster_info[f"cluster_{label}"] = {
+            "size": int(np.sum(mask)),
+            "run_ids": cluster_run_ids,
+            "weight_centroid": cluster_weights.mean(axis=0).tolist(),
+            "bias_centroid": cluster_biases.mean(axis=0).tolist(),
+            "weight_std": cluster_weights.std(axis=0).tolist(),
+            "bias_std": cluster_biases.std(axis=0).tolist()
+        }
+    
+    # Count noise points
+    noise_count = int(np.sum(labels == -1))
+    
+    return {
+        "clustering_params": {"eps": eps, "min_samples": min_samples},
+        "n_clusters": n_clusters,
+        "noise_points": noise_count,
+        "cluster_info": cluster_info
+    }
+
 def compute_accuracy_summary_stats(accuracies: List[float]) -> Dict[str, float]:
     """
     Compute comprehensive summary statistics for accuracy values.
@@ -2245,6 +2330,12 @@ def generate_analysis_report(
     angle_analysis = weight_reorientation.get("angle_analysis", {})
     norm_ratio_analysis = weight_reorientation.get("norm_ratio_analysis", {})
 
+    # Extract hyperplane clustering data
+    hyperplane_clustering = analysis_results.get("hyperplane_clustering", {})
+    cluster_info = hyperplane_clustering.get("cluster_info", {})
+    n_clusters = hyperplane_clustering.get("n_clusters", 0)
+    noise_points = hyperplane_clustering.get("noise_points", 0)
+
     ############################################################################################
 
     # Start Markdown report
@@ -2345,6 +2436,33 @@ def generate_analysis_report(
         report += "* **No final loss data available**\n\n"
 
     report += "\n---\n\n"
+
+    ############################################################################################
+
+    report += "## 🎯 Hyperplane Clustering\n\n"
+
+    if cluster_info:
+        report += f"* **Number of clusters discovered**: {n_clusters}\n"
+        if noise_points > 0:
+            report += f"* **Noise points**: {noise_points}\n"
+        report += "\n"
+        
+        # Report each cluster
+        for cluster_name, info in cluster_info.items():
+            cluster_id = cluster_name.split('_')[1]
+            size = info["size"]
+            weight_centroid = info["weight_centroid"]
+            bias_centroid = info["bias_centroid"]
+            
+            report += f"### ◼ Cluster {cluster_id}\n\n"
+            report += f"* **Size**: {size} runs\n"
+            report += f"* **Weight centroid**: [{weight_centroid[0]:.6f}, {weight_centroid[1]:.6f}]\n"
+            report += f"* **Bias centroid**: {bias_centroid[0]:.6f}\n"
+            report += f"* **Hyperplane equation**: {weight_centroid[0]:.6f}x₁ + {weight_centroid[1]:.6f}x₂ + {bias_centroid[0]:.6f} = 0\n\n"
+    else:
+        report += "* **No clustering data available**\n\n"
+
+    report += "---\n\n"
 
     ############################################################################################
 
@@ -2488,6 +2606,13 @@ def main() -> int:
             analysis_results["weight_reorientation"] = analyze_weight_reorientation(run_results)
             print("  ✓ Weight reorientation analysis completed")
 
+        # Hyperplane clustering analysis
+        if "hyperplane_clustering" in analysis_plan:
+            print("🎯 Analyzing hyperplane clustering...")
+            analysis_results["hyperplane_clustering"] = analyze_hyperplane_clustering(run_results)
+            print("  ✓ Hyperplane clustering analysis completed")
+
+
         # # Geometric analysis (hyperplanes, prototype regions)
         # if "geometric_analysis" in analysis_plan:
         #     print("📐 Performing geometric analysis...")
@@ -2512,18 +2637,18 @@ def main() -> int:
             )
             print("  ✓ Prototype surface validation completed")
 
-        # # Generate visualizations
-        # if config.analysis.save_plots:
-        #     print("📈 Generating visualizations...")
-        #     plots_dir = results_dir / "plots"
-        #     plots_dir.mkdir(exist_ok=True)
+        # Generate visualizations
+        if config.analysis.save_plots:
+            print("📈 Generating visualizations...")
+            plots_dir = results_dir / "plots"
+            plots_dir.mkdir(exist_ok=True)
             
-        #     generate_experiment_visualizations(
-        #         run_results=run_results,
-        #         config=config,
-        #         output_dir=plots_dir
-        #     )
-        #     print(f"  ✓ Visualizations plots saved to {plots_dir}")
+            generate_experiment_visualizations(
+                run_results=run_results,
+                config=config,
+                output_dir=plots_dir
+            )
+            print(f"  ✓ Visualizations plots saved to {plots_dir}")
 
         # Generate convergence plots
         if config.analysis.convergence_analysis:

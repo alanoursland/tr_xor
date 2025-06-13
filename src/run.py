@@ -221,11 +221,10 @@ class ExperimentError(Exception):
 
 
 def run_experiment(
-    experiment_name: str,
+    setup_info: Dict[str, Any],
     num_runs: Optional[int] = None,
     device: Optional[str] = None,
     verbose: bool = False,
-    config_overrides: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Execute complete experiment with specified configuration.
@@ -240,6 +239,8 @@ def run_experiment(
     Returns:
         Complete experiment results and summary
     """
+    experiment_name = setup_info["experiment_name"]
+    
     # Load configuration
     config = get_experiment_config(experiment_name)
     convergence_threshold = config.training.convergence_threshold
@@ -249,11 +250,6 @@ def run_experiment(
         config.execution.num_runs = num_runs
     if device is not None:
         config.execution.device = device
-
-    # Setup environment
-    setup_info = setup_experiment_environment(
-        experiment_name=experiment_name, seed=42, device=config.execution.device  # Could get from config
-    )
 
     logger = setup_info["logger"]
     output_dirs = setup_info["output_dirs"]
@@ -509,7 +505,7 @@ def main() -> int:
         print("-" * 30)
 
         results = run_experiment(
-            experiment_name=experiment_name,
+            setup_info,
             num_runs=config.execution.num_runs,
             device=config.execution.device,
             verbose=True,

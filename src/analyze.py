@@ -2635,6 +2635,43 @@ def generate_analysis_report(
 
     ############################################################################################
 
+    if config.analysis.mirror_pair_detection:
+        report += "## 🔍 Mirror Weight Symmetry\n\n"
+
+        mirror_data = analysis_results.get("prototype_surface", {}).get("mirror_test", [])
+        total_runs = len(mirror_data)
+        perfect_threshold = 1e-3  # similarity diff from -1.0
+
+        mirror_sims = []
+        detected_runs = 0
+        perfect_mirrors = 0
+
+        for entry in mirror_data:
+            pairs = entry.get("mirror_pairs", [])
+            if pairs:
+                detected_runs += 1
+                sim = pairs[0][2]  # cosine similarity (e.g. -0.99998)
+                mirror_sims.append(sim)
+                if abs(sim + 1.0) < perfect_threshold:
+                    perfect_mirrors += 1
+
+        if mirror_sims:
+            sims_tensor = torch.tensor(mirror_sims)
+            mean_sim = sims_tensor.mean().item()
+            std_sim = sims_tensor.std().item()
+            mean_error = abs(mean_sim + 1.0)
+
+            report += f"* **Mirror pairs detected**: {detected_runs} / {total_runs} runs\n"
+            report += f"* **Perfect mirror symmetry** (cosine ~ -1.0): {perfect_mirrors} runs\n"
+            report += f"* **Mean mirror similarity**: {mean_sim:.5f} ± {std_sim:.5f}\n"
+            report += f"* **Mean mirror error (|cos + 1|)**: {mean_error:.5f}\n"
+        else:
+            report += "* No mirror pairs detected in any run.\n"
+
+        report += "\n---\n\n"
+
+    ############################################################################################
+
     return report
 
 def export_analysis_data(

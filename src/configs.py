@@ -93,7 +93,7 @@ class AnalysisConfig:
 
     # Weight analysis
     weight_analysis: bool = True
-    mirror_pair_detection: bool = True
+    mirror_pair_detection: bool = False
     weight_evolution_tracking: bool = False
     weight_clustering: bool = False
     symmetry_analysis: bool = True
@@ -396,7 +396,7 @@ def config_relu1_normal() -> ExperimentConfig:
                                 stop_training_loss_threshold=1e-7,
                                 convergence_threshold=1e-24, convergence_patience=10),
         data=DataConfig(x=xor_data_centered(), y=xor_labels_T1(), problem_type=ExperimentType.XOR),
-        analysis=AnalysisConfig(convergence_analysis=False, save_plots=False, dead_data_analysis=True),
+        analysis=AnalysisConfig(convergence_analysis=False, save_plots=True, dead_data_analysis=True, mirror_pair_detection=True),
         execution=ExecutionConfig(num_runs=50, skip_existing=False, random_seeds=[18]),
         description="Centered XOR with two nodes, ReLU, sum, and kaiming init.",
         logging=LoggingConfig(train_epochs=50)

@@ -51,7 +51,7 @@ This experiment treats the network as a geometric object, asking how the shape, 
 * **Optimizer**: Adam (learning rate 0.01, β₁ = 0.9, β₂ = 0.99)
 * **Batch Size**: Full batch (4 XOR examples)
 * **Epochs**: Maximum of 200
-* **Runs**: 500 per initialization strategy
+* **Runs**: 50 per initialization strategy
 
 ## Initialization Strategies
 
@@ -76,7 +76,7 @@ Centering ensures symmetric geometry around the origin. With bias initialized to
 
 ## Geometry and Learning Metrics
 
-To characterize how the model learns, we compute the following metrics across all runs:
+We compute the following metrics across all runs to characterize how the model learns. 
 
 ### 1. **Convergence Epochs**
 
@@ -122,8 +122,7 @@ This experiment does not aim to evaluate correctness (all models converge). Inst
 
 ## Comments
 
-* This study avoids the language of “success/failure” or “validation.”
-  The goal is not to validate a theory but to **observe geometry**.
+* We treat divergence in epoch counts as geometry, not error.
 * We treat the model as a **surface learner**, not a classifier.
 * Variations in performance are not errors but **signals of different geometries** emerging from different initial conditions.
 

@@ -71,6 +71,12 @@ class Model_ReLU1(nn.Module):
         x = x.sum(dim=1, keepdim=True)
         return x.squeeze()
     
+    def forward_components(self, x):
+        """
+        Returns pre-activation outputs of each linear unit before ReLU is applied.
+        """
+        return self.linear1(x)
+
     def init_normal(self):
         nn.init.normal_(self.linear1.weight, mean=0.0, std=0.5)
         nn.init.zeros_(self.linear1.bias)

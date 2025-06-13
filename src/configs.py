@@ -103,6 +103,7 @@ class AnalysisConfig:
     activation_patterns: bool = True
     sparsity_analysis: bool = True
     zero_activation_regions: bool = True
+    dead_data_analysis: bool = False
 
     # Convergence analysis
     convergence_analysis: bool = True
@@ -395,9 +396,9 @@ def config_relu1_normal() -> ExperimentConfig:
                                 stop_training_loss_threshold=1e-7,
                                 convergence_threshold=1e-24, convergence_patience=10),
         data=DataConfig(x=xor_data_centered(), y=xor_labels_T1(), problem_type=ExperimentType.XOR),
-        analysis=AnalysisConfig(convergence_analysis=False),
+        analysis=AnalysisConfig(convergence_analysis=False, save_plots=False, dead_data_analysis=True),
         execution=ExecutionConfig(num_runs=50, skip_existing=False, random_seeds=[18]),
-        description="Centered XOR with two nodes, ReLU,  sums, and kaiming init.",
+        description="Centered XOR with two nodes, ReLU, sum, and kaiming init.",
         logging=LoggingConfig(train_epochs=50)
     )
 

@@ -893,6 +893,54 @@ def compute_training_efficiency(loss_history: List[float]) -> Dict[str, float]:
         'total_epochs': epochs
     }
 
+def analyze_dead_data(run_results: List[Dict[str, Any]], config: ExperimentConfig) -> Dict[str, Any]:
+    """
+    Analyze which input points are dead at initialization (no active ReLU units),
+    and correlate with final accuracy.
+    """
+
+    model = config.model.__class__()
+    data = config.data
+    x = data.x  # [num_points, input_dim]
+    y = data.y.squeeze().int()  # [num_points], class labels as 0 or 1
+
+    results = {
+        "dead_counts": [],
+        "dead_class0_counts": [],
+        "dead_class1_counts": [],
+        "accuracies": [],
+    }
+
+    for i, result in enumerate(run_results):
+        run_dir = result["run_dir"]
+        model_init = torch.load(run_dir / "model_init.pt", map_location="cpu")
+        model.load_state_dict(model_init)
+        data = config.data
+
+        model.eval()
+        with torch.no_grad():
+            activations = model.forward_components(x)  # Get per-unit pre-ReLU outputs
+
+            # Assume output is a list or tensor: [num_points, num_units]
+            if isinstance(activations, tuple):
+                activations = activations[0]  # if model returns (output, components)
+
+            relu_out = torch.relu(activations)  # [num_points, num_units]
+            is_dead = torch.all(relu_out == 0, dim=1)  # [num_points]
+
+            total_dead = int(is_dead.sum().item())
+            dead_class0 = int((is_dead & (y == 0)).sum().item())
+            dead_class1 = int((is_dead & (y == 1)).sum().item())
+
+
+            results["dead_counts"].append(total_dead)
+            results["dead_class0_counts"].append(dead_class0)
+            results["dead_class1_counts"].append(dead_class1)
+            results["accuracies"].append(result.get("accuracy", 0.0))
+
+    return results
+
+
 def analyze_model_state_dict(state_dict: Dict[str, torch.Tensor]) -> Dict[str, Any]:
     """
     Analyze model state dictionary for key properties.
@@ -2308,11 +2356,6 @@ def generate_analysis_report(
     # Path: prototype_surface.distance_test
     distance_test = prototype_surface.get("distance_test", [])
 
-    # Core experiment metadata from config and experiment_info
-    name = config.execution.experiment_name
-    # Path: basic_stats.experiment_info.description
-    description = config.description or experiment_info.get("description", "No description provided.")
-
     # Metrics extraction
     # Path: basic_stats.experiment_info.total_runs
     total_runs = experiment_info.get("total_runs", "N/A")
@@ -2387,36 +2430,71 @@ def generate_analysis_report(
 
     ############################################################################################
 
+    name = config.execution.experiment_name
+    description = config.description or experiment_info.get("description", "No description provided.")
+
     # Start Markdown report
     report = f"# 🧪 Experiment Report: `{name}`\n\n"
     report += f"**Description**: {description}\n\n"
 
     ############################################################################################
 
+    loss_fn = config.training.loss_function
+
     report += "## 🎯 Overview\n\n"
-    report += f"* **Total runs**: {total_runs}\n"
-    report += f"* **Training stops when loss < {stop_threshold:.1e}**\n"
-    if all_success:
-        report += "* ✅ All runs achieved 100% classification accuracy\n"
-    else:
-        report += f"* ⚠️ {failed_runs} runs did not reach 100% classification accuracy\n"
+
+    # 🏃 Training Configuration
+    report += f"* **Total runs**: {config.execution.num_runs}\n"
+    report += f"* **Loss function**: {config.training.loss_function.__class__.__name__}\n"
+    report += f"* **Optimizer**: {config.training.optimizer.__class__.__name__}\n"
+    if config.training.batch_size:
+        report += f"* **Batch size**: {config.training.batch_size}\n"
+    report += f"* **Max epochs**: {config.training.epochs}\n"
+
+    # ⏹ Early Stopping Criteria
+    if config.training.stop_training_loss_threshold is not None:
+        report += f"* **Stops when loss < {config.training.stop_training_loss_threshold:.1e}**\n"
+
+    if (
+        config.training.convergence_threshold is not None
+        and config.training.convergence_patience is not None
+    ):
+        report += (
+            f"* **Stops if loss does not improve by ≥ {config.training.convergence_threshold:.1e} "
+            f"over {config.training.convergence_patience} epochs**\n"
+        )
 
     report += "\n---\n\n"
 
     ############################################################################################
 
-    report += "## ⏱️ Convergence Timing (Epochs to MSE < 1e-7)\n\n"
-    report += "| Percentile | Epochs |\n| ---------- | ------ |\n"
+    acc_bins = distributions.get("accuracy_distribution", {}).get("bins", {})
 
-    if percentiles:
-        labels = ["0th", "10th", "25th", "50th", "75th", "90th", "100th"]
-        for label in labels:
-            value = percentiles.get(label, "N/A")
-            report += f"| {label:<10} | {value}     |\n"
-    else:
-        report += "| N/A        | No convergence data available |\n"
+    report += "## 🎯 Classification Accuracy\n\n"
+
+    for acc in sorted(acc_bins.keys(), reverse=True):
+        count = acc_bins.get(acc, 0)
+        if count > 0:
+            report += f"* {count}/{total_runs} runs achieved {int(100*acc)}% accuracy\n"
+
 
     report += "\n---\n\n"
+
+    ############################################################################################
+
+    if config.analysis.convergence_analysis:
+        report += "## ⏱️ Convergence Timing (Epochs to MSE < 1e-7)\n\n"
+        report += "| Percentile | Epochs |\n| ---------- | ------ |\n"
+
+        if percentiles:
+            labels = ["0th", "10th", "25th", "50th", "75th", "90th", "100th"]
+            for label in labels:
+                value = percentiles.get(label, "N/A")
+                report += f"| {label:<10} | {value}     |\n"
+        else:
+            report += "| N/A        | No convergence data available |\n"
+
+        report += "\n---\n\n"
 
     ############################################################################################
 
@@ -2512,6 +2590,48 @@ def generate_analysis_report(
         report += "* **No clustering data available**\n\n"
 
     report += "---\n\n"
+
+    ############################################################################################
+
+    if config.analysis.dead_data_analysis:
+        report += "## 💀 Dead Data Point Analysis\n\n"
+
+        dead_data = analysis_results["dead_data"]
+        dead_counts = dead_data["dead_counts"]
+        dead_class0_counts = dead_data["dead_class0_counts"]
+        dead_class1_counts = dead_data["dead_class1_counts"]
+        accuracies = dead_data["accuracies"]
+
+        # Build mapping: accuracy → [dead_count]
+        acc_summary = {}
+        for dead, dead0, dead1, acc in zip(dead_counts, dead_class0_counts, dead_class1_counts, accuracies):
+            if acc not in acc_summary:
+                acc_summary[acc] = {
+                    "alive": 0,
+                    "dead": 0,
+                    "class0_dead": 0,
+                    "class1_dead": 0,
+                }
+            if dead == 0:
+                acc_summary[acc]["alive"] += 1
+            else:
+                acc_summary[acc]["dead"] += 1
+                if dead0 > 0:
+                    acc_summary[acc]["class0_dead"] += 1
+                if dead1 > 0:
+                    acc_summary[acc]["class1_dead"] += 1
+
+        for acc in sorted(acc_summary.keys(), reverse=True):
+            summary = acc_summary[acc]
+            acc_percent = int(acc * 100)
+            if summary["alive"] > 0:
+                report += f"* {summary['alive']} runs with **no dead inputs** reached {acc_percent}% accuracy\n"
+            if summary["dead"] > 0:
+                report += f"* {summary['dead']} runs with **dead inputs** reached {acc_percent}% accuracy\n"
+                report += f"|    {summary['class0_dead']} runs with class-0 dead inputs reached {acc_percent}% accuracy\n"
+                report += f"|    {summary['class1_dead']} runs with class-1 dead inputs reached {acc_percent}% accuracy\n"
+        
+        report += "\n---\n\n"
 
     ############################################################################################
 
@@ -2685,6 +2805,12 @@ def main() -> int:
                 run_results, experiment_data, config
             )
             print("  ✓ Prototype surface analysis completed")
+
+        # Dead data analysis
+        if config.analysis.dead_data_analysis:
+            print("💀 Analyzing data data in initial model ...")
+            analysis_results["dead_data"] = analyze_dead_data(run_results, config)
+            print("  ✓ data data in initial model analysis completed")
 
         # Generate visualizations
         if config.analysis.save_plots:

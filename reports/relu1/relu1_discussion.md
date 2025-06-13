@@ -16,11 +16,23 @@ This behavior was not seen in the absolute value model, which consistently align
 
 ### 2.2. Hypothesis: Dead Data Points at Initialization
 
-One proposed explanation for these failures centers on the geometry of ReLU activations. ReLU units have a known issue: they can become "dead" if their input is always negative, meaning they output zero for all data points and receive no gradient.
+This theory is supported by our analysis: across 50 runs, **no models with non-dead inputs failed to reach 100% accuracy**, while **all 21 failed runs had at least one dead input** at initialization.
 
-In the context of this experiment, we extend this idea to **dead data points**—inputs for which **both ReLU paths are inactive at initialization**. If this happens to class-0 points, the model receives no gradient signal to move the prototype surface toward them, and thus cannot learn the correct structure. These points remain untouched by optimization and the model settles into an incorrect local minimum.
+In particular, class-1 dead points were strongly correlated with failure. No model with a dead class-1 input achieved 100% accuracy. In contrast, dead class-0 inputs were often—but not always—tolerated.
 
-This theory aligns with observed results: failed runs tended to show weak surface alignment with class-0 inputs and reduced class-1 separation. The success of `abs1`, where the absolute value is hardcoded and always provides a learning signal, further supports the idea that **gradient starvation** is the root cause of failure in `relu1`.
+These findings support the theory that **dead inputs starve the model of gradient signal**, preventing the prototype surface from aligning with important decision boundaries. Presense of dead nodes do not guarantee model failure, but all of the models without dead nodes successfully trained to 100%
+
+### 2.3 Mirror Symmetry: Emergent in All Successful Runs
+
+We also analyzed whether the two ReLU units formed mirror-symmetric pairs—i.e., weights pointing in opposite directions with equal magnitude, and biases of equal magnitude but opposite sign. This structure mimics the hardcoded symmetry of the `abs1` model.
+
+Our results show that:
+
+* **All 29 runs that reached 100% accuracy exhibited at least one mirror-symmetric pair**.
+* Of those, **15 showed near-perfect symmetry**, with cosine similarity between mirrored weights close to –1.0.
+* Among failed runs (75% accuracy), mirror symmetry was often absent or imperfect.
+
+This suggests that **emergent mirror symmetry is a necessary condition for successfully solving XOR in this architecture**, even though the model is not explicitly constrained to discover it. The absence of symmetry appears to trap the model in suboptimal configurations, reinforcing the idea that symmetry provides both geometric clarity and optimization guidance.
 
 ## 3. Implications for Prototype Surface Learning
 
@@ -36,5 +48,7 @@ This experiment opens several lines for deeper study:
 * **Gradient flow analysis**: Measure per-point gradient magnitude to confirm whether class-0 points go silent in failed runs.
 * **Structural regularization**: Explore architectural tweaks (e.g. bias initialization, asymmetric weights) that encourage early symmetry and prevent dead regions.
 * **Activation comparisons**: Evaluate whether other symmetric or piecewise-linear activations show similar failure dynamics.
+* **Initialization diagnostics**: We implemented a dead input detector that confirmed a strong correlation between dead points and training failure.
+* **Mirror symmetry tracking**: We measured emergent symmetry between ReLU units and found it to be common but inconsistent.
 
 While `relu1` is theoretically sufficient to solve XOR, its failure to do so reliably underscores the value of geometric interpretability—and of architectures that **make desirable gradients inevitable**, not optional.

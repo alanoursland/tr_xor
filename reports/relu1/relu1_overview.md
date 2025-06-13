@@ -43,6 +43,29 @@ In the context of prototype surface learning, this model tests whether **a symme
 
 This experiment studies whether such symmetry emerges reliably from standard training, and how its formation compares to the explicit structure imposed by the absolute value.
 
+---
+
+## Dead Data Point Hypothesis
+
+During early analysis of models that failed to achieve 100% accuracy, we identified a recurring structural pattern: some input points produced **zero activation** across all ReLU units at initialization. We refer to these as **dead data points**.
+
+### Definition
+
+An input is considered *dead* if, at model initialization, it lies outside the activation region of **all** ReLU units — i.e., it falls entirely into the negative half-space for each linear unit. Formally, an input \$x\_i\$ is dead if:
+
+$$
+\text{ReLU}(w_1 \cdot x_i + b_1) = \text{ReLU}(w_2 \cdot x_i + b_2) = 0
+$$
+
+This condition means that the input generates **no signal**, contributes **no loss gradient**, and is effectively **invisible to training** until it activates. If the model fails to adjust its weights to activate the point, it may never learn from it.
+
+### Motivation
+
+We introduced this metric after observing that several failed training runs shared similar decision boundaries, and many of them had inputs that were dead from the start. We hypothesize that **dead data points at initialization are predictive of learning failure**, particularly when they correspond to critical class-1 examples (which must be pushed off-surface to solve XOR).
+
+This analysis does not claim dead inputs are always harmful—but when they occur early and persist, they may severely restrict the model's capacity to reshape its decision surface.
+
+Further experiments (e.g., reinitializing models until no data is dead) are planned to evaluate this hypothesis more directly.
 
 ---
 

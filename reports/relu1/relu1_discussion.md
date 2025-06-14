@@ -51,4 +51,4 @@ This experiment opens several lines for deeper study:
 * **Initialization diagnostics**: We implemented a dead input detector that confirmed a strong correlation between dead points and training failure.
 * **Mirror symmetry tracking**: We measured emergent symmetry between ReLU units and found it to be common but inconsistent.
 
-While `relu1` is theoretically sufficient to solve XOR, its failure to do so reliably underscores the value of geometric interpretability—and of architectures that **make desirable gradients inevitable**, not optional.
+The deep learning narrative often emphasizes that networks can learn any function given enough capacity. While `relu1` is theoretically sufficient to solve XOR, its failure to do so reliably underscores the value of geometric interpretability—and of architectures that **make desirable gradients inevitable**, not optional. This experimental approach has revealed a fundamental truth: neural networks don't just need the capacity to represent solutions - they need architectures and initializations that make those solutions discoverable through gradient descent. 

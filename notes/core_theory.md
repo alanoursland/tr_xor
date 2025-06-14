@@ -118,11 +118,9 @@ ReLU therefore acts as a **set extender**: it generalizes the prototype membersh
 
 This reinterpretation turns a conventional assumption on its head: **zero activation is not a sign of inactivity, but a sign of inclusion**. It indicates that the input lies within a recognized region — defined not as a point but as a **spatially extended prototype set**. In this view, a zero activation can be interpreted as an 'acceptance' of the input into the prototype set, while a positive activation signals 'rejection' or measures the input's deviation from this recognized region.
 
-Here is a draft of **§3.3 “Absolute-Value Encodes Signed Distance”** for `core_theory.md`, complementing the existing §3.2 on ReLU:
-
 ---
 
-### **3.3 Absolute-Value Encodes Signed Distance**
+### **3.3 Absolute-Value Encodes Unsigned Distance**
 
 Whereas ReLU extends a single prototype surface into an entire half-space of inclusion, the absolute-value activation performs no such expansion. Instead, it treats the prototype as the **zero set** $\{x : Wx + b = 0\}$, and outputs a value proportional to the **distance** from that set. The geometry is not one of region growth, but of distance field encoding.
 

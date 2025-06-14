@@ -1,7 +1,3 @@
-Of course. Here is the discussion, rewritten to speak about "the results" generally.
-
----
-
 # **Discussion: Single Absolute Value Unit for XOR Classification**
 
 ## 1. Overview
@@ -33,7 +29,7 @@ A plausible explanation is that when the initial weight norm is far from the opt
 
 Even when minimal re-orientation was needed, performance was still dictated by scale. In the `Large` initialization runs, trials requiring the smallest angle changes were still extremely slow, averaging 628.8 epochs to converge. This reinforces the conclusion that correcting the initial weight scale, rather than its orientation, was the primary bottleneck in the training process.
 
-This aspect of our experiment invites more investigation.
+We suspect that the L2-distance between the intial and final states may correlate more strongly with the training epochs. This aspect of our experiment invites more investigation.
 
 ## 4. Interpretation and Representational Duality
 

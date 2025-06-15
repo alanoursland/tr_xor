@@ -458,7 +458,6 @@ def config_relu1_bhs() -> ExperimentConfig:
         lambda : model.init_bounded_hypersphere(model.init_normal, radius=1.4), 
         x, 100, min_threshold=0.3)
 
-
     # print(f"x = {x}")
     # print(f"model.linear1.W = {model.linear1.weight }")
     # print(f"model.linear1.b = {model.linear1.bias}")

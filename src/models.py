@@ -82,7 +82,7 @@ class Model_ReLU1(nn.Module):
         nn.init.zeros_(self.linear1.bias)
         return self
     
-    def reinit_dead_data(self, init_fn, data, max_attempts=100):
+    def reinit_dead_data(self, init_fn, data, max_attempts=100, min_threshold=0):
         """
         Reinitialize the model until no data points are dead (produce all negative pre-activations).
         
@@ -104,7 +104,7 @@ class Model_ReLU1(nn.Module):
             
             # Check if any data point produces negative values across ALL nodes
             # A data point is "dead" if all its pre-activations are negative
-            all_negative_per_datapoint = (pre_activations <= 0).all(dim=1)  # Shape: [n_data]
+            all_negative_per_datapoint = (pre_activations <= min_threshold).all(dim=1)  # Shape: [n_data]
             
             # If no data points are dead, we're done
             if not all_negative_per_datapoint.any():

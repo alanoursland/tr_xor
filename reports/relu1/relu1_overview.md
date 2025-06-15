@@ -6,13 +6,9 @@ This experiment investigates how a minimal ReLU-based network—composed of two 
 
 $$|x| = \text{ReLU}(x) + \text{ReLU}(-x)$$
 
-Preliminary runs revealed that, unlike the robust `abs1` model, this architecture frequently fails to converge to a correct solution. Our analysis pointed to a potential cause: "dead data points" at initialization that provide no initial gradient signal.
+Preliminary runs revealed that, unlike the robust `abs1` model, this architecture is surprisingly fragile and frequently fails to converge to a correct solution under a standard initialization. This report documents a series of experiments designed to diagnose and correct these failures. We began by testing the **Dead Data Point Hypothesis**, which posited that failures were caused by inputs having no initial gradient signal. After this was largely confirmed, we identified and tested a secondary **Margin Hypothesis**, which posited that failures also occurred when hyperplanes initialized too close to data points.
 
-To test this **Dead Data Point Hypothesis**, we conduct two sets of runs under different initialization strategies:
-1.  **Standard Init**: A baseline condition using a standard normal initialization.
-2.  **Re-init on Dead**: A test condition where the model is programmatically re-initialized until no data points are dead, ensuring all inputs are "live" at the start of training.
-
-The purpose of this combined experiment is to determine if the lack of initial gradient flow is the primary cause of training failure and to analyze how its presence or absence affects the emergence of geometric symmetry and convergence dynamics.
+This multi-stage investigation analyzes how different initialization heuristics affect convergence, reliability, and the emergence of the geometric structures required to solve the problem.
 
 ## Model Architecture
 
@@ -51,7 +47,7 @@ This experiment studies whether such symmetry emerges reliably from standard tra
 
 ## Dead Data Point Hypothesis
 
-During early analysis of models that failed to achieve 100% accuracy, we identified a recurring structural pattern: some input points produced **zero activation** across all ReLU units at initialization. We refer to these as **dead data points**.
+During early analysis of models that failed to achieve 100% accuracy, we identified a recurring structural pattern: some input points produced **zero activation** across all ReLU units in a layer at initialization. We refer to these as **dead data points**.
 
 ### Definition
 
@@ -65,11 +61,15 @@ This condition means that the input generates **no signal**, contributes **no lo
 
 ### Motivation
 
-We introduced this metric after observing that several failed training runs shared similar decision boundaries, and many of them had inputs that were dead from the start. We hypothesize that **dead data points at initialization are predictive of learning failure**, particularly when they correspond to critical class-1 examples (which must be pushed off-surface to solve XOR).
+We introduced this metric after observing that several failed training runs shared similar decision boundaries, and many of them had inputs that were dead from the start. We hypothesize that **dead data points at initialization are predictive of learning failure**.
 
-This analysis does not claim dead inputs are always harmful—but when they occur early and persist, they may severely restrict the model's capacity to reshape its decision surface.
+---
 
-The `Re-init on Dead` condition in this experiment is designed to evaluate this hypothesis directly by comparing its results against the `Standard Init` baseline.
+### A Secondary Failure Mode: The Margin Hypothesis
+
+After correcting for dead data points, a small number of training failures still occurred. Analysis of these cases suggested a new hypothesis: failures can also happen if a neuron's hyperplane initializes **too close to a data point**.
+
+If the initial margin is too small, a slight weight update during early optimization can push the hyperplane across a nearby data point. This can "deactivate" the point's influence on that neuron by moving it into the ReLU's zero-gradient region, effectively halting learning for that point-neuron pair and potentially trapping the model in a suboptimal state. This "Margin Hypothesis" suggests that a "safe" initialization requires not only that all points are "live," but also that they have sufficient distance from the initial decision boundaries.
 
 ---
 
@@ -81,17 +81,19 @@ The `Re-init on Dead` condition in this experiment is designed to evaluate this 
 * **Optimizer**: Adam (learning rate 0.01, β₁ = 0.9, β₂ = 0.99)
 * **Batch Size**: Full batch (4 XOR examples)
 * **Epochs**: Maximum of 800.
-* **Runs**: 50 per initialization strategy
+* **Runs**: 50 to 500 per initialization strategy.
 
 ---
 
 ## Initialization Strategies
 
-We test two initialization strategies to evaluate the Dead Data Point Hypothesis. In both cases, the base weight initialization uses a normal distribution $\mathcal{N}(0, 0.5^2)$ and biases are initialized to zero.
+We test a sequence of initialization strategies to diagnose and resolve the model's training failures. In all cases, the base weight initialization uses a normal distribution $\mathcal{N}(0, 0.5^2)$ and biases are initialized to zero.
 
-1.  **Standard Init (`relu1_normal`)**: The model uses the weights as-is after the initial sampling, with no check for dead data points. This serves as our baseline and replicates the conditions where failures were first observed.
+1.  **Standard Init (`relu1_normal`)**: The baseline condition. The model uses weights as-is after sampling, with no checks. This condition revealed the model's fragility.
 
-2.  **Re-init on Dead (`relu1_reinit`)**: After the initial sampling, the model is checked for dead data points. If any of the four XOR inputs are dead, the model's weights are discarded and re-initialized. This process repeats until an initialization is found where all inputs are "live" and provide a non-zero activation for at least one ReLU unit. This condition directly tests the impact of guaranteeing gradient flow from all inputs at the start of training.
+2.  **Re-init on Dead (`relu1_reinit`)**: The first intervention. The model is re-initialized until no data points are "dead," ensuring all inputs have an initial gradient signal from at least one neuron.
+
+3.  **Re-init with Margin (`relu1_reinit_margin`)**: The final set of interventions. In addition to the "live data" check, this condition also re-initializes if any hyperplane is within a specified margin $\epsilon$ of any data point. We tested this condition with progressively larger margins of **$\epsilon=0.1$**, **$\epsilon=0.2$**, and **$\epsilon=0.3$**.
 
 ## Data Configuration
 
@@ -139,15 +141,17 @@ These show whether training proceeds by rotation, scaling, or both, and whether 
 
 ### 5. **Classification Accuracy**
 
-As in the `abs1` experiment, this is tracked for completeness. All models are expected to eventually reach 100% accuracy, but our focus is on **how** they get there.
+As in the `abs1` experiment, this is tracked for completeness, but our focus is on **how** the models get there.
 
 ## Experimental Focus
 
-This experiment's primary goal is to test the **Dead Data Point Hypothesis**. The focus is on:
+This experiment follows an iterative, hypothesis-driven process. The primary goals evolved to include:
 
-1.  Determining if eliminating dead data points via re-initialization is **sufficient** to resolve the training failures seen in the standard ReLU model.
-2.  Comparing the rate of **emergent symmetry** between the two initialization conditions.
-3.  Analyzing how the guaranteed presence of gradient flow in the `Re-init on Dead` condition affects convergence speed and final model geometry.
+1.  Diagnosing the cause of the high failure rate in the standard ReLU model.
+2.  Testing the **Dead Data Point Hypothesis** by comparing the `Standard Init` and `Re-init on Dead` conditions.
+3.  Testing the **Margin Hypothesis** by applying progressively larger initialization margins.
+4.  Identifying a set of initialization heuristics sufficient to achieve a 100% success rate on this problem.
+5.  Analyzing how these interventions affect the emergence of symmetric geometric structures in the final learned model.
 
 ## Comments
 

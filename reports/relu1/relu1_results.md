@@ -1,18 +1,26 @@
 # **Results: Two ReLU Units Summed for XOR Classification**
 
-## 1. Overview
+## 1. Overview of Experimental Sequence & Accuracy
 
-This document summarizes the empirical results from two related experiments (`relu1_normal` and `relu1_reinit`) investigating a minimal ReLU-based architecture for the XOR problem. The key difference between the experiments is the initialization strategy. The `relu1_normal` condition uses a standard initialization, which frequently results in "dead data points" that provide no initial gradient. The `relu1_reinit` condition programmatically re-initializes the model until no data points are dead.
+This document summarizes empirical results from a sequence of experiments on the `relu1` architecture. Each experiment used a progressively more constrained initialization strategy to test hypotheses about training failures. The following table shows the final classification accuracy for each condition. The margin thresholds (0.1, 0.2, 0.3) were chosen arbitrarily to observe the trend.
 
-The results show a dramatic improvement in the `reinit` condition, with the failure rate dropping from **42% to 2%**. This confirms that dead data points are the primary, but not sole, cause of training failure. Analysis of the single remaining failure case in the `reinit` condition points to a more subtle geometric failure mode. While most successful runs learned the required mirror-symmetric structure, the final hyperplanes were often slightly asymmetric, suggesting limitations imposed by the one-sided ReLU gradient.
-## 2. Classification Accuracy
+### Classification Accuracy Across All Conditions
 
-The re-initialization strategy to eliminate dead data points was highly effective, resolving the vast majority of training failures.
-
-| Initialization Strategy | 100% Accuracy (Runs) | 75% Accuracy (Runs) | Failure Rate |
+| Initialization Strategy | Total Runs | Success Rate | Failure Rate |
 | :--- | :--- | :--- | :--- |
-| **Standard Init (`relu1_normal`)** | 29 / 50 | 21 / 50 | 42% |
-| **Re-init on Dead (`relu1_reinit`)** | 49 / 50 | 1 / 50 | 2% |
+| **1. Standard Init (`relu1_normal`)** | 50 | 58.0% (29 runs) | 42.0% (21 runs) |
+| **2. Re-init on Dead (`relu1_reinit`)** | 50 | 98.0% (49 runs) | 2.0% (1 run) |
+| **3. Re-init + 0.1 Margin** | 500 | 99.2% (496 runs) | 0.8% (4 runs) |
+| **4. Re-init + 0.2 Margin** | 500 | 99.8% (499 runs) | 0.2% (1 run) |
+| **5. Re-init + 0.3 Margin** | 500 | **100.0%** (500 runs) | **0.0%** (0 runs) |
+
+## 2. Results of Margin-Based Initialization
+
+Following the analysis of the `Re-init on Dead` condition, a series of experiments were run to test the Margin Hypothesis by enforcing a progressively larger initialization margin ($\epsilon$).
+
+* **With $\epsilon = 0.1$**: The failure rate was **0.8%** (4 failures in 500 runs).
+* **With $\epsilon = 0.2$**: The failure rate was further reduced to **0.2%** (1 failure in 500 runs).
+* **With $\epsilon = 0.3$**: All failure modes were suppressed, resulting in a **100% success rate** over 500 runs.
 
 ## 3. Dead Data Point Analysis
 
@@ -46,7 +54,7 @@ Emergent mirror symmetry was a strong indicator of success across both condition
 | **Standard Init (`relu1_normal`)** | **29 / 50 runs** (perfectly matching the 29 successful runs) |
 | **Re-init on Dead (`relu1_reinit`)** | **47 / 50 runs** |
 
-In the `reinit` condition, the three runs that did not form a mirror pair corresponded to the single failed run and two successful runs whose angles were too different to consider mirror pairs, although the structure of those solutions still matched the mirrored solutions. 
+In the `reinit` condition, the three runs that did not form a mirror pair corresponded to the single failed run and two successful runs whose angles were too different to consider mirror pairs, although the structure of those solutions still matched the mirrored solutions.
 
 ## 5. Single Failure Case Analysis (`relu1_reinit`)
 
@@ -54,7 +62,7 @@ The single run in the `reinit` condition that failed provides insight into a mor
 
 * **Initial State**: At initialization, the two ReLU hyperplanes were positioned close to each other and nearly perpendicular to the ideal separating boundaries. As shown in the initial hyperplane plot (`reinit_failure_plots/hyperplanes_initial.png`), one hyperplane started very close to the class-1 data points.
 
-* **Final State**: During training, one hyperplane appears to have quickly adjusted to zero out both class-0 data points (`(-1, -1)` and `(1, 1)`). In doing so, both class-1 points (`(-1, 1)` and `(1, -1)`) were pushed into the negative (deactivated) region of both ReLU units, halting their gradient flow and preventing the model from correcting their classification. The final hyperplane plot (`reinit_failure_plots/hyperplanes_final.png`) illustrates this outcome.
+* **Final State**: During training, one hyperplane appears to have quickly adjusted to zero out both class-0 data points (`(-1, -1)` and `(1, 1)`). In doing so, both class-1 points (`(-1, 1)` and `(-1, 1)`) were pushed into the negative (deactivated) region of both ReLU units, halting their gradient flow and preventing the model from correcting their classification. The final hyperplane plot (`reinit_failure_plots/hyperplanes_final.png`) illustrates this outcome.
 
 This suggests a new hypothesis for this failure: if an initial hyperplane is too close to a data point, it can be pushed across that point during early optimization, effectively deactivating it before the model has a chance to learn a globally optimal solution. A potential mitigation could be a "margin-based" re-initialization, which would ensure all data points are a minimum distance from the initial hyperplanes.
 

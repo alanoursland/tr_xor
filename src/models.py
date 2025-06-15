@@ -115,6 +115,41 @@ class Model_ReLU1(nn.Module):
         # Failed to find initialization without dead data
         raise RuntimeError(f"reinit_dead_data failed after {max_attempts} attempts")
 
+    def init_bounded_hypersphere(self, weight_init_fn, radius, data_mean=None):
+        """
+        Bounded Hypersphere Initialization: Initialize weights using weight_init_fn,
+        then set biases so hyperplanes are tangent to a hypersphere of given radius.
+        
+        Args:
+            weight_init_fn: Function to initialize weights (e.g., lambda: nn.init.kaiming_normal_(self.linear1.weight))
+            radius: Radius of the enclosing hypersphere
+            data_mean: Center of the hypersphere (defaults to zero vector)
+        
+        Returns:
+            self: Returns the model instance for method chaining
+        """
+        # Initialize weights using the provided function
+        weight_init_fn()
+        
+        # Set default data mean to zero vector if not provided
+        if data_mean is None:
+            data_mean = torch.zeros(self.linear1.in_features)
+        
+        # Set biases for hypersphere tangency
+        with torch.no_grad():
+            for i in range(self.linear1.out_features):
+                # print(f"Node {i}")
+                w = self.linear1.weight[i]
+                # print(f"  w={w}")
+                w_norm = torch.norm(w)
+                # print(f"  w_norm={w_norm}")
+                hypersphere_point = data_mean - w * radius / w_norm
+                # print(f"  hypersphere_point={hypersphere_point}")
+                # b = ||W|| * radius for tangent hyperplane pointing inward
+                self.linear1.bias[i] = -torch.dot(w, hypersphere_point)
+                # print(f"  bias={self.linear1.bias[i]}")
+        
+        return self
 
 class ParametricAbs(nn.Module):
     """

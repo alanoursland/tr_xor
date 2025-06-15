@@ -446,3 +446,40 @@ def config_relu1_reinit_margin() -> ExperimentConfig:
         logging=LoggingConfig(train_epochs=50)
     )
 
+@experiment("relu1_bhs")
+def config_relu1_bhs() -> ExperimentConfig:
+    """Factory function for ReLU XOR experiment."""
+    x = xor_data_centered()
+    y = xor_labels_T1()
+    model = models.Model_ReLU1()
+    # model.init_bounded_hypersphere(model.init_normal, radius=1.4)
+
+    model.reinit_dead_data(
+        lambda : model.init_bounded_hypersphere(model.init_normal, radius=1.4), 
+        x, 100, min_threshold=0.3)
+
+
+    # print(f"x = {x}")
+    # print(f"model.linear1.W = {model.linear1.weight }")
+    # print(f"model.linear1.b = {model.linear1.bias}")
+    # print(f"relu1_bhs init activation = {model.linear1(x)}")
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01, betas=(0.9, 0.99))
+    # optimizer = torch.optim.Adam(model.parameters(), lr=0.01, betas=(0.7, 0.9))
+    # optimizer = torch.optim.Adam(model.parameters(), lr=0.01, betas=(0.5, 0.8))
+    # optimizer = torch.optim.SGD(model.parameters(), lr=0.01, momentum=0.5)
+    # optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+    loss_function = nn.MSELoss()
+
+    return ExperimentConfig(
+        model=model,
+        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=2000, 
+                                stop_training_loss_threshold=1e-7,
+                                convergence_threshold=1e-24, convergence_patience=10),
+        data=DataConfig(x=x, y=y, problem_type=ExperimentType.XOR),
+        analysis=AnalysisConfig(convergence_analysis=False, save_plots=True, dead_data_analysis=True, mirror_pair_detection=True),
+        execution=ExecutionConfig(num_runs=50, skip_existing=False, random_seeds=[18]),
+        description="Centered XOR with two nodes, ReLU, sum, and bounded hypersphere initialization with norm weights.",
+        logging=LoggingConfig(train_epochs=50)
+    )
+

@@ -153,6 +153,7 @@ def execute_training_run(
                 model.train()  # Switch back to training mode
             
             print(f"  Run {run_id}, Epoch {epoch:4d} | Loss: {current_loss:.6f} | Accuracy: {accuracy:.3f}")
+            # print(f"    W={model.linear1.weight}, b={model.linear1.bias}")
 
     # Final evaluation
     model.eval()

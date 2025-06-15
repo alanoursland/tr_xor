@@ -137,7 +137,7 @@ def execute_training_run(
 
             if patience_counter > convergence_patience:
                 print(f"  Convergence-based early stopping at epoch {epoch} "
-                      f"(loss did not improve below {convergence_threshold} for {convergence_patience} steps)")
+                      f"(loss did not improve by {convergence_threshold} for {convergence_patience} steps)")
                 break
 
         if current_loss < best_loss:

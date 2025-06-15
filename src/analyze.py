@@ -2162,6 +2162,26 @@ def generate_experiment_visualizations(
             filename=plot_path
         )
 
+        init_model_path = run_result['run_dir'] / "model_init.pt"
+        if init_model_path.exists():
+            # Reconstruct the model and load initial weights
+            initial_model = config.model.__class__()  # assumes default constructor is valid
+            initial_weights = torch.load(init_model_path, map_location="cpu")
+            initial_model.load_state_dict(initial_weights)
+
+            # Path to save the initial hyperplane plot
+            init_plot_path = plot_dir / "init_hyperplanes.png"
+
+            # Plot using the same helper
+            plot_hyperplanes(
+                model=initial_model,
+                x=x,
+                y=y,
+                title=f"{experiment_name} Run {run_id:03d} (Initial)",
+                filename=init_plot_path
+            )
+
+
 def plot_epoch_distribution(run_results: List[Dict[str, Any]], plot_config: Dict[str, Any], output_dir: Path, experiment_name: str) -> None:
     """
     Plot a sorted curve of training epoch counts across all runs.

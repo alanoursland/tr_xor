@@ -2,13 +2,17 @@
 
 ## Experiment Overview
 
-This experiment investigates how a minimal ReLU-based network—composed of two opposing linear units passed through ReLU and summed—learns to solve the XOR problem. This model is designed as a structural analog of the single-unit absolute value network, based on the identity:
+This experiment investigates how a minimal ReLU-based network—composed of two opposing linear units passed through ReLU and summed—learns to solve the XOR problem. This model is designed as a structural analog of the single-unit absolute value network (`abs1`), based on the identity:
 
-$$
-|x| = \text{ReLU}(x) + \text{ReLU}(-x)
-$$
+$$|x| = \text{ReLU}(x) + \text{ReLU}(-x)$$
 
-The purpose is not to test whether the model can reach 100% accuracy (it can), but to analyze **how** it learns when the underlying symmetry of the absolute value is not baked in, but must emerge through optimization. We focus on convergence dynamics, symmetry formation, and geometric structure in weight space.
+Preliminary runs revealed that, unlike the robust `abs1` model, this architecture frequently fails to converge to a correct solution. Our analysis pointed to a potential cause: "dead data points" at initialization that provide no initial gradient signal.
+
+To test this **Dead Data Point Hypothesis**, we conduct two sets of runs under different initialization strategies:
+1.  **Standard Init**: A baseline condition using a standard normal initialization.
+2.  **Re-init on Dead**: A test condition where the model is programmatically re-initialized until no data points are dead, ensuring all inputs are "live" at the start of training.
+
+The purpose of this combined experiment is to determine if the lack of initial gradient flow is the primary cause of training failure and to analyze how its presence or absence affects the emergence of geometric symmetry and convergence dynamics.
 
 ## Model Architecture
 
@@ -51,7 +55,7 @@ During early analysis of models that failed to achieve 100% accuracy, we identif
 
 ### Definition
 
-An input is considered *dead* if, at model initialization, it lies outside the activation region of **all** ReLU units — i.e., it falls entirely into the negative half-space for each linear unit. Formally, an input \$x\_i\$ is dead if:
+An input is considered *dead* if, at model initialization, it lies outside the activation region of **all** ReLU units in a layer — i.e., it falls entirely into the negative half-space for each linear unit. Formally, an input $x_i$ is dead if:
 
 $$
 \text{ReLU}(w_1 \cdot x_i + b_1) = \text{ReLU}(w_2 \cdot x_i + b_2) = 0
@@ -65,7 +69,7 @@ We introduced this metric after observing that several failed training runs shar
 
 This analysis does not claim dead inputs are always harmful—but when they occur early and persist, they may severely restrict the model's capacity to reshape its decision surface.
 
-Further experiments (e.g., reinitializing models until no data is dead) are planned to evaluate this hypothesis more directly.
+The `Re-init on Dead` condition in this experiment is designed to evaluate this hypothesis directly by comparing its results against the `Standard Init` baseline.
 
 ---
 
@@ -76,16 +80,18 @@ Further experiments (e.g., reinitializing models until no data is dead) are plan
 * **Stagnation Criterion**: Training also stops if loss does not improve by at least **1e-24** over **10 consecutive epochs**
 * **Optimizer**: Adam (learning rate 0.01, β₁ = 0.9, β₂ = 0.99)
 * **Batch Size**: Full batch (4 XOR examples)
-* **Epochs**: Maximum of 200
+* **Epochs**: Maximum of 800.
 * **Runs**: 50 per initialization strategy
 
 ---
 
 ## Initialization Strategies
 
-We initialize the model using a normal distribution $\mathcal{N}(0, 0.5^2)$.
+We test two initialization strategies to evaluate the Dead Data Point Hypothesis. In both cases, the base weight initialization uses a normal distribution $\mathcal{N}(0, 0.5^2)$ and biases are initialized to zero.
 
-All biases are initialized to zero.
+1.  **Standard Init (`relu1_normal`)**: The model uses the weights as-is after the initial sampling, with no check for dead data points. This serves as our baseline and replicates the conditions where failures were first observed.
+
+2.  **Re-init on Dead (`relu1_reinit`)**: After the initial sampling, the model is checked for dead data points. If any of the four XOR inputs are dead, the model's weights are discarded and re-initialized. This process repeats until an initialization is found where all inputs are "live" and provide a non-zero activation for at least one ReLU unit. This condition directly tests the impact of guaranteeing gradient flow from all inputs at the start of training.
 
 ## Data Configuration
 
@@ -119,9 +125,7 @@ These capture how closely the model approximates the structure of an absolute va
 
 Each input $x_i$ is projected onto each weight:
 
-$$
-d_1(x_i) = \frac{w_1 \cdot x_i + b_1}{\|w_1\|}, \quad d_2(x_i) = \frac{w_2 \cdot x_i + b_2}{\|w_2\|}
-$$
+$$d_1(x_i) = \frac{w_1 \cdot x_i + b_1}{\|w_1\|}, \quad d_2(x_i) = \frac{w_2 \cdot x_i + b_2}{\|w_2\|}$$
 
 * **Purpose**: Shows how the two half-spaces contribute to classification.
 * **Interpretation**: Helps identify whether the model constructs symmetric or asymmetric regions of influence.
@@ -139,12 +143,11 @@ As in the `abs1` experiment, this is tracked for completeness. All models are ex
 
 ## Experimental Focus
 
-This experiment explores:
+This experiment's primary goal is to test the **Dead Data Point Hypothesis**. The focus is on:
 
-1. Whether the model consistently learns the symmetric structure of the absolute value.
-2. How symmetry failure correlates with convergence speed and geometry.
-3. How training behavior differs from `abs1`, despite functional equivalence being possible.
-4. What initialization scales are most conducive to emergent symmetry.
+1.  Determining if eliminating dead data points via re-initialization is **sufficient** to resolve the training failures seen in the standard ReLU model.
+2.  Comparing the rate of **emergent symmetry** between the two initialization conditions.
+3.  Analyzing how the guaranteed presence of gradient flow in the `Re-init on Dead` condition affects convergence speed and final model geometry.
 
 ## Comments
 

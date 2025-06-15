@@ -2,67 +2,76 @@
 
 ## 1. Overview
 
-This document summarizes empirical results from the `relu1_normal` experiment, which investigates a minimal ReLU-based architecture applied to the centered XOR problem. The model consists of two linear units followed by ReLU activations whose outputs are summed to form the prediction. Training was conducted using a fixed initialization scheme over 50 independent runs.
+This document summarizes the empirical results from two related experiments (`relu1_normal` and `relu1_reinit`) investigating a minimal ReLU-based architecture for the XOR problem. The key difference between the experiments is the initialization strategy. The `relu1_normal` condition uses a standard initialization, which frequently results in "dead data points" that provide no initial gradient. The `relu1_reinit` condition programmatically re-initializes the model until no data points are dead.
 
-Unlike the `abs1` model—which converged successfully in every case—this experiment **failed to reach 100% accuracy in 21 out of 50 runs**, despite using the same data and optimizer. This result demonstrates that the ReLU decomposition of the absolute value is not guaranteed to preserve the same optimization behavior, even under ideal conditions.
-
-In addition to overall accuracy and convergence metrics, we also examined **initial dead activations** and **emergent mirror symmetry** between units. These offered new insights into the conditions that lead to convergence or failure.
-
+The results show a dramatic improvement in the `reinit` condition, with the failure rate dropping from **42% to 2%**. This confirms that dead data points are the primary, but not sole, cause of training failure. Analysis of the single remaining failure case in the `reinit` condition points to a more subtle geometric failure mode. While most successful runs learned the required mirror-symmetric structure, the final hyperplanes were often slightly asymmetric, suggesting limitations imposed by the one-sided ReLU gradient.
 ## 2. Classification Accuracy
 
-| Accuracy (%) | Run Count |
-| ------------ | --------- |
-| 100%         | 29        |
-| 75%          | 21        |
+The re-initialization strategy to eliminate dead data points was highly effective, resolving the vast majority of training failures.
 
-No runs resulted in partial or zero accuracy beyond these two discrete outcomes, suggesting a binary success/failure dynamic in the learned solutions.
+| Initialization Strategy | 100% Accuracy (Runs) | 75% Accuracy (Runs) | Failure Rate |
+| :--- | :--- | :--- | :--- |
+| **Standard Init (`relu1_normal`)** | 29 / 50 | 21 / 50 | 42% |
+| **Re-init on Dead (`relu1_reinit`)** | 49 / 50 | 1 / 50 | 2% |
 
-## 3. Final Loss Distribution
+## 3. Dead Data Point Analysis
 
-The models that failed to achieve perfect accuracy also retained noticeably higher loss values at termination. Mean final loss across all runs was **1.05e-01**, with a maximum loss of **2.52e-01**.
+This metric was central to testing the hypothesis that a lack of initial gradient flow causes training failure.
 
-## 4. Convergence Timing (Epochs to Loss < 1e-7)
+### Standard Init (`relu1_normal`)
 
-Although many runs did converge to the configured loss threshold, the overall convergence distribution was slower than in the absolute value model:
+Under standard initialization, dead data points were common and strongly correlated with failure.
+
+* 13 runs with **no dead inputs** reached 100% accuracy.
+* 16 runs with **dead inputs** reached 100% accuracy.
+    * All 16 of these had only class-0 inputs dead.
+* 21 runs with **dead inputs** reached 75% accuracy.
+    * 20 of these had class-1 inputs dead.
+
+Notably, **no model with dead inputs from the `True` class (class 1) reached 100% accuracy**.
+
+### Re-init on Dead (`relu1_reinit`)
+
+This condition was designed to eliminate dead data points from the start.
+
+* By design, 0 runs had dead inputs at initialization.
+* Despite this, **1 run with no dead inputs still failed** to reach 100% accuracy, converging to 75% instead.
+
+## 4. Mirror Symmetry Formation
+
+Emergent mirror symmetry was a strong indicator of success across both conditions.
+
+| Initialization Strategy | Mirror Pairs Detected |
+| :--- | :--- |
+| **Standard Init (`relu1_normal`)** | **29 / 50 runs** (perfectly matching the 29 successful runs) |
+| **Re-init on Dead (`relu1_reinit`)** | **47 / 50 runs** |
+
+In the `reinit` condition, the three runs that did not form a mirror pair corresponded to the single failed run and two successful runs whose angles were too different to consider mirror pairs, although the structure of those solutions still matched the mirrored solutions. 
+
+## 5. Single Failure Case Analysis (`relu1_reinit`)
+
+The single run in the `reinit` condition that failed provides insight into a more subtle failure mode. Visual analysis of this run's initial and final states reveals a specific geometric pattern.
+
+* **Initial State**: At initialization, the two ReLU hyperplanes were positioned close to each other and nearly perpendicular to the ideal separating boundaries. As shown in the initial hyperplane plot (`reinit_failure_plots/hyperplanes_initial.png`), one hyperplane started very close to the class-1 data points.
+
+* **Final State**: During training, one hyperplane appears to have quickly adjusted to zero out both class-0 data points (`(-1, -1)` and `(1, 1)`). In doing so, both class-1 points (`(-1, 1)` and `(1, -1)`) were pushed into the negative (deactivated) region of both ReLU units, halting their gradient flow and preventing the model from correcting their classification. The final hyperplane plot (`reinit_failure_plots/hyperplanes_final.png`) illustrates this outcome.
+
+This suggests a new hypothesis for this failure: if an initial hyperplane is too close to a data point, it can be pushed across that point during early optimization, effectively deactivating it before the model has a chance to learn a globally optimal solution. A potential mitigation could be a "margin-based" re-initialization, which would ensure all data points are a minimum distance from the initial hyperplanes.
+
+## 6. Final Loss & Convergence (Standard Init)
+
+*The following metrics refer to the `relu1_normal` experiment runs.*
+
+The models that failed to achieve perfect accuracy also retained noticeably higher loss values at termination. Mean final loss across all runs was **1.05e-01**, with a maximum loss of **2.52e-01**. The overall convergence distribution was slower than in the `abs1` model.
 
 | Percentile | Epochs |
-| ---------- | ------ |
-| 0th        | 33     |
-| 50th       | 123    |
-| 100th      | 275    |
+| :--- | :--- |
+| 0th | 33 |
+| 50th | 123 |
+| 100th | 275 |
 
-Convergence time alone was not a reliable predictor of final classification success.
+## 7. Prototype Geometry and Hyperplane Clustering (Standard Init)
 
-## 5. Prototype Geometry and Hyperplane Clustering
+*The following metrics refer to the `relu1_normal` experiment runs.*
 
 The final learned hyperplanes exhibited broader variability and weaker class-0 alignment compared to `abs1`. Cluster analysis revealed five distinct solution modes, with many noisy outliers—further suggesting that training often failed to converge on a coherent decision surface.
-
-## 6. Dead Data Point Analysis
-
-We introduced a metric to identify **dead data points**—inputs that produce zero activation across all ReLU units at initialization. These points have no gradient influence early in training and may reduce the model’s ability to learn appropriate decision boundaries.
-
-Findings:
-
-* 13 runs with **no dead inputs** reached 100% accuracy  
-* 16 runs with **dead inputs** reached 100% accuracy  
-  * 16 of these had class-0 dead inputs  
-  * 0 of these had class-1 dead inputs  
-
-* 21 runs with **dead inputs** reached 75% accuracy  
-  * 13 of these had class-0 dead inputs  
-  * 20 of these had class-1 dead inputs  
-
-Notably, **no model with dead inputs from class 1 reached 100% accuracy**, suggesting these inputs are crucial for correct classification. This supports the hypothesis that **initial representational coverage** of the dataset strongly influences final outcomes.
-
-## 7. Mirror Symmetry Formation
-
-The model was architecturally inspired by the identity $|x| = \text{ReLU}(x) + \text{ReLU}(-x)$, but no symmetry was enforced. We measured how often and how precisely the two learned components became mirror reflections of one another.
-
-Findings:
-
-* **Mirror pairs detected**: 29 / 50 runs  
-* **Perfect mirror symmetry** (cosine similarity ≈ –1.0): 15 runs  
-* **Mean mirror similarity**: –0.99335 ± 0.00970  
-* **Mean mirror error** ($|\cos + 1|$): 0.00665
-
-Symmetry was common but not guaranteed, and perfect alignment was only achieved in about half the symmetric cases. This reflects the **difficulty of learning symmetry from scratch** via gradient descent.

@@ -14,6 +14,7 @@ class MonitorMetrics:
     torque_ratio: float  # Mean ratio of tangential to total gradient
     bias_grad_ratio: float  # Mean |∇b| / |b| ratio (bias movement)
     dead_neurons: List[int] = field(default_factory=list)  # Indices of dead neurons
+    bias_drift: float  # Mean step-to-step change in bias vectors (||b_t - b_{t-1}||), measures update activity
     
     @property
     def has_dead_data_issue(self) -> bool:
@@ -26,6 +27,10 @@ class MonitorMetrics:
     @property
     def has_bias_issue(self) -> bool:
         return self.bias_grad_ratio < 0.01
+
+    @property
+    def has_bias_freeze_issue(self) -> bool:
+        return self.bias_drift < 1e-4
 
 class PrototypeSurfaceMonitor:
     """
@@ -57,7 +62,9 @@ class PrototypeSurfaceMonitor:
         self.model = model
         self.history: List[MonitorMetrics] = []
         self.step_count = 0
-        
+        self._prev_bias = {n: p.detach().clone()
+                   for n, p in model.named_parameters() if 'bias' in n}
+
         # Find and register hooks on ReLU layers
         self._register_hooks()
         
@@ -100,7 +107,11 @@ class PrototypeSurfaceMonitor:
             'max_dead_fraction': max(m.dead_data_fraction for m in recent),
             'mean_torque_ratio': sum(m.torque_ratio for m in recent) / len(recent),
             'min_torque_ratio': min(m.torque_ratio for m in recent),
-            'steps_with_issues': sum(1 for m in recent if m.has_dead_data_issue or m.has_torque_issue)
+            'steps_with_issues': sum(1 for m in recent if m.has_dead_data_issue or m.has_torque_issue),
+            'mean_bias_grad_ratio': sum(m.bias_grad_ratio for m in recent) / len(recent),
+            'min_bias_grad_ratio': min(m.bias_grad_ratio for m in recent),
+            'mean_bias_drift': sum(m.bias_drift for m in recent) / len(recent),
+            'min_bias_drift': min(m.bias_drift for m in recent),
         }
     
     def _register_hooks(self) -> None:
@@ -123,23 +134,21 @@ class PrototypeSurfaceMonitor:
                 
                 module.register_forward_hook(make_forward_hook(name))
                 
+        def make_grad_hook(layer_name):
+            def hook(grad):
+                self.gradients[layer_name] = grad.detach()
+            return hook
+
         # Also need to capture gradients w.r.t. weights
         # Find Linear/Conv layers that feed into ReLUs
         # register_hook on .weight only works after .backward() has been called. 
         # Ensure it’s not missed by optimizers that clear gradients immediately.
         for name, module in self.model.named_modules():
             if isinstance(module, (nn.Linear, nn.Conv1d, nn.Conv2d)):
-                # Register hook to capture weight gradients
-                def make_grad_hook(layer_name):
-                    def hook(grad):
-                        self.gradients[layer_name] = grad.detach()
-                    return hook
-                
                 if module.weight.requires_grad:
-                    module.weight.register_hook(make_grad_hook(name + '_weight'))    
-            # register bias hooks
-            if module.bias is not None and module.bias.requires_grad:
-                module.bias.register_hook(make_grad_hook(name + '_bias'))
+                    module.weight.register_hook(make_grad_hook(name + '_weight'))
+                if module.bias is not None and module.bias.requires_grad:
+                    module.bias.register_hook(make_grad_hook(name + '_bias'))
 
     def _compute_metrics(self) -> MonitorMetrics:
         """Compute metrics from current activations and gradients."""
@@ -148,19 +157,31 @@ class PrototypeSurfaceMonitor:
         dead_data_fraction = compute_dead_data_fraction(self.activations)
         
         # 2. No-torque detection
-        torque_ratio = compute_mean_torque_ratio(self.gradients, self.model)
+        weight_torque, bias_ratio = compute_mean_torque_ratio(self.gradients, self.model)
         
         # 3. Dead neurons (expensive, check less frequently)
         dead_neurons = []
         if self.step_count % 100 == 0:
             dead_neurons = find_dead_neurons(self.activations)
         
+        # 4. Bias drift
+        bias_drifts = []
+        for name, param in self.model.named_parameters():
+            if 'bias' in name:
+                drift = (param - self._prev_bias[name]).norm()
+                bias_drifts.append(drift)
+                self._prev_bias[name] = param.detach().clone()
+
+        avg_bias_drift = torch.stack(bias_drifts).mean().item() if bias_drifts else 0.0
+
         return MonitorMetrics(
-            step=self.step_count,
-            dead_data_fraction=dead_data_fraction,
-            torque_ratio=torque_ratio,
-            dead_neurons=dead_neurons
-        )
+                step=self.step_count,
+                dead_data_fraction=dead_data_fraction,
+                torque_ratio=weight_torque,
+                bias_grad_ratio=bias_ratio,
+                dead_neurons=dead_neurons,
+                bias_drift=avg_bias_drift
+)
 
 
 # Utility functions
@@ -196,68 +217,46 @@ def compute_dead_data_fraction(activations: Dict[str, torch.Tensor]) -> float:
     return dead_samples.float().mean().item()
 
 
-def compute_mean_torque_ratio(gradients: Dict[str, torch.Tensor], model: nn.Module) -> float:
+def compute_mean_torque_ratio(gradients: Dict[str, torch.Tensor],
+                              model: nn.Module) -> Tuple[float, float]:
     """
-    Compute mean torque ratio (tangential/total gradient) across all weight matrices.
-    
-    Args:
-        gradients: Dict mapping parameter names to gradient tensors
-        model: Model to extract weight parameters from
-        
     Returns:
-        Mean torque ratio (0.0 to 1.0, higher is healthier)
+        (avg_weight_torque, avg_bias_grad_ratio)
     """
     weight_ratios = []
-    
-    for param_name, grad in gradients.items():
-        if 'weight' not in param_name or grad is None:
+    bias_ratios   = []
+
+    # ---------- weights ----------
+    for pname, grad in gradients.items():
+        if 'weight' not in pname or grad is None:
             continue
-            
-        # Get corresponding weight parameter
-        weight = None
-        for name, param in model.named_parameters():
-            if name + '_weight' == param_name:
-                weight = param
-                break
-                
+        weight = dict(model.named_parameters()).get(pname.replace('_weight', '.weight'))
         if weight is None:
             continue
-        
-        # Compute torque ratios for this layer
         ratios = compute_layer_torque_ratios(weight, grad)
-        if len(ratios) > 0:
+        if ratios.numel() > 0:
             weight_ratios.append(ratios)
 
-    if bias_ratios:
-        avg_weight_ratio = torch.tensor(weight_ratios).mean().item()
-    else:
-        # TODO: consider logging a warning if no gradients are found.
-        avg_weight_ratio = 1.0  # Assume healthy if missing
+    avg_weight_ratio = (
+        torch.cat(weight_ratios).mean().item()
+        if weight_ratios else 1.0
+    )
 
+    # ---------- biases ----------
+    for pname, grad in gradients.items():
+        if 'bias' not in pname or grad is None: 
+            continue
+        bias = dict(model.named_parameters()).get(pname.replace('_bias', '.bias'))
+        if bias is None: 
+            continue
+        bias_ratios.append(grad.norm() / (bias.norm() + 1e-8))
 
-    bias_ratios = []
-
-    for param_name, grad in gradients.items():
-        if 'bias' in param_name and grad is not None:
-            # Get corresponding bias parameter
-            bias = None
-            for name, param in model.named_parameters():
-                if name + '_bias' == param_name:
-                    bias = param
-                    break
-
-            if bias is not None and grad.shape == bias.shape:
-                ratio = grad.norm() / (bias.norm() + 1e-8)
-                bias_ratios.append(ratio)
-
-    if bias_ratios:
-        avg_bias_ratio = torch.tensor(bias_ratios).mean().item()
-    else:
-        # TODO: consider logging a warning if no gradients are found.
-        avg_bias_ratio = 1.0  # Assume healthy if missing
+    avg_bias_ratio = (
+        torch.tensor(bias_ratios).mean().item()
+        if bias_ratios else 1.0
+    )
 
     return avg_weight_ratio, avg_bias_ratio
-
 
 def compute_layer_torque_ratios(weight: torch.Tensor, grad: torch.Tensor) -> torch.Tensor:
     """

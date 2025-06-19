@@ -11,10 +11,10 @@ class MonitorMetrics:
     """Single timestep metrics from the monitor."""
     step: int
     dead_data_fraction: float  # Fraction of examples with all ReLUs off
-    torque_ratio: float  # Mean ratio of tangential to total gradient
-    bias_grad_ratio: float  # Mean |∇b| / |b| ratio (bias movement)
+    torque_ratio: float        # Mean ratio of tangential to total gradient
+    bias_grad_ratio: float     # Mean |∇b| / |b| ratio (bias movement)
+    bias_drift: float          # Mean step-to-step change in bias vectors (||b_t - b_{t-1}||)
     dead_neurons: List[int] = field(default_factory=list)  # Indices of dead neurons
-    bias_drift: float  # Mean step-to-step change in bias vectors (||b_t - b_{t-1}||), measures update activity
     
     @property
     def has_dead_data_issue(self) -> bool:
@@ -67,7 +67,15 @@ class PrototypeSurfaceMonitor:
 
         # Find and register hooks on ReLU layers
         self._register_hooks()
-        
+
+    def to(self, device: torch.device) -> None:
+        """
+        Move internal tensors to the specified device (e.g., CUDA or CPU).
+        """
+        self.device = device
+        for name in self._prev_bias:
+            self._prev_bias[name] = self._prev_bias[name].to(device)
+
     def check(self) -> MonitorMetrics:
         """
         Compute current health metrics. Call after backward() but before optimizer.step().
@@ -182,7 +190,6 @@ class PrototypeSurfaceMonitor:
                 dead_neurons=dead_neurons,
                 bias_drift=avg_bias_drift
 )
-
 
 # Utility functions
 def compute_dead_data_fraction(activations: Dict[str, torch.Tensor]) -> float:

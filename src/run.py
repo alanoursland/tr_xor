@@ -93,6 +93,9 @@ def execute_training_run(
     optimizer = training_components["optimizer"]
     loss_function = training_components["loss_function"]
 
+    if config.training.health_monitor:
+        config.training.health_monitor.to(device)
+
     # Training tracking
     losses = []
     start_time = time.time()
@@ -112,6 +115,18 @@ def execute_training_run(
         # Backward pass
         optimizer.zero_grad()
         loss.backward()
+
+        if config.training.health_monitor:    
+            metrics = config.training.health_monitor.check()
+            print(f"[epoch {epoch}] dead_data={metrics.dead_data_fraction:.2f}, torque={metrics.torque_ratio:.4f}, bias_drift={metrics.bias_drift:.2e}")
+            # # Optional: respond to specific issues
+            # if metrics.has_dead_data_issue:
+            #     print(f"⚠️  Dead data detected: {metrics.dead_data_fraction:.1%}")
+            # if metrics.has_torque_issue:
+            #     print(f"⚠️  Low torque ratio: {metrics.torque_ratio:.4f}")
+            # if metrics.has_bias_freeze_issue:
+            #     print(f"⚠️  Bias drift too small: {metrics.bias_drift:.2e}")
+
         optimizer.step()
 
         # Track loss

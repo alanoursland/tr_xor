@@ -14,6 +14,7 @@ from data import xor_data_centered, xor_labels_T1
 import torch
 import torch.nn as nn
 import models
+import monitor
 
 # ==============================================================================
 # Configuration Schema and Types
@@ -41,6 +42,9 @@ class TrainingConfig:
 
     epochs: int = None
     batch_size: int = None
+
+    # Training Monitor
+    health_monitor: Optional[monitor.MonitorMetrics] = None
 
     # Convergence Detection
     stop_training_loss_threshold: Optional[float] = None
@@ -479,6 +483,27 @@ def config_relu1_bhs() -> ExperimentConfig:
         analysis=AnalysisConfig(convergence_analysis=False, save_plots=True, dead_data_analysis=True, mirror_pair_detection=True),
         execution=ExecutionConfig(num_runs=50, skip_existing=False, random_seeds=[18]),
         description="Centered XOR with two nodes, ReLU, sum, and bounded hypersphere initialization with norm weights.",
+        logging=LoggingConfig(train_epochs=50)
+    )
+
+@experiment("relu1_monitor")
+def config_relu1_monitor() -> ExperimentConfig:
+    """Factory function for ReLU XOR experiment."""
+    model = models.Model_ReLU1().init_normal()
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01, betas=(0.9, 0.99))
+    loss_function = nn.MSELoss()
+    health_monitor = monitor.PrototypeSurfaceMonitor(model)
+
+    return ExperimentConfig(
+        model=model,
+        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=800, 
+                                stop_training_loss_threshold=1e-7,
+                                convergence_threshold=1e-24, convergence_patience=10,
+                                health_monitor=health_monitor),
+        data=DataConfig(x=xor_data_centered(), y=xor_labels_T1(), problem_type=ExperimentType.XOR),
+        analysis=AnalysisConfig(convergence_analysis=False, save_plots=True, dead_data_analysis=True, mirror_pair_detection=True),
+        execution=ExecutionConfig(num_runs=1, skip_existing=False, random_seeds=[18]),
+        description="Centered XOR with two nodes, ReLU, sum, normal init, and degeneracy detection.",
         logging=LoggingConfig(train_epochs=50)
     )
 

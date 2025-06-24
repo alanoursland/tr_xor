@@ -5,6 +5,54 @@ import torch.nn as nn
 from typing import Dict, List, Optional, Sequence, Tuple, Callable
 from dataclasses import dataclass, field
 
+class SharedHookManager:
+    """
+    Manages the registration of hooks and storage of captured data for a model.
+    This object is intended to be shared by one or more monitors to prevent
+    redundant hook registration.
+    """
+    def __init__(self, model: nn.Module):
+        self.model = model
+        self.activations: Dict[str, torch.Tensor] = {}
+        self.gradients: Dict[str, torch.Tensor] = {}
+        self.forward_outputs: Dict[str, torch.Tensor] = {}
+        self._register_hooks()
+
+    def _register_hooks(self):
+        for name, module in self.model.named_modules():
+            if isinstance(module, nn.ReLU):
+                module.register_forward_hook(self._make_forward_hook(name + "_relu_out"))
+            elif isinstance(module, nn.Linear):
+                module.weight.register_hook(self._make_grad_hook(name + "_weight"))
+                if module.bias is not None:
+                    module.bias.register_hook(self._make_grad_hook(name + "_bias"))
+
+    def _make_forward_hook(self, name: str) -> Callable:
+        def hook(module, input, output):
+            self.activations[name + "_in"] = input[0].detach().clone()
+            self.forward_outputs[name + "_out"] = output.detach().clone()
+        return hook
+
+    def _make_grad_hook(self, name: str) -> Callable:
+        def hook(grad):
+            self.gradients[name] = grad.detach().clone()
+        return hook
+        
+    def to(self, device: torch.device) -> None:
+        """Moves all cached tensors to the specified device."""
+        def move_dict(d: Dict[str, torch.Tensor]):
+            for k in d:
+                d[k] = d[k].to(device)
+        move_dict(self.activations)
+        move_dict(self.forward_outputs)
+        move_dict(self.gradients)
+    
+    def clear(self):
+        """Clears all stored data."""
+        self.activations.clear()
+        self.forward_outputs.clear()
+        self.gradients.clear()
+
 class BaseMonitor:
     """
     BaseMonitor provides shared infrastructure for monitoring neural network
@@ -23,48 +71,37 @@ class BaseMonitor:
     """
     def __init__(
         self,
-        model: nn.Module,
+        hook_manager: SharedHookManager,
         dataset_size: int,
         classifier_threshold: float = 0.5,
-    ):
-        self.model = model
+    ):  
+        self.manager = hook_manager
         self.step_count = 0
-        self.activations: Dict[str, torch.Tensor] = {}
-        self.gradients: Dict[str, torch.Tensor] = {}
-        self.forward_outputs: Dict[str, torch.Tensor] = {}
-
         self.dataset_size = dataset_size
         self.classifier_threshold = classifier_threshold
 
-        self._register_hooks()
+    @property
+    def activations(self) -> Dict[str, torch.Tensor]:
+        """Provides direct access to the shared activations dictionary."""
+        return self.manager.activations
+
+    @property
+    def forward_outputs(self) -> Dict[str, torch.Tensor]:
+        """Provides direct access to the shared forward_outputs dictionary."""
+        return self.manager.forward_outputs
+
+    @property
+    def gradients(self) -> Dict[str, torch.Tensor]:
+        """Provides direct access to the shared gradients dictionary."""
+        return self.manager.gradients
+
+    @property
+    def model(self) -> nn.Module:
+        """Provides direct access to the model via the shared manager."""
+        return self.manager.model
 
     def to(self, device: torch.device) -> None:
-        def move_dict(d: Dict[str, torch.Tensor]):
-            for k in d:
-                d[k] = d[k].to(device)
-        move_dict(self.activations)
-        move_dict(self.forward_outputs)
-        move_dict(self.gradients)
-
-    def _register_hooks(self):
-        for name, module in self.model.named_modules():
-            if isinstance(module, nn.ReLU):
-                module.register_forward_hook(self._make_forward_hook(name + "_relu_out"))
-            elif isinstance(module, nn.Linear):
-                module.weight.register_hook(self._make_grad_hook(name + "_weight"))
-                if module.bias is not None:
-                    module.bias.register_hook(self._make_grad_hook(name + "_bias"))
-
-    def _make_forward_hook(self, name):
-        def hook(module, input, output):
-            self.activations[name + "_in"]  = input[0].detach().clone()
-            self.forward_outputs[name + "_out"] = output.detach().clone()
-        return hook
-
-    def _make_grad_hook(self, name):
-        def hook(grad):
-            self.gradients[name] = grad.detach().clone()
-        return hook
+        self.manager.to(device)
 
     def check(self, targets: torch.Tensor, batch_idx: Sequence[int]) -> bool:
         """
@@ -93,15 +130,15 @@ class DeadSampleMonitor(BaseMonitor):
     """
     def __init__(
         self,
-        model: nn.Module,
+        hook_manager: SharedHookManager,
         dataset_size: int,
         patience: int = 3,
         classifier_threshold: float = 0.5,
     ):
         super().__init__(
-            model=model,
             dataset_size=dataset_size,
             classifier_threshold=classifier_threshold,
+            hook_manager = hook_manager
         )
         self.patience = patience
         self.dead_counter = torch.zeros(dataset_size, dtype=torch.int32)
@@ -357,14 +394,14 @@ class DeadSampleMonitor(BaseMonitor):
 class BoundsMonitor(BaseMonitor):
     def __init__(
         self,
-        model: nn.Module,
+        hook_manager: SharedHookManager,
         dataset_size: int,
         radius: float,
         origin: torch.Tensor = None,
     ):
-        super().__init__(model, dataset_size)
+        super().__init__(hook_manager, dataset_size)
         self.radius = radius
-        self.origin = origin if origin is not None else torch.zeros(model.linear1.in_features)
+        self.origin = origin if origin is not None else torch.zeros(hook_manager.model.linear1.in_features)
 
     @torch.no_grad()
     def check(self, targets: torch.Tensor, batch_idx: Sequence[int]) -> bool:
@@ -399,15 +436,15 @@ class LoggingMonitor(BaseMonitor):
     """
     def __init__(
         self,
-        model: nn.Module,
+        hook_manager: SharedHookManager,
         dataset_size: int,
         patience: int = 3,
         classifier_threshold: float = 0.5,
     ):
         super().__init__(
-            model=model,
+            hook_manager,
             dataset_size=dataset_size,
-            classifier_threshold=classifier_threshold,
+            classifier_threshold=classifier_threshold, 
         )
         self.patience = patience
         self.dead_counter = torch.zeros(dataset_size, dtype=torch.int32)
@@ -472,25 +509,40 @@ class LoggingMonitor(BaseMonitor):
             grads.append((w, b))
         return grads
 
-    def clear(self):
-        self.activations.clear()
-        self.forward_outputs.clear()
-        self.gradients.clear()
+# In monitor.py
 
 class CompositeMonitor(BaseMonitor):
     def __init__(self, monitors: Sequence[BaseMonitor]):
+        if not monitors:
+            raise ValueError("CompositeMonitor requires at least one monitor.")
+
+        # ---- Intelligent Initialization ----
+        # 1. We'll get the model and shared manager from the first monitor in the list.
+        #    (We assume all monitors in the list share the same model and manager).
+        manager = monitors[0].manager
+        dataset_size = monitors[0].dataset_size # Also needed for super()
+
+        # 2. Now, properly initialize itself as a BaseMonitor.
+        super().__init__(
+            hook_manager=manager,
+            dataset_size=dataset_size,
+        )
+
+        # 3. Store the list of monitors it will delegate to.
         self.monitors = monitors
-        self.model = monitors[0].model
-        self.step_count = 0
 
     def check(self, targets: torch.Tensor, batch_idx: Sequence[int]) -> bool:
+        # Delegate the 'check' call to each child monitor.
         results = [m.check(targets, batch_idx) for m in self.monitors]
         return all(results)
 
-    def fix(self, x: torch.Tensor, y: torch.Tensor):
+    def fix(self, x: torch.Tensor, y: torch.Tensor) -> None:
+        # Delegate the 'fix' call to each child monitor.
         for m in self.monitors:
             m.fix(x, y)
 
     def to(self, device: torch.device):
-        for m in self.monitors:
-            m.to(device)
+        # The parent 'to' method already calls manager.to(device),
+        # so we don't need to do anything extra here. The shared state
+        # is handled correctly.
+        super().to(device)

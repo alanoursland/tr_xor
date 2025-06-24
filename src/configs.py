@@ -516,9 +516,10 @@ def config_relu1_monitor() -> ExperimentConfig:
     #     classifier_threshold=0.5    # output ≥0.5 → class 1
     # )
 
+    hook_manager = monitor.SharedHookManager(model)
     health_monitor = monitor.CompositeMonitor([
-        monitor.DeadSampleMonitor(model, dataset_size=dataset_size, patience=5, classifier_threshold=0.5),
-        monitor.BoundsMonitor(model=model, dataset_size=dataset_size, radius=1.5),
+        monitor.DeadSampleMonitor(hook_manager, dataset_size=dataset_size, patience=5, classifier_threshold=0.5),
+        monitor.BoundsMonitor(hook_manager, dataset_size=dataset_size, radius=1.5),
     ])
 
     # health_monitor = monitor.DeadSampleMonitor(model, dataset_size=dataset_size, patience=3, classifier_threshold=0.5)

@@ -1,8 +1,8 @@
-# Prototype Surface Learning in Neural Networks
+# Prototype Surface Learning in Neural Networks: A Technical Report Exploring the XOR Problem
 
 ## Overview
 
-This research project investigates a fundamental reinterpretation of how neural networks learn: rather than constructing decision boundaries that separate classes, neural networks learn **prototype surfaces** that characterize where each class naturally exists in feature space. Classification then emerges from measuring geometric deviation from these learned surfaces.
+This tech report investigates a fundamental reinterpretation of how neural networks learn: rather than constructing decision boundaries that separate classes, neural networks learn **prototype surfaces** that characterize where each class naturally exists in feature space. Classification then emerges from measuring geometric deviation from these learned surfaces.
 
 The key insight is that **zero activation indicates membership** in a learned prototype region, while non-zero activation measures distance from it. This inverts the traditional interpretation where high activation indicates strong feature presence.
 

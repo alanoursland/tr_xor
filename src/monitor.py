@@ -293,7 +293,7 @@ class DeadSampleMonitor(BaseMonitor):
 
         # --- 2. Prepare for the fix ---
         flagged_global_idx = batch_idx_cpu[local_idx_to_fix].tolist()
-        print(f"⚠️ Correcting persistently dead samples (global indices: {flagged_global_idx})")
+        print(f"⚠️ {self.step_count} Correcting persistently dead samples (global indices: {flagged_global_idx})")
 
         model = self.model
         W = model.linear1.weight
@@ -311,7 +311,6 @@ class DeadSampleMonitor(BaseMonitor):
 
         # --- 4. Reset the counter for the samples that were just fixed ---
         self.dead_counter[flagged_global_idx] = 0
-        print(f"   ➤ Reset patience counter for samples {flagged_global_idx}.")
 
     # 92% get 100% accuracy
     @torch.no_grad()

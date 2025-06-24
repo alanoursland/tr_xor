@@ -293,7 +293,7 @@ class DeadSampleMonitor(BaseMonitor):
 
         # --- 2. Prepare for the fix ---
         flagged_global_idx = batch_idx_cpu[local_idx_to_fix].tolist()
-        print(f"⚠️ {self.step_count} Correcting persistently dead samples (global indices: {flagged_global_idx})")
+        print(f"👻 {self.step_count} Correcting persistently dead samples (global indices: {flagged_global_idx})")
 
         model = self.model
         W = model.linear1.weight
@@ -396,41 +396,125 @@ class DeadSampleMonitor(BaseMonitor):
         b[closest_neuron_idx] += delta_b
 
 class BoundsMonitor(BaseMonitor):
+    """
+    Monitors if the decision boundaries of neurons have drifted too far from a
+    central point in the input space.
+
+    This monitor calculates the orthogonal distance from a specified `origin` point
+    to the hyperplane defined by each neuron in the first linear layer. If this
+    distance exceeds a given `radius`, the monitor flags the neuron for
+    intervention.
+
+    This can be a form of regularization, preventing neurons from becoming
+    unresponsive to data near the origin.
+    """
     def __init__(
         self,
         hook_manager: SharedHookManager,
         dataset_size: int,
         radius: float,
+        patience: int = 3,
         origin: torch.Tensor = None,
     ):
+        """
+        Initializes the BoundsMonitor.
+
+        Args:
+            hook_manager: The shared manager for hooks and captured data.
+            dataset_size: The total number of samples in the dataset.
+            radius: The maximum allowed distance from the origin to a neuron's
+                    decision boundary.
+            patience: The number of consecutive steps a neuron must be out of
+                      bounds before it is flagged for intervention.
+            origin: The reference point in the input space. If None, it defaults
+                    to a zero vector with the same dimension as the model's input.
+        """
         super().__init__(hook_manager, dataset_size)
         self.radius = radius
-        self.origin = origin if origin is not None else torch.zeros(hook_manager.model.linear1.in_features)
+        self.patience = patience
+
+        # Determine the number of neurons to monitor.
+        num_neurons = self.model.linear1.out_features
+
+        # Initialize a counter to track consecutive violations for each neuron.
+        self.violation_counter = torch.zeros(num_neurons, dtype=torch.int32)
+        
+        # If no origin is provided, create a default zero vector.
+        if origin is None:
+            input_dimensionality = self.model.linear1.in_features
+            self.origin = torch.zeros(input_dimensionality)
+        else:
+            self.origin = origin
+        
+        # A small constant to prevent division by zero.
+        self.EPSILON = 1e-12
 
     @torch.no_grad()
     def check(self, x: torch.Tensor, y: torch.Tensor, batch_idx: Sequence[int]) -> bool:
-        W = self.model.linear1.weight.detach()  # (H, D)
-        b = self.model.linear1.bias.detach()    # (H,)
-        origin = self.origin.to(W.device)       # (D,)
+        """
+        Checks if any neuron's decision boundary has been outside the allowed
+        radius for a duration longer than `patience`.
 
-        num = W @ origin + b                    # (H,)
-        denom = W.norm(dim=1) + 1e-12           # (H,)
-        dists = num.abs() / denom               # (H,)
+        The distance is calculated as: distance = |w·x_0 + b| / ||w||.
 
-        mask = dists > self.radius
-        self.flagged_neurons = torch.nonzero(mask, as_tuple=False).flatten()
+        Returns:
+            True if all neurons are within bounds or patience has not been
+            exceeded, False otherwise.
+        """
+        weights = self.model.linear1.weight  # Shape: (num_neurons, in_features)
+        biases = self.model.linear1.bias    # Shape: (num_neurons,)
+        origin = self.origin.to(weights.device)
+        self.violation_counter = self.violation_counter.to(weights.device)
 
-        # for j in self.flagged_neurons.tolist():
-        #     print(f"⚠️  Neuron {j} outside radius: distance = {dists[j]:.4f} > {self.radius:.4f}")
+        # --- 1. Calculate Distances (same as before) ---
+        hyperplane_eval_at_origin = weights @ origin + biases
+        numerator = hyperplane_eval_at_origin.abs()
+        weight_norms = weights.norm(dim=1) + self.EPSILON
+        distances = numerator / weight_norms
 
+        # --- 2. Update Violation Counters ---
+        is_outside_radius = distances > self.radius
+        
+        # If a neuron is out of bounds, increment its counter.
+        # Otherwise, reset its counter to zero.
+        current_counts = self.violation_counter
+        updated_counts = torch.where(is_outside_radius, current_counts + 1, 0)
+        self.violation_counter = updated_counts
+        
+        # --- 3. Flag Neurons Exceeding Patience ---
+        # A neuron is flagged only if its violation streak is greater than patience.
+        needs_fixing = updated_counts > self.patience
+        self.flagged_neurons = torch.nonzero(needs_fixing).flatten()
+
+        # For debugging:
+        # if self.flagged_neurons.numel() > 0:
+        #      print(f"📏 Neuron(s) {self.flagged_neurons.tolist()} have been out of bounds "
+        #            f"for {self.patience} steps.")
+
+        self.step_count += 1
         return len(self.flagged_neurons) == 0
 
     @torch.no_grad()
     def fix(self, x: torch.Tensor, y: torch.Tensor, batch_idx: Sequence[int]) -> None:
-        # print(f"⚠️    Zeroing node biases due to bounds violation...")
-        for j in self.flagged_neurons.tolist():
+        """
+        Applies a corrective fix by resetting the bias of any flagged neuron
+        and also resetting its violation counter.
+        """
+        if not self.flagged_neurons.numel():
+            return  # No neurons to fix
+
+        flagged_indices = self.flagged_neurons.tolist()
+        
+        print(f"🌐 {self.step_count} Correcting {len(flagged_indices)} neuron(s) "
+              f"{flagged_indices} by resetting bias due to persistent bounds violation...")
+        
+        for neuron_idx in flagged_indices:
+            # Apply the fix by zeroing the bias.
             if self.model.linear1.bias is not None:
-                self.model.linear1.bias[j].zero_()
+                self.model.linear1.bias[neuron_idx].zero_()
+            
+            # Reset the violation counter for the fixed neuron.
+            self.violation_counter[neuron_idx] = 0
 
 class LoggingMonitor(BaseMonitor):
     """

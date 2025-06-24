@@ -518,7 +518,7 @@ def config_relu1_monitor() -> ExperimentConfig:
         monitor.BoundsMonitor(hook_manager, dataset_size=dataset_size, radius=1.5),
     ])
 
-    # health_monitor = monitor.DeadSampleMonitor(model, dataset_size=dataset_size, patience=3, classifier_threshold=0.5)
+    # health_monitor = monitor.DeadSampleMonitor(hook_manager, dataset_size=dataset_size, patience=6, classifier_threshold=0.5)
 
     # ------------------------------------------------------------------
     # 4) Assemble the usual experiment config.
@@ -546,7 +546,7 @@ def config_relu1_monitor() -> ExperimentConfig:
             mirror_pair_detection=True
         ),
         execution=ExecutionConfig(
-            num_runs=1,
+            num_runs=50,
             skip_existing=False,
             random_seeds=[18]
         ),

@@ -174,8 +174,10 @@ def execute_training_run(
             # Compute current accuracy
             with torch.no_grad():
                 model.eval()
-                preds = (outputs.squeeze() > 0.5).float()
-                accuracy = (preds == y).float().mean().item()
+                if config.analysis.accuracy_fn is not None:
+                    accuracy = config.analysis.accuracy_fn(outputs, y)
+                else:
+                    accuracy = 0.0
                 model.train()  # Switch back to training mode
             
             print(f"  Run {run_id}, Epoch {epoch:4d} | Loss: {current_loss:.6f} | Accuracy: {accuracy:.3f}")
@@ -188,14 +190,10 @@ def execute_training_run(
         final_loss = loss_function(final_outputs, y).item()
 
         # For classification, compute accuracy
-        if len(final_outputs.shape) > 1 and final_outputs.shape[1] > 1:
-            # Multi-class output
-            preds = torch.argmax(final_outputs, dim=1)
-            accuracy = (preds == y).float().mean().item()
+        if config.analysis.accuracy_fn is not None:
+            accuracy = config.analysis.accuracy_fn(final_outputs, y)
         else:
-            # Single output (regression or binary)
-            preds = (final_outputs.squeeze() > 0.5).float()
-            accuracy = (preds == y.float()).float().mean().item()
+            accuracy = 0.0
 
     training_time = time.time() - start_time
 

@@ -18,6 +18,14 @@ import matplotlib.pyplot as plt
 import json
 import math
 
+def targets_to_class_labels(y):
+    if y.ndim == 2 and y.shape[1] > 1:
+        # Convert one-hot classification to labels
+        y_indices = torch.argmax(y, dim=1)
+    else:
+        # Convert binary thresholding to labels
+        y_indices = y.long()
+    return y_indices
 
 def configure_analysis_from_config(config: ExperimentConfig) -> Tuple[List[str], Dict[str, Any]]:
     """
@@ -453,6 +461,9 @@ def compute_data_statistics(x: torch.Tensor, y: torch.Tensor) -> Dict[str, Any]:
     Returns:
         Dictionary of data statistics
     """
+    # Label statistics
+    y_indices = targets_to_class_labels(y)
+
     return {
         # Basic statistics
         'num_samples': len(x),
@@ -466,9 +477,8 @@ def compute_data_statistics(x: torch.Tensor, y: torch.Tensor) -> Dict[str, Any]:
         'input_max': x.max(dim=0)[0],
         'input_range': x.max(dim=0)[0] - x.min(dim=0)[0],
         
-        # Label statistics
-        'label_distribution': torch.bincount(y.long()) / len(y),
-        'is_balanced': torch.std(torch.bincount(y.long()).float()) < 0.1,
+        'label_distribution': torch.bincount(y_indices) / len(y),
+        'is_balanced': torch.std(torch.bincount(y_indices).float()) < 0.1,
         
         # Geometric properties
         'data_diameter': compute_data_diameter(x),
@@ -535,22 +545,33 @@ def compute_class_separation_distance(x: torch.Tensor, y: torch.Tensor) -> float
     Returns:
         Minimum inter-class distance
     """
+    y_indices = targets_to_class_labels(y)
+    unique_labels = torch.unique(y_indices)
+
     min_distance = float('inf')
-    unique_labels = torch.unique(y)
-    
+
     for i, label1 in enumerate(unique_labels):
-        for label2 in unique_labels[i+1:]:
-            mask1 = (y == label1)
-            mask2 = (y == label2)
-            
+        for label2 in unique_labels[i + 1:]:
+            mask1 = (y_indices == label1)
+            mask2 = (y_indices == label2)
+
             x1 = x[mask1]
             x2 = x[mask2]
-            
-            # Compute all pairwise distances between classes
+
+            # Skip if either class is empty
+            if x1.numel() == 0 or x2.numel() == 0:
+                continue
+
+            # Ensure 2D inputs for cdist
+            if x1.ndim == 1:
+                x1 = x1.unsqueeze(0)
+            if x2.ndim == 1:
+                x2 = x2.unsqueeze(0)
+
             distances = torch.cdist(x1, x2, p=2)
             min_distance = min(min_distance, distances.min().item())
-    
-    return min_distance
+
+    return min_distance if min_distance < float('inf') else 0.0
 
 def remove_duplicate_points(points: torch.Tensor, tolerance: float = 1e-3) -> torch.Tensor:
     """
@@ -2461,10 +2482,18 @@ def generate_analysis_report(
     for entry in distance_entries:
         dists = entry["distances"]
         labels = entry["labels"]
+
         for dist, label in zip(dists, labels):
-            if label == 0.0:
+            # Convert label to scalar class index if needed
+            if isinstance(label, torch.Tensor):
+                if label.ndim == 0:
+                    label = label.item()
+                elif label.ndim == 1 and label.shape[0] > 1:
+                    label = torch.argmax(label).item()
+
+            if label == 0:
                 class0_distances.append(dist)
-            elif label == 1.0:
+            elif label == 1:
                 class1_distances.append(dist)
 
     # Convert to numpy arrays for stats

@@ -170,6 +170,34 @@ class Model_ReLU1(nn.Module):
         
         return self
 
+class Model_Xor2(nn.Module):
+    def __init__(self, middle, activation):
+        super().__init__()
+        self.linear1 = nn.Linear(2, middle)
+        self.activation = activation
+        self.scale = StaticScale(middle)
+        self.linear2 = nn.Linear(middle, 2)
+
+    def forward(self, x):
+        x = self.linear1(x)
+        x = self.activation(x)
+        x = self.scale(x)
+        x = self.linear2(x)
+        return x
+
+    def init(self):
+        nn.init.kaiming_normal_(self.linear1.weight, nonlinearity='relu')
+        nn.init.zeros_(self.linear1.bias)
+
+        nn.init.ones_(self.scale.weight)
+
+        nn.init.xavier_normal_(self.linear2.weight)
+        nn.init.zeros_(self.linear2.bias)
+        
+        return self
+
+
+
 class ParametricAbs(nn.Module):
     """
     Parametric absolute value: f(x) = α * |x + β| + γ
@@ -246,3 +274,19 @@ class Sum(nn.Module):
         Applies the sum operation to the input tensor.
         """
         return torch.sum(x, dim=self.dim, keepdim=self.keepdim)
+    
+class StaticScale(nn.Module):
+    def __init__(self, features, device=None):
+        """
+        A non-learnable scaling layer that multiplies each input feature by a fixed scale.
+        
+        Args:
+            features (int): Number of input features (dimensions).
+            device (torch.device or str, optional): Device to place the scale buffer on.
+        """
+        super().__init__()
+        weight = torch.ones(features, dtype=torch.float32, device=device)
+        self.register_buffer('weight', weight)
+
+    def forward(self, x):
+        return x * self.weight

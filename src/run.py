@@ -17,6 +17,7 @@ import torch
 import torch.nn as nn
 from lib import setup_experiment_environment
 import numpy as np
+import traceback
 
 # Import project modules
 from configs import ExperimentConfig, get_experiment_config, list_experiments
@@ -58,7 +59,6 @@ _experiment_state = ExperimentState()
 # Training Loop Management
 # ==============================================================================
 
-
 def execute_training_run(
     model: nn.Module,
     data: Tuple[torch.Tensor, torch.Tensor],
@@ -86,8 +86,11 @@ def execute_training_run(
     x, y = data
     x = x.to(device)
     y = y.to(device)
+    # print(f"x = {x}")
+    # print(f"y = {y}")
     # print(f"x.size = {x.size()}")
     # print(f"y.size = {y.size()}")
+    # print(model)
 
     # Extract training components
     optimizer = training_components["optimizer"]
@@ -101,8 +104,8 @@ def execute_training_run(
     start_time = time.time()
     best_loss = float("inf")
     patience_counter = 0
-    convergence_threshold = config.training.convergence_threshold
-    convergence_patience = config.training.convergence_patience
+    loss_change_threshold = config.training.loss_change_threshold
+    loss_change_patience = config.training.loss_change_patience
 
     # Training loop
     for epoch in range(config.training.epochs):
@@ -112,13 +115,20 @@ def execute_training_run(
         outputs = model(x)
         loss = loss_function(outputs, y)
 
+        # # monitor diagnostics
+        # if config.training.health_monitor:    
+        #     config.training.health_monitor.compute_per_example_gradients(x, y, config.training.loss_function)
+
         # Backward pass
         optimizer.zero_grad()
         loss.backward()
 
-        if config.training.health_monitor:    
-            metrics = config.training.health_monitor.check()
-            print(f"[epoch {epoch}] dead_data={metrics.dead_data_fraction:.2f}, torque={metrics.torque_ratio:.4f}, bias_drift={metrics.bias_drift:.2e}")
+        health_monitor = config.training.health_monitor
+        if health_monitor:    
+            if not health_monitor.check(targets=y, batch_idx=list(range(y.size(0)))):
+                health_monitor.fix(x, y)
+            # print(f"[epoch {epoch}] dead_data={metrics.dead_data_fraction:.2f}, torque={metrics.torque_ratio:.4f}, bias_drift={metrics.bias_drift:.2e}")
+            # config.training.health_monitor.log_registered_state()
             # # Optional: respond to specific issues
             # if metrics.has_dead_data_issue:
             #     print(f"⚠️  Dead data detected: {metrics.dead_data_fraction:.1%}")
@@ -141,18 +151,18 @@ def execute_training_run(
                 break
 
         # Early exit if model isn't improving.
-        if convergence_threshold is not None and convergence_patience:
+        if loss_change_threshold is not None and loss_change_patience:
             loss_delta = best_loss - current_loss
             # print(f"loss_delta = {loss_delta}, patience_counter = {patience_counter}")
-            if loss_delta > convergence_threshold:
+            if loss_delta > loss_change_threshold:
                 best_loss = current_loss
                 patience_counter = 0
             else:
                 patience_counter += 1
 
-            if patience_counter > convergence_patience:
+            if patience_counter > loss_change_patience:
                 print(f"  Convergence-based early stopping at epoch {epoch} "
-                      f"(loss did not improve by {convergence_threshold} for {convergence_patience} steps)")
+                      f"(loss did not improve by {loss_change_threshold} for {loss_change_patience} steps)")
                 break
 
         if current_loss < best_loss:
@@ -251,7 +261,7 @@ def run_experiment(
     
     # Load configuration
     config = get_experiment_config(experiment_name)
-    convergence_threshold = config.training.convergence_threshold
+    loss_change_threshold = config.training.loss_change_threshold
 
     # Apply overrides
     if num_runs is not None:
@@ -355,7 +365,7 @@ def run_experiment(
         min_epochs = np.min(epoch_counts)
         max_epochs = np.max(epoch_counts)
     else:
-        avg_epochs, q25, q50, q75 = 0, 0, 0, 0, 0, 0
+        avg_epochs, q25, q50, q75 = 0, 0, 0, 0
 
 
     # Print detailed run summary
@@ -388,14 +398,18 @@ def run_experiment(
     
     # Loss distribution  
     final_losses = [r["final_loss"] for r in all_results]
-    converged_runs = sum(1 for loss in final_losses if loss < convergence_threshold)
+    converged_runs = None
+    converged_runs_percent = None
+    if (config.training.stop_training_loss_threshold):
+        converged_runs = sum(1 for loss in final_losses if loss < config.training.stop_training_loss_threshold)
+        converged_runs_percent = converged_runs/len(all_results)*100
     
     print(f"\nEpoch Statistics:")
     print(f"  Mean epochs completed: {avg_epochs:.1f}")
     print(f"  Quantiles: {min_epochs:.0f} {q25:.0f} {q50:.0f} {q75:.0f} {max_epochs:.0f}")
 
     print(f"\nConvergence:")
-    print(f"  Converged (<{convergence_threshold}):  {converged_runs:2d} runs ({converged_runs/len(all_results)*100:.1f}%)")
+    print(f"  Converged (<{config.training.stop_training_loss_threshold}):  {converged_runs:2d} runs ({converged_runs_percent:.1f}%)")
     print(f"  Best final loss:    {min(final_losses):.6f}")
     print(f"  Worst final loss:   {max(final_losses):.6f}")
     
@@ -493,6 +507,7 @@ def main() -> int:
             return 1
         except Exception as e:
             print(f"✗ Failed to load configuration: {e}")
+            traceback.print_exc()
             return 1
 
         # Setup experiment environment
@@ -541,7 +556,6 @@ def main() -> int:
     except Exception as e:
         print(f"\n✗ Unexpected error during experiment execution:")
         print(f"  {type(e).__name__}: {e}")
-        import traceback
 
         print("\nFull traceback:")
         traceback.print_exc()

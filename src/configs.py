@@ -44,7 +44,7 @@ class TrainingConfig:
     batch_size: int = None
 
     # Training Monitor
-    health_monitor: Optional[monitor.MonitorMetrics] = None
+    health_monitor: Optional[Any] = field(default=None)
 
     # Convergence Detection
     stop_training_loss_threshold: Optional[float] = None
@@ -56,8 +56,8 @@ class TrainingConfig:
     restore_best_weights: bool = True
 
     # Convergence criteria
-    convergence_threshold: Optional[float] = None
-    convergence_patience: int = 10
+    loss_change_threshold: Optional[float] = None
+    loss_change_patience: int = 10
 
     # Gradient clipping
     gradient_clipping: bool = False
@@ -398,7 +398,7 @@ def config_relu1_normal() -> ExperimentConfig:
         model=model,
         training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=800, 
                                 stop_training_loss_threshold=1e-7,
-                                convergence_threshold=1e-24, convergence_patience=10),
+                                loss_change_threshold=1e-24, loss_change_patience=10),
         data=DataConfig(x=xor_data_centered(), y=xor_labels_T1(), problem_type=ExperimentType.XOR),
         analysis=AnalysisConfig(convergence_analysis=False, save_plots=True, dead_data_analysis=True, mirror_pair_detection=True),
         execution=ExecutionConfig(num_runs=50, skip_existing=False, random_seeds=[18]),
@@ -420,7 +420,7 @@ def config_relu1_reinit() -> ExperimentConfig:
         model=model,
         training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=800, 
                                 stop_training_loss_threshold=1e-7,
-                                convergence_threshold=1e-24, convergence_patience=10),
+                                loss_change_threshold=1e-24, loss_change_patience=10),
         data=DataConfig(x=x, y=y, problem_type=ExperimentType.XOR),
         analysis=AnalysisConfig(convergence_analysis=False, save_plots=True, dead_data_analysis=True, mirror_pair_detection=True),
         execution=ExecutionConfig(num_runs=50, skip_existing=False, random_seeds=[18]),
@@ -442,7 +442,7 @@ def config_relu1_reinit_margin() -> ExperimentConfig:
         model=model,
         training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=800, 
                                 stop_training_loss_threshold=1e-7,
-                                convergence_threshold=1e-24, convergence_patience=10),
+                                loss_change_threshold=1e-24, loss_change_patience=10),
         data=DataConfig(x=x, y=y, problem_type=ExperimentType.XOR),
         analysis=AnalysisConfig(convergence_analysis=False, save_plots=True, dead_data_analysis=True, mirror_pair_detection=True),
         execution=ExecutionConfig(num_runs=500, skip_existing=False, random_seeds=[18]),
@@ -478,7 +478,7 @@ def config_relu1_bhs() -> ExperimentConfig:
         model=model,
         training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=2000, 
                                 stop_training_loss_threshold=1e-7,
-                                convergence_threshold=1e-24, convergence_patience=10),
+                                loss_change_threshold=1e-24, loss_change_patience=10),
         data=DataConfig(x=x, y=y, problem_type=ExperimentType.XOR),
         analysis=AnalysisConfig(convergence_analysis=False, save_plots=True, dead_data_analysis=True, mirror_pair_detection=True),
         execution=ExecutionConfig(num_runs=50, skip_existing=False, random_seeds=[18]),
@@ -488,22 +488,75 @@ def config_relu1_bhs() -> ExperimentConfig:
 
 @experiment("relu1_monitor")
 def config_relu1_monitor() -> ExperimentConfig:
-    """Factory function for ReLU XOR experiment."""
+    """Factory function for ReLU XOR experiment with early-failure monitor."""
+
+    # ------------------------------------------------------------------
+    # 1) Build (and immediately inspect) the tiny XOR dataset so we know
+    #    how many samples the monitor has to track.
+    # ------------------------------------------------------------------
+    x_data = xor_data_centered()          # shape: (4, 2)
+    y_data = xor_labels_T1()              # shape: (4,)
+    dataset_size = x_data.shape[0]        # == 4
+
+    # ------------------------------------------------------------------
+    # 2) Model, optimiser, loss are identical to before.
+    # ------------------------------------------------------------------
     model = models.Model_ReLU1().init_normal()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.01, betas=(0.9, 0.99))
     loss_function = nn.MSELoss()
-    health_monitor = monitor.PrototypeSurfaceMonitor(model)
 
+    # ------------------------------------------------------------------
+    # 3) Instantiate health monitors with dataset_size (+ optional
+    #    patience and threshold — defaults are fine but shown for clarity).
+    # ------------------------------------------------------------------
+    # health_monitor = monitor.DeadSampleMonitor(
+    #     model,
+    #     dataset_size=dataset_size,  # required
+    #     patience=3,                 # flag after 3 consecutive dead epochs
+    #     classifier_threshold=0.5    # output ≥0.5 → class 1
+    # )
+
+    health_monitor = monitor.CompositeMonitor([
+        monitor.DeadSampleMonitor(model, dataset_size=dataset_size, patience=5, classifier_threshold=0.5),
+        monitor.BoundsMonitor(model=model, dataset_size=dataset_size, radius=1.5),
+    ])
+
+    # health_monitor = monitor.DeadSampleMonitor(model, dataset_size=dataset_size, patience=3, classifier_threshold=0.5)
+
+    # ------------------------------------------------------------------
+    # 4) Assemble the usual experiment config.
+    # ------------------------------------------------------------------
     return ExperimentConfig(
         model=model,
-        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=800, 
-                                stop_training_loss_threshold=1e-7,
-                                convergence_threshold=1e-24, convergence_patience=10,
-                                health_monitor=health_monitor),
-        data=DataConfig(x=xor_data_centered(), y=xor_labels_T1(), problem_type=ExperimentType.XOR),
-        analysis=AnalysisConfig(convergence_analysis=False, save_plots=True, dead_data_analysis=True, mirror_pair_detection=True),
-        execution=ExecutionConfig(num_runs=1, skip_existing=False, random_seeds=[18]),
-        description="Centered XOR with two nodes, ReLU, sum, normal init, and degeneracy detection.",
-        logging=LoggingConfig(train_epochs=50)
+        training=TrainingConfig(
+            optimizer=optimizer,
+            loss_function=loss_function,
+            epochs=2000,
+            stop_training_loss_threshold=1e-7,
+            loss_change_threshold=None,
+            loss_change_patience=10,
+            health_monitor=health_monitor,
+        ),
+        data=DataConfig(
+            x=x_data,
+            y=y_data,
+            problem_type=ExperimentType.XOR
+        ),
+        analysis=AnalysisConfig(
+            convergence_analysis=False,
+            save_plots=True,
+            dead_data_analysis=True,
+            mirror_pair_detection=True
+        ),
+        execution=ExecutionConfig(
+            num_runs=50,
+            skip_existing=False,
+            random_seeds=[18]
+        ),
+        description=(
+            "Centered XOR with two nodes, ReLU, sum, normal init, "
+            "and early-failure degeneracy detection."
+        ),
+        logging=LoggingConfig(train_epochs=50),
     )
 

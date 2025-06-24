@@ -62,12 +62,13 @@ class Model_ReLU1(nn.Module):
     def __init__(self):
         super().__init__()
         self.linear1 = nn.Linear(2, 2)
+        self.relu1 = nn.ReLU()
         nn.init.kaiming_normal_(self.linear1.weight, nonlinearity='relu')
         nn.init.zeros_(self.linear1.bias)
 
     def forward(self, x):
         x = self.linear1(x)
-        x = torch.relu(x)
+        x = self.relu1(x)
         x = x.sum(dim=1, keepdim=True)
         return x.squeeze()
     

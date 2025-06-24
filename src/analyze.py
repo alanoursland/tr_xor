@@ -181,7 +181,7 @@ def configure_analysis_from_config(config: ExperimentConfig) -> Tuple[List[str],
         
         # Training context for visualization
         'epochs': config.training.epochs,
-        'convergence_threshold': getattr(config.training, 'convergence_threshold', 1e-6),
+        'loss_change_threshold': getattr(config.training, 'loss_change_threshold', 1e-6),
         
         # Experiment metadata
         'experiment_name': config.execution.experiment_name,
@@ -356,7 +356,7 @@ def load_experiment_data(config: ExperimentConfig) -> Dict[str, Any]:
         # Training context
         'training_epochs': config.training.epochs,
         'num_runs': config.execution.num_runs,
-        'convergence_threshold': getattr(config.training, 'convergence_threshold', 1e-6),
+        'loss_change_threshold': getattr(config.training, 'loss_change_threshold', 1e-6),
         
         # Experiment metadata
         'experiment_name': config.execution.experiment_name,
@@ -804,7 +804,7 @@ def validate_and_enhance_run_result(result: Dict[str, Any]) -> Dict[str, Any]:
     Returns:
         Enhanced run result with validation and derived metrics
     """
-    convergence_threshold = 0.01 # replaced with config.training.convergence_threshold
+    loss_change_threshold = 0.01 # replaced with config.training.loss_change_threshold
 
     # Ensure required fields exist
     required_fields = ['run_id', 'model_state_dict']
@@ -826,7 +826,7 @@ def validate_and_enhance_run_result(result: Dict[str, Any]) -> Dict[str, Any]:
         result['training_time'] = 0.0
     
     # Add derived metrics
-    result['converged'] = result['final_loss'] < convergence_threshold
+    result['converged'] = result['final_loss'] < loss_change_threshold
     result['perfect_accuracy'] = result['accuracy'] >= 0.99
     
     # Compute training efficiency metrics
@@ -1286,7 +1286,7 @@ def compute_distribution_statistics(metrics: Dict[str, List[float]], config: Exp
         Dictionary of distribution statistics
     """
     distributions = {}
-    convergence_threshold = 0.01 # replaced with config.training.convergence_threshold
+    loss_change_threshold = 0.01 # replaced with config.training.loss_change_threshold
     
     # Accuracy distribution (especially important for XOR)
     if metrics['accuracies']:
@@ -1331,7 +1331,7 @@ def compute_distribution_statistics(metrics: Dict[str, List[float]], config: Exp
         loss_tensor = torch.tensor(metrics['final_losses'])
         distributions['loss_distribution'] = {
             'histogram': compute_histogram(loss_tensor, bins=20),
-            'convergence_rate': sum(1 for loss in metrics['final_losses'] if loss < convergence_threshold) / len(metrics['final_losses']),
+            'convergence_rate': sum(1 for loss in metrics['final_losses'] if loss < loss_change_threshold) / len(metrics['final_losses']),
             'low_loss_rate': sum(1 for loss in metrics['final_losses'] if loss < 0.1) / len(metrics['final_losses'])
         }
     
@@ -2350,7 +2350,7 @@ def generate_analysis_report(
 
     ############################################################################################
 
-    convergence_threshold = 0.01 # replaced with config.training.convergence_threshold
+    loss_change_threshold = 0.01 # replaced with config.training.loss_change_threshold
 
     # Extract top-level blocks from analysis_results
     # Path: basic_stats
@@ -2430,7 +2430,7 @@ def generate_analysis_report(
     # Accuracy validation
     failed_runs = total_runs - success_runs if isinstance(total_runs, int) and isinstance(success_runs, int) else "?"
     all_success = success_runs == total_runs if isinstance(total_runs, int) and isinstance(success_runs, int) else False
-    stop_threshold = getattr(config.training, "stop_training_loss_threshold", convergence_threshold)
+    stop_threshold = getattr(config.training, "stop_training_loss_threshold", loss_change_threshold)
 
     # Extract convergence timing data
     convergence_timing = analysis_results.get("convergence_timing", {})
@@ -2476,12 +2476,12 @@ def generate_analysis_report(
         report += f"* **Stops when loss < {config.training.stop_training_loss_threshold:.1e}**\n"
 
     if (
-        config.training.convergence_threshold is not None
-        and config.training.convergence_patience is not None
+        config.training.loss_change_threshold is not None
+        and config.training.loss_change_patience is not None
     ):
         report += (
-            f"* **Stops if loss does not improve by ≥ {config.training.convergence_threshold:.1e} "
-            f"over {config.training.convergence_patience} epochs**\n"
+            f"* **Stops if loss does not improve by ≥ {config.training.loss_change_threshold:.1e} "
+            f"over {config.training.loss_change_patience} epochs**\n"
         )
 
     report += "\n---\n\n"

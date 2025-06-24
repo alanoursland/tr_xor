@@ -140,7 +140,7 @@ If reusing research materials, please credit:
 ```bibtex
 @misc{oursland2025prototype,
   author       = {Oursland, Alan},
-  title        = {Prototype Surface Learning in Neural Networks: Evidence from XOR (Work in Progress)},
+  title        = {Prototype Surface Learning in Neural Networks: A Technical Report Exploring the XOR Problem (Work in Progress)},
   year         = {2025},
   howpublished = {\url{https://github.com/alanoursland/tr_xor}},
   note         = {GitHub repository, accessed 2025-06-24}

@@ -25,12 +25,13 @@ class Model_Abs1(nn.Module):
     def __init__(self):
         super().__init__()
         self.linear1 = nn.Linear(2, 1)
+        self.activation1 = Abs() 
         nn.init.kaiming_normal_(self.linear1.weight, nonlinearity='relu')
         nn.init.zeros_(self.linear1.bias)
 
     def forward(self, x):
         x = self.linear1(x)
-        x = torch.abs(x)
+        x = self.activation1(x)
         return x.squeeze()
     
     def init_normal(self):
@@ -62,14 +63,15 @@ class Model_ReLU1(nn.Module):
     def __init__(self):
         super().__init__()
         self.linear1 = nn.Linear(2, 2)
-        self.relu1 = nn.ReLU()
+        self.activation1 = nn.ReLU()
+        self.sum_layer = Sum(dim=1, keepdim=True)
         nn.init.kaiming_normal_(self.linear1.weight, nonlinearity='relu')
         nn.init.zeros_(self.linear1.bias)
 
     def forward(self, x):
         x = self.linear1(x)
-        x = self.relu1(x)
-        x = x.sum(dim=1, keepdim=True)
+        x = self.activation1(x)
+        x = self.sum_layer(x)
         return x.squeeze()
     
     def forward_components(self, x):
@@ -179,3 +181,52 @@ class ParametricAbs(nn.Module):
         """String representation for debugging."""
         pass
 
+class Abs(nn.Module):
+    """
+    A neural network module that applies the absolute value function element-wise.
+
+    This class wraps the torch.abs function in an nn.Module, allowing it to be
+    seamlessly integrated into a model's architecture (e.g., within an
+    nn.Sequential container) and be discoverable by hooks.
+
+    Shape:
+        - Input: (N, *) where * means any number of additional dimensions.
+        - Output: (N, *), with the same shape as the input.
+    """
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Applies the absolute value function to the input tensor.
+
+        Args:
+            x (torch.Tensor): The input tensor.
+
+        Returns:
+            torch.Tensor: A new tensor with the element-wise absolute value of the input.
+        """
+        return torch.abs(x)
+
+class Sum(nn.Module):
+    """
+    A neural network module that sums a tensor along a specified dimension.
+
+    This class wraps the torch.sum function in an nn.Module, allowing it to be
+    integrated into a model's architecture and be discoverable by hooks.
+
+    Args:
+        dim (int): The dimension along which to sum.
+        keepdim (bool): Whether the output tensor has `dim` retained or not.
+                        Defaults to False.
+    """
+    def __init__(self, dim: int, keepdim: bool = False):
+        super().__init__()
+        self.dim = dim
+        self.keepdim = keepdim
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Applies the sum operation to the input tensor.
+        """
+        return torch.sum(x, dim=self.dim, keepdim=self.keepdim)

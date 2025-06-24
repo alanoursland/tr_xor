@@ -550,7 +550,6 @@ def main() -> int:
 
     except KeyboardInterrupt:
         print("\n✗ Experiment interrupted by user")
-        cleanup_on_interruption(signal.SIGINT)
         return 130
 
     except Exception as e:

@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 from typing import Dict, List, Optional, Sequence, Tuple, Callable
 from dataclasses import dataclass, field
+from models import Abs, Sum
 
 class SharedHookManager:
     """
@@ -16,19 +17,32 @@ class SharedHookManager:
         self.activations: Dict[str, torch.Tensor] = {}
         self.gradients: Dict[str, torch.Tensor] = {}
         self.forward_outputs: Dict[str, torch.Tensor] = {}
+
+        self.model_output: Optional[torch.Tensor] = None
+        self.output_gradient: Optional[torch.Tensor] = None
+
         self._register_hooks()
 
     def _register_hooks(self):
+        # --- Standard hooks for Linear and ReLU layers ---
         for name, module in self.model.named_modules():
-            if isinstance(module, nn.ReLU):
-                module.register_forward_hook(self._make_forward_hook(name + "_relu_out"))
+            # Note: A more robust implementation might check for any activation
+            # function, not just ReLU. For now, this is fine.
+            if isinstance(module, (nn.ReLU, Abs, Sum)):
+                module.register_forward_hook(self._make_forward_hook(name))
             elif isinstance(module, nn.Linear):
                 module.weight.register_hook(self._make_grad_hook(name + "_weight"))
                 if module.bias is not None:
                     module.bias.register_hook(self._make_grad_hook(name + "_bias"))
 
+        # --- Automatic hook for the final model output ---
+        # Heuristic: The last module in the sequence is the one producing the output.
+        last_module = list(self.model.modules())[-1]
+        last_module.register_forward_hook(self._make_output_capture_hook())
+
     def _make_forward_hook(self, name: str) -> Callable:
         def hook(module, input, output):
+            # Use a consistent naming scheme
             self.activations[name + "_in"] = input[0].detach().clone()
             self.forward_outputs[name + "_out"] = output.detach().clone()
         return hook
@@ -38,20 +52,50 @@ class SharedHookManager:
             self.gradients[name] = grad.detach().clone()
         return hook
         
+    def _make_output_capture_hook(self) -> Callable:
+        """
+        Creates a forward hook that captures the model's final output tensor
+        and attaches a gradient hook to it.
+        """
+        def hook(module, input, output):
+            # 1. Capture the prediction tensor (the output of the last layer)
+            self.model_output = output.detach().clone()
+            
+            # 2. Attach the gradient hook to this specific output tensor
+            def grad_hook(grad):
+                self.output_gradient = grad.detach().clone()
+            # Ensure the output requires a gradient before attaching the hook
+            if output.requires_grad:
+                output.register_hook(grad_hook)
+        return hook
+
     def to(self, device: torch.device) -> None:
         """Moves all cached tensors to the specified device."""
         def move_dict(d: Dict[str, torch.Tensor]):
             for k in d:
-                d[k] = d[k].to(device)
+                if d[k] is not None:
+                    d[k] = d[k].to(device)
+        
         move_dict(self.activations)
         move_dict(self.forward_outputs)
         move_dict(self.gradients)
+        
+        # Handle the tensors directly, checking if they exist first.
+        if self.model_output is not None:
+            self.model_output = self.model_output.to(device)
+        if self.output_gradient is not None:
+            self.output_gradient = self.output_gradient.to(device)
     
     def clear(self):
-        """Clears all stored data."""
+        """Clears all stored data for the next training step."""
         self.activations.clear()
         self.forward_outputs.clear()
         self.gradients.clear()
+
+        # --- CORRECTED ---
+        # To "clear" a tensor, set its reference to None.
+        self.model_output = None
+        self.output_gradient = None
 
 class BaseMonitor:
     """
@@ -140,25 +184,21 @@ class DeadSampleMonitor(BaseMonitor):
             classifier_threshold=classifier_threshold,
             hook_manager = hook_manager
         )
+        self.pre_activation_key = f"activation_in"
         self.patience = patience
         self.dead_counter = torch.zeros(dataset_size, dtype=torch.int32)
 
     # ---------------------------------------------------------------
     #  ---- EARLY-FAILURE HEURISTIC IMPLEMENTATION ------------------
     # ---------------------------------------------------------------
-    @torch.no_grad()
-    def update_failure_detector(
-        self,
-        z: torch.Tensor,              # (B, H) pre-ReLU activations
-        dL_dy: torch.Tensor,          # (B,)   per-sample dL/dŷ
-        preds: torch.Tensor,          # (B,)   raw model outputs
-        targets: torch.Tensor,        # (B,)   true labels   (0/1)
-        batch_idx: Sequence[int],     # global sample indices
-    ):
-        """
-        Call once per mini-batch *before* backward().
-        Works for binary or scalar regression outputs.
-        """
+    def check(self, targets: torch.Tensor, batch_idx: Sequence[int]):
+        z = self.activations["activation1_in"]       # (B, H)
+        a = self.forward_outputs["activation1_out"]  # (B, H)
+        preds = self.manager.model_output.squeeze(1) # (B, )
+
+        # Infer dL/dŷ for MSE manually
+        dL_dy = 2.0 / preds.size(0) * (preds - targets)
+
         result = True
         # gradient-flow score S_k  (ReLU passes grad only if z>0)
         S = (z > 0).float().mul_(dL_dy.abs().unsqueeze(1)).sum(dim=1)  # (B,)
@@ -186,20 +226,6 @@ class DeadSampleMonitor(BaseMonitor):
             #       f"(>{self.patience} epochs) "
             #     #   f"{self.dead_counter[cpu_idx]} "
             #       )
-        return result
-
-    # ---------------------------------------------------------------
-    #  --------- pretty printing as before --------------------------
-    # ---------------------------------------------------------------
-    def check(self, targets: torch.Tensor, batch_idx: Sequence[int]):
-        z = self.activations["relu1_relu_out_in"]      # (B, H)
-        a = self.forward_outputs["relu1_relu_out_out"] # (B, H)
-        preds = a.sum(dim=1)                           # (B,)
-
-        # Infer dL/dŷ for MSE manually
-        dL_dy = 2.0 / preds.size(0) * (preds - targets)
-
-        result = self.update_failure_detector(z, dL_dy, preds, targets, batch_idx)
 
         self.step_count += 1
         return result
@@ -221,7 +247,7 @@ class DeadSampleMonitor(BaseMonitor):
         norms = W.detach().norm(dim=1)    # (H,)
 
         z = x @ W.detach().T + b.detach() # (B, H)
-        preds = self.forward_outputs["relu1_relu_out_out"].sum(dim=1)
+        preds = self.manager.model_output.squeeze() 
         wrong = (preds > self.classifier_threshold).int() != y.int()
 
         dead_mask = (z <= 0).all(dim=1) & wrong
@@ -272,7 +298,7 @@ class DeadSampleMonitor(BaseMonitor):
         norms = W.detach().norm(dim=1)    # (H,)
 
         z = x @ W.detach().T + b.detach() # (B, H)
-        preds = self.forward_outputs["relu1_relu_out_out"].sum(dim=1)
+        preds = self.manager.model_output.squeeze() 
         wrong = (preds > self.classifier_threshold).int() != y.int()
 
         dead_mask = (z <= 0).all(dim=1) & wrong

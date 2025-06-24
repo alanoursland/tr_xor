@@ -234,10 +234,6 @@ def get_experiment_config(name: str) -> ExperimentConfig:
     config_factory = experiments[name]
     config = config_factory()
 
-    # Handle inheritance if needed
-    if config.base_config:
-        config = resolve_config_inheritance(name)
-
     return config
 
 
@@ -550,7 +546,7 @@ def config_relu1_monitor() -> ExperimentConfig:
             mirror_pair_detection=True
         ),
         execution=ExecutionConfig(
-            num_runs=50,
+            num_runs=1,
             skip_existing=False,
             random_seeds=[18]
         ),

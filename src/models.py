@@ -25,13 +25,13 @@ class Model_Abs1(nn.Module):
     def __init__(self):
         super().__init__()
         self.linear1 = nn.Linear(2, 1)
-        self.activation1 = Abs() 
+        self.activation = Abs() 
         nn.init.kaiming_normal_(self.linear1.weight, nonlinearity='relu')
         nn.init.zeros_(self.linear1.bias)
 
     def forward(self, x):
         x = self.linear1(x)
-        x = self.activation1(x)
+        x = self.activation(x)
         return x.squeeze()
     
     def init_normal(self):
@@ -63,14 +63,14 @@ class Model_ReLU1(nn.Module):
     def __init__(self):
         super().__init__()
         self.linear1 = nn.Linear(2, 2)
-        self.activation1 = nn.ReLU()
+        self.activation = nn.ReLU()
         self.sum_layer = Sum(dim=1, keepdim=True)
         nn.init.kaiming_normal_(self.linear1.weight, nonlinearity='relu')
         nn.init.zeros_(self.linear1.bias)
 
     def forward(self, x):
         x = self.linear1(x)
-        x = self.activation1(x)
+        x = self.activation(x)
         x = self.sum_layer(x)
         return x.squeeze()
     

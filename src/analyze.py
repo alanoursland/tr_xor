@@ -18,6 +18,7 @@ import matplotlib.pyplot as plt
 import json
 import math
 import torch.nn as nn
+from itertools import chain
 
 def targets_to_class_labels(y):
     if y.ndim == 2 and y.shape[1] > 1:
@@ -1783,51 +1784,78 @@ def test_mirror_weights(run_results):
 def analyze_failure_angles(run_results: List[Dict[str, Any]]) -> Dict[str, Any]:
     w_ideal_A = torch.tensor([0.54, -0.54])
     w_ideal_B = torch.tensor([-0.54, 0.54])
-    
-    success_angles = []
-    failure_angles = []
-    
+
+    layer_results = {}
+
     for r in run_results:
         acc = r.get("accuracy", 0.0)
-        init_path = r["run_dir"] / "model_init.pt"
-        w_init = torch.load(init_path, map_location="cpu")["linear1.weight"].squeeze()
-        if w_init.ndim > 1:
-            w_init = w_init[0]  # assume first neuron
-        
-        angle_to_A = compute_angles_between(w_init.unsqueeze(0), w_ideal_A.unsqueeze(0))[0]
-        angle_to_B = compute_angles_between(w_init.unsqueeze(0), w_ideal_B.unsqueeze(0))[0]
-        angle_diff = min(angle_to_A, angle_to_B)
+        run_dir = r["run_dir"]
+        init_path = run_dir / "model_init.pt"
 
-        if acc >= 0.99:
-            success_angles.append(angle_diff)
-        elif abs(acc - 0.5) < 1e-3:
-            failure_angles.append(angle_diff)
+        try:
+            init_weights = torch.load(init_path, map_location="cpu")
+        except Exception as e:
+            print(f"⚠️ Skipping run {r['run_id']}: failed to load init weights ({e})")
+            continue
 
-    return {
-        "success": success_angles,
-        "failure": failure_angles,
-        "summary": {
-            "success_stats": compute_summary_statistics({"angle_diff": success_angles}),
-            "failure_stats": compute_summary_statistics({"angle_diff": failure_angles})
+        for name, tensor in init_weights.items():
+            if not name.endswith(".weight"):
+                continue
+            if tensor.ndim != 2 or tensor.shape[1] != 2:
+                continue  # Only process 2D input layers
+
+            layer_name = name.replace(".weight", "")
+
+            if layer_name not in layer_results:
+                layer_results[layer_name] = {
+                    "success": [],
+                    "failure": []
+                }
+
+            for i in range(tensor.shape[0]):
+                w = tensor[i]
+                angle_to_A = compute_angles_between(w.unsqueeze(0), w_ideal_A.unsqueeze(0))[0]
+                angle_to_B = compute_angles_between(w.unsqueeze(0), w_ideal_B.unsqueeze(0))[0]
+                angle = min(angle_to_A, angle_to_B)
+
+                if acc >= 0.99:
+                    layer_results[layer_name]["success"].append(angle)
+                elif abs(acc - 0.5) < 1e-3:
+                    layer_results[layer_name]["failure"].append(angle)
+
+    # Add summary stats per layer
+    for layer_name, data in layer_results.items():
+        layer_results[layer_name]["summary"] = {
+            "success_stats": compute_summary_statistics({"angle_diff": data["success"]}),
+            "failure_stats": compute_summary_statistics({"angle_diff": data["failure"]}),
         }
-    }
 
-def plot_failure_angle_histogram(angle_data: Dict[str, List[float]], output_dir: Path, experiment_name: str):
+    return layer_results
+
+def plot_failure_angle_histogram(
+    success_angles: List[float],
+    failure_angles: List[float],
+    output_path: Path,
+    title: str
+):
     import matplotlib.pyplot as plt
-    output_dir.mkdir(parents=True, exist_ok=True)
 
     plt.figure(figsize=(6, 4), dpi=300)
-    plt.hist(angle_data["success"], bins=30, alpha=0.6, label="Success (100%)")
-    plt.hist(angle_data["failure"], bins=15, alpha=0.8, label="Failure (50%)", color='red')
+
+    if success_angles:
+        plt.hist(success_angles, bins=30, alpha=0.6, label="Success (100%)")
+    if failure_angles:
+        plt.hist(failure_angles, bins=15, alpha=0.8, label="Failure (50%)", color='red')
+
     plt.axvline(90, color='black', linestyle='--', label='90° (perpendicular)')
     plt.xlabel("Initial Angle Difference to Ideal (degrees)")
-    plt.ylabel("Run Count")
-    plt.title(f"Initial Orientation vs. Outcome – {experiment_name}")
+    plt.ylabel("Unit Count")
+    plt.title(title)
     plt.legend()
     plt.tight_layout()
 
-    plot_path = output_dir / "failure_angle_histogram.png"
-    plt.savefig(plot_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(output_path)
     plt.close()
 
 def analyze_accuracy_distribution(run_results: List[Dict[str, Any]], config: ExperimentConfig) -> Dict[str, Any]:
@@ -2591,8 +2619,6 @@ def generate_analysis_report(
 
     # Extract weight reorientation data
     weight_reorientation = analysis_results.get("weight_reorientation", {})
-    angle_analysis = weight_reorientation.get("angle_analysis", {})
-    norm_ratio_analysis = weight_reorientation.get("norm_ratio_analysis", {})
     failure_angles = analysis_results.get("failure_angle_analysis", {})
 
     # Extract hyperplane clustering data
@@ -2696,33 +2722,70 @@ def generate_analysis_report(
 
     ############################################################################################
 
-    report += "## 🔁 Weight Reorientation\n\n"
+    per_layer_analysis = weight_reorientation.get("per_layer_analysis", {})
 
-    report += "### ◼ Angle Between Initial and Final Weights (Degrees)\n\n"
-    report += "| Percentile | Angle Range (°) | Mean Epochs to Convergence |\n"
-    report += "| ---------- | --------------- | -------------------------- |\n"
+    if per_layer_analysis:
+        for layer_name, layer_stats in per_layer_analysis.items():
+            angle_data = layer_stats.get("angle_analysis", {})
+            norm_data = layer_stats.get("norm_ratio_analysis", {})
 
-    if angle_analysis:
-        for percentile_range, stats in angle_analysis.items():
-            low_val, high_val = stats["range"]
-            mean_epochs = stats["mean_epochs"]
-            report += f"| {percentile_range:<10} | {low_val:.1f} – {high_val:.1f}     | {mean_epochs:.1f}                       |\n"
+            report += f"### Layer: `{layer_name}` – Angle Between Initial and Final Weights\n\n"
+            report += "| Percentile | Angle Range (°) | Mean Epochs to Convergence |\n"
+            report += "| ---------- | ---------------- | -------------------------- |\n"
+
+            if angle_data:
+                for percentile_range, stats in angle_data.items():
+                    low, high = stats["range"]
+                    mean_epochs = stats["mean_epochs"]
+                    report += f"| {percentile_range:<10} | {low:.1f} – {high:.1f}       | {mean_epochs:.1f}                       |\n"
+            else:
+                report += "| N/A        | No data available | N/A                        |\n"
+
+            report += f"\n### Layer: `{layer_name}` – Initial / Final Norm Ratio\n\n"
+            report += "| Percentile | Ratio Range | Mean Epochs to Convergence |\n"
+            report += "| ---------- | ------------ | -------------------------- |\n"
+
+            if norm_data:
+                for percentile_range, stats in norm_data.items():
+                    low, high = stats["range"]
+                    mean_epochs = stats["mean_epochs"]
+                    report += f"| {percentile_range:<10} | {low:.2f} – {high:.2f}  | {mean_epochs:.1f}                       |\n"
+            else:
+                report += "| N/A        | No data available | N/A                        |\n"
+
+            report += "\n---\n\n"
     else:
-        report += "| N/A        | No data available | N/A                        |\n"
-
-    report += "\n---\n\n"
+        report += "No weight reorientation data available.\n\n"
 
     ############################################################################################
 
-    report += "### ◼ Initial / Final Norm Ratio\n\n"
+    report += "### ◼ Initial / Final Norm Ratio (All Layers Combined)\n\n"
     report += "| Percentile | Ratio Range | Mean Epochs to Convergence |\n"
-    report += "| ---------- | ----------- | -------------------------- |\n"
+    report += "| ---------- | ------------ | -------------------------- |\n"
 
-    if norm_ratio_analysis:
-        for percentile_range, stats in norm_ratio_analysis.items():
-            low_val, high_val = stats["range"]
-            mean_epochs = stats["mean_epochs"]
-            report += f"| {percentile_range:<10} | {low_val:.2f} – {high_val:.2f} | {mean_epochs:.1f}                       |\n"
+    # Pull from per_layer_analysis
+    per_layer_analysis = weight_reorientation.get("per_layer_analysis", {})
+
+    # Collect all norm ratios and epochs from all layers
+    all_ratios = []
+    all_epochs = []
+
+    for layer_stats in per_layer_analysis.values():
+        layer_ratios = layer_stats.get("norm_ratio_analysis", {})
+        for bin_data in layer_ratios.values():
+            low, high = bin_data["range"]
+            count = bin_data["count"]
+            mean_epochs = bin_data["mean_epochs"]
+            # Store per-bin representative values (flatten bins across layers)
+            all_ratios.append((low, high, mean_epochs, count))
+            all_epochs.extend([mean_epochs] * count)
+
+    if all_ratios:
+        # Re-bin across all ratios (flattened)
+        # You could re-bucket if needed, but here's a simple way to output the flattened bins:
+        for i, (low, high, mean_epochs, count) in enumerate(sorted(all_ratios, key=lambda x: x[0])):
+            label = f"{i+1:>2}"
+            report += f"| {label:<10} | {low:.2f} – {high:.2f}  | {mean_epochs:.1f}                       |\n"
     else:
         report += "| N/A        | No data available | N/A                        |\n"
 
@@ -2862,17 +2925,24 @@ def generate_analysis_report(
 
     ############################################################################################
 
-        if config.analysis.failure_angles:
-            report += "## 🧭 Geometric Analysis of Failure Modes\n\n"
-            report += "We tested whether failed runs began with initial hyperplanes nearly perpendicular to the ideal.\n\n"
+    if config.analysis.failure_angles:
+        report += "## 🧭 Geometric Analysis of Failure Modes\n\n"
+        report += "We tested whether failed runs began with hyperplanes nearly perpendicular to ideal orientations.\n"
+        report += "Results are shown per layer, aggregating across all units in each layer.\n\n"
 
-            stats_s = failure_angles["summary"]["success_stats"]["angle_diff"]
-            stats_f = failure_angles["summary"]["failure_stats"]["angle_diff"]
+        for layer_name, layer_data in failure_angles.items():
+            stats_s = layer_data["summary"]["success_stats"]["angle_diff"]
+            stats_f = layer_data["summary"]["failure_stats"]["angle_diff"]
 
-            report += f"* **Success runs (n={len(failure_angles['success'])})** – mean angle diff: {stats_s['mean']:.2f}° ± {stats_s['std']:.2f}°\n"
-            report += f"* **Failure runs (n={len(failure_angles['failure'])})** – mean angle diff: {stats_f['mean']:.2f}° ± {stats_f['std']:.2f}°\n"
-            report += "* Failed runs are tightly clustered near 90°, consistent with the no-torque trap hypothesis.\n\n"
-            report += "See `failure_angle_histogram.png` for visual confirmation.\n\n"
+            count_s = len(layer_data["success"])
+            count_f = len(layer_data["failure"])
+
+            report += f"### Layer: `{layer_name}`\n\n"
+            report += f"* **Success units (n={count_s})** – mean angle diff: {stats_s['mean']:.2f}° ± {stats_s['std']:.2f}°\n"
+            report += f"* **Failure units (n={count_f})** – mean angle diff: {stats_f['mean']:.2f}° ± {stats_f['std']:.2f}°\n"
+            report += "* Failed units tend to cluster near 90°, consistent with the no-torque trap hypothesis.\n\n"
+
+        report += "See `failure_angle_histogram.png` for visual confirmation.\n\n"
 
     ############################################################################################
 
@@ -3054,11 +3124,18 @@ def main() -> int:
             print("📐 Analyzing failure angles ...")
             analysis_results["failure_angle_analysis"] = analyze_failure_angles(run_results)
             print("  ✓ Failure angle analysis completed")
-            plot_failure_angle_histogram(
-                angle_data=analysis_results["failure_angle_analysis"],
-                output_dir=results_dir / "plots",
-                experiment_name=config.execution.experiment_name
-            )
+
+            # print failure angles for each layer
+            for layer_name, layer_data in analysis_results["failure_angle_analysis"].items():
+                success_angles = layer_data.get("success", [])
+                failure_angles = layer_data.get("failure", [])
+                
+                plot_failure_angle_histogram(
+                    success_angles=success_angles,
+                    failure_angles=failure_angles,
+                    output_path=results_dir / "plots" / f"{experiment_name}_{layer_name}_failure_angle_histogram.png",
+                    title=f"{experiment_name} – {layer_name}"
+                )
 
         # Dead data analysis
         if config.analysis.dead_data_analysis:

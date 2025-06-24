@@ -13,6 +13,7 @@ This document summarizes empirical results from a sequence of experiments on the
 | **3. Re-init + 0.1 Margin** | 500 | 99.2% (496 runs) | 0.8% (4 runs) |
 | **4. Re-init + 0.2 Margin** | 500 | 99.8% (499 runs) | 0.2% (1 run) |
 | **5. Re-init + 0.3 Margin** | 500 | **100.0%** (500 runs) | **0.0%** (0 runs) |
+| **6. In-Training Monitoring (`relu1_monitor`)**| 1000 | **100.0%** (1000 runs) | **0.0%** (0 runs) |
 
 ## 2. Results of Margin-Based Initialization
 
@@ -66,7 +67,20 @@ The single run in the `reinit` condition that failed provides insight into a mor
 
 This suggests a new hypothesis for this failure: if an initial hyperplane is too close to a data point, it can be pushed across that point during early optimization, effectively deactivating it before the model has a chance to learn a globally optimal solution. A potential mitigation could be a "margin-based" re-initialization, which would ensure all data points are a minimum distance from the initial hyperplanes.
 
-## 6. Final Loss & Convergence (Standard Init)
+## 6. Results of In-Training Monitoring and Correction (`relu1_monitor`)
+
+This experiment used the `Standard Init` condition but enabled the real-time health monitor to correct for emergent failures during training.
+
+### 6.1. Primary Outcome: Classification Accuracy
+The active monitoring and correction strategy was highly effective, resulting in a **100% success rate** over 1000 runs.
+
+### 6.2. Diagnostic Finding: Overcoming Initialization Failures
+The monitor's success is directly attributable to its ability to correct for the failure modes identified in the baseline experiment.
+
+* The monitoring system successfully rescued runs that began with known failure conditions. **751 runs that started with 'dead' data points were corrected by the monitor to achieve 100% accuracy.**
+* Crucially, this includes **487 runs where a class-1 (True) input was dead at initialization**—a condition that was previously predictive of certain failure in the unmonitored baseline experiment.
+
+## 7. Final Loss & Convergence (Standard Init)
 
 *The following metrics refer to the `relu1_normal` experiment runs.*
 
@@ -78,7 +92,7 @@ The models that failed to achieve perfect accuracy also retained noticeably high
 | 50th | 123 |
 | 100th | 275 |
 
-## 7. Prototype Geometry and Hyperplane Clustering (Standard Init)
+## 8. Prototype Geometry and Hyperplane Clustering (Standard Init)
 
 *The following metrics refer to the `relu1_normal` experiment runs.*
 

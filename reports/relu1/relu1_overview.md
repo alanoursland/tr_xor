@@ -2,11 +2,11 @@
 
 ## Experiment Overview
 
-This experiment investigates how a minimal ReLU-based network—composed of two opposing linear units passed through ReLU and summed—learns to solve the XOR problem. This model is designed as a structural analog of the single-unit absolute value network (`abs1`), based on the identity:
+This experiment investigates how a minimal ReLU-based network—composed of two opposing linear units passed through ReLU and summed — learns to solve the XOR problem. This model is designed as a structural analog of the single-unit absolute value network (`abs1`), based on the identity:
 
 $$|x| = \text{ReLU}(x) + \text{ReLU}(-x)$$
 
-Preliminary runs revealed that, unlike the robust `abs1` model, this architecture is surprisingly fragile and frequently fails to converge to a correct solution under a standard initialization. This report documents a series of experiments designed to diagnose and correct these failures. We began by testing the **Dead Data Point Hypothesis**, which posited that failures were caused by inputs having no initial gradient signal. After this was largely confirmed, we identified and tested a secondary **Margin Hypothesis**, which posited that failures also occurred when hyperplanes initialized too close to data points.
+Preliminary runs revealed that, unlike the robust `abs1` model, this architecture is surprisingly fragile and frequently fails to converge to a correct solution under a standard initialization. This report documents a series of experiments designed to diagnose and correct these failures. We began by testing the **Dead Data Point Hypothesis**, which posited that failures were caused by inputs having no initial gradient signal. After this was largely confirmed, we identified and tested a secondary **Margin Hypothesis**, which posited that failures also occurred when hyperplanes initialized too close to data points. Finally, to validate these findings and explore their temporal dynamics, we developed and tested a real-time monitoring system to detect and correct these geometric pathologies as they emerge during training.
 
 This multi-stage investigation analyzes how different initialization heuristics affect convergence, reliability, and the emergence of the geometric structures required to solve the problem.
 
@@ -71,6 +71,14 @@ After correcting for dead data points, a small number of training failures still
 
 If the initial margin is too small, a slight weight update during early optimization can push the hyperplane across a nearby data point. This can "deactivate" the point's influence on that neuron by moving it into the ReLU's zero-gradient region, effectively halting learning for that point-neuron pair and potentially trapping the model in a suboptimal state. This "Margin Hypothesis" suggests that a "safe" initialization requires not only that all points are "live," but also that they have sufficient distance from the initial decision boundaries.
 
+-----
+
+### A Tertiary Failure Mode: The Out-of-Bounds Neuron
+
+Further analysis suggested that both "dead data" and "small margin" issues are symptoms of a more general geometric failure: a neuron's decision boundary moving so far from the data cluster that it ceases to be a useful separator. We call this the **Out-of-Bounds Neuron Hypothesis**.
+
+An "out-of-bounds" neuron is one whose hyperplane has shifted such that all data points lie on one side of it (i.e., in the same half-space). When this occurs, the neuron becomes unresponsive to the data distribution; its output is either always zero or always active for all inputs. It can no longer contribute to separating the classes, effectively reducing the model's capacity and trapping it in a suboptimal state. This hypothesis can be tested by monitoring the distance of each hyperplane from the data's origin during training.
+
 ---
 
 ## Training Configuration
@@ -81,7 +89,7 @@ If the initial margin is too small, a slight weight update during early optimiza
 * **Optimizer**: Adam (learning rate 0.01, β₁ = 0.9, β₂ = 0.99)
 * **Batch Size**: Full batch (4 XOR examples)
 * **Epochs**: Maximum of 800.
-* **Runs**: 50 to 500 per initialization strategy.
+* **Runs**: 50 to 1000 per initialization strategy.
 
 ---
 
@@ -94,6 +102,8 @@ We test a sequence of initialization strategies to diagnose and resolve the mode
 2.  **Re-init on Dead (`relu1_reinit`)**: The first intervention. The model is re-initialized until no data points are "dead," ensuring all inputs have an initial gradient signal from at least one neuron.
 
 3.  **Re-init with Margin (`relu1_reinit_margin`)**: The final set of interventions. In addition to the "live data" check, this condition also re-initializes if any hyperplane is within a specified margin $\epsilon$ of any data point. We tested this condition with progressively larger margins of **$\epsilon=0.1$**, **$\epsilon=0.2$**, and **$\epsilon=0.3$**.
+
+4.  **In-Training Monitoring and Correction (`relu1_monitor`)**: The final diagnostic stage. This strategy reverts to the `Standard Init` to observe failures in their natural state. It employs a **real-time health monitor** to detect the "Dead Data Point" and "Out-of-Bounds Neuron" conditions during training and, in some cases, attempts to apply a **corrective fix** to rescue the run.
 
 ## Data Configuration
 
@@ -151,7 +161,10 @@ This experiment follows an iterative, hypothesis-driven process. The primary goa
 2.  Testing the **Dead Data Point Hypothesis** by comparing the `Standard Init` and `Re-init on Dead` conditions.
 3.  Testing the **Margin Hypothesis** by applying progressively larger initialization margins.
 4.  Identifying a set of initialization heuristics sufficient to achieve a 100% success rate on this problem.
-5.  Analyzing how these interventions affect the emergence of symmetric geometric structures in the final learned model.
+5.  Validating failure-mode hypotheses through real-time, in-training detection.
+6.  Characterizing the temporal dynamics of when and how these geometric failures occur.
+7.  Evaluating the efficacy of targeted, mid-training interventions designed to rescue failing runs.
+8.  Analyzing how these interventions affect the emergence of symmetric geometric structures in the final learned model.
 
 ## Comments
 

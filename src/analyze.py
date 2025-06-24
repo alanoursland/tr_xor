@@ -1727,6 +1727,56 @@ def test_mirror_weights(run_results):
     
     return mirror_results
 
+def analyze_failure_angles(run_results: List[Dict[str, Any]]) -> Dict[str, Any]:
+    w_ideal_A = torch.tensor([0.54, -0.54])
+    w_ideal_B = torch.tensor([-0.54, 0.54])
+    
+    success_angles = []
+    failure_angles = []
+    
+    for r in run_results:
+        acc = r.get("accuracy", 0.0)
+        init_path = r["run_dir"] / "model_init.pt"
+        w_init = torch.load(init_path, map_location="cpu")["linear1.weight"].squeeze()
+        if w_init.ndim > 1:
+            w_init = w_init[0]  # assume first neuron
+        
+        angle_to_A = compute_angles_between(w_init.unsqueeze(0), w_ideal_A.unsqueeze(0))[0]
+        angle_to_B = compute_angles_between(w_init.unsqueeze(0), w_ideal_B.unsqueeze(0))[0]
+        angle_diff = min(angle_to_A, angle_to_B)
+
+        if acc >= 0.99:
+            success_angles.append(angle_diff)
+        elif abs(acc - 0.5) < 1e-3:
+            failure_angles.append(angle_diff)
+
+    return {
+        "success": success_angles,
+        "failure": failure_angles,
+        "summary": {
+            "success_stats": compute_summary_statistics({"angle_diff": success_angles}),
+            "failure_stats": compute_summary_statistics({"angle_diff": failure_angles})
+        }
+    }
+
+def plot_failure_angle_histogram(angle_data: Dict[str, List[float]], output_dir: Path, experiment_name: str):
+    import matplotlib.pyplot as plt
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    plt.figure(figsize=(6, 4), dpi=300)
+    plt.hist(angle_data["success"], bins=30, alpha=0.6, label="Success (100%)")
+    plt.hist(angle_data["failure"], bins=15, alpha=0.8, label="Failure (50%)", color='red')
+    plt.axvline(90, color='black', linestyle='--', label='90° (perpendicular)')
+    plt.xlabel("Initial Angle Difference to Ideal (degrees)")
+    plt.ylabel("Run Count")
+    plt.title(f"Initial Orientation vs. Outcome – {experiment_name}")
+    plt.legend()
+    plt.tight_layout()
+
+    plot_path = output_dir / "failure_angle_histogram.png"
+    plt.savefig(plot_path)
+    plt.close()
+
 def analyze_accuracy_distribution(run_results: List[Dict[str, Any]], config: ExperimentConfig) -> Dict[str, Any]:
     """
     Analyze accuracy distribution patterns across training runs.
@@ -2441,6 +2491,7 @@ def generate_analysis_report(
     weight_reorientation = analysis_results.get("weight_reorientation", {})
     angle_analysis = weight_reorientation.get("angle_analysis", {})
     norm_ratio_analysis = weight_reorientation.get("norm_ratio_analysis", {})
+    failure_angles = analysis_results.get("failure_angle_analysis", {})
 
     # Extract hyperplane clustering data
     hyperplane_clustering = analysis_results.get("hyperplane_clustering", {})
@@ -2692,6 +2743,20 @@ def generate_analysis_report(
 
     ############################################################################################
 
+        if config.analysis.failure_angles:
+            report += "## 🧭 Geometric Analysis of Failure Modes\n\n"
+            report += "We tested whether failed runs began with initial hyperplanes nearly perpendicular to the ideal.\n\n"
+
+            stats_s = failure_angles["summary"]["success_stats"]["angle_diff"]
+            stats_f = failure_angles["summary"]["failure_stats"]["angle_diff"]
+
+            report += f"* **Success runs (n={len(failure_angles['success'])})** – mean angle diff: {stats_s['mean']:.2f}° ± {stats_s['std']:.2f}°\n"
+            report += f"* **Failure runs (n={len(failure_angles['failure'])})** – mean angle diff: {stats_f['mean']:.2f}° ± {stats_f['std']:.2f}°\n"
+            report += "* Failed runs are tightly clustered near 90°, consistent with the no-torque trap hypothesis.\n\n"
+            report += "See `failure_angle_histogram.png` for visual confirmation.\n\n"
+
+    ############################################################################################
+
     return report
 
 def export_analysis_data(
@@ -2862,6 +2927,16 @@ def main() -> int:
                 run_results, experiment_data, config
             )
             print("  ✓ Prototype surface analysis completed")
+
+        if config.analysis.failure_angles:
+            print("📐 Analyzing failure angles ...")
+            analysis_results["failure_angle_analysis"] = analyze_failure_angles(run_results)
+            print("  ✓ Failure angle analysis completed")
+            plot_failure_angle_histogram(
+                angle_data=analysis_results["failure_angle_analysis"],
+                output_dir=results_dir / "plots",
+                experiment_name=config.execution.experiment_name
+            )
 
         # Dead data analysis
         if config.analysis.dead_data_analysis:

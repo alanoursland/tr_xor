@@ -80,11 +80,26 @@ class Model_ReLU1(nn.Module):
         """
         return self.linear1(x)
 
+    @torch.no_grad()
     def init_normal(self):
         nn.init.normal_(self.linear1.weight, mean=0.0, std=0.5)
         nn.init.zeros_(self.linear1.bias)
         return self
     
+    @torch.no_grad()
+    def init_mirror(self):
+        """
+        Initializes the layer's weights and biases in mirror pairs.
+        The first half of the neurons are initialized from a normal distribution,
+        and the second half are initialized as the negation of the first half.
+        """
+        midpoint = self.linear1.weight.shape[0] // 2
+        self.linear1.weight[midpoint:] = -self.linear1.weight[:midpoint].clone()
+        self.linear1.bias[midpoint:] = -self.linear1.bias[:midpoint].clone()
+            
+        return self    
+
+    @torch.no_grad()
     def reinit_dead_data(self, init_fn, data, max_attempts=100, min_threshold=0):
         """
         Reinitialize the model until no data points are dead (produce all negative pre-activations).
@@ -118,6 +133,7 @@ class Model_ReLU1(nn.Module):
         # Failed to find initialization without dead data
         raise RuntimeError(f"reinit_dead_data failed after {max_attempts} attempts")
 
+    @torch.no_grad()
     def init_bounded_hypersphere(self, weight_init_fn, radius, data_mean=None):
         """
         Bounded Hypersphere Initialization: Initialize weights using weight_init_fn,

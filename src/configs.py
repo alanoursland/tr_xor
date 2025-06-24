@@ -101,6 +101,7 @@ class AnalysisConfig:
     weight_evolution_tracking: bool = False
     weight_clustering: bool = False
     symmetry_analysis: bool = True
+    failure_angles: bool = False
 
     # Activation analysis
     activation_analysis: bool = True
@@ -555,5 +556,24 @@ def config_relu1_monitor() -> ExperimentConfig:
             "and early-failure degeneracy detection."
         ),
         logging=LoggingConfig(train_epochs=50),
+    )
+
+@experiment("relu1_mirror")
+def config_relu1_mirror() -> ExperimentConfig:
+    """Factory function for ReLU XOR experiment."""
+    model = models.Model_ReLU1().init_normal().init_mirror()
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01, betas=(0.9, 0.99))
+    loss_function = nn.MSELoss()
+
+    return ExperimentConfig(
+        model=model,
+        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=800, 
+                                stop_training_loss_threshold=1e-7,
+                                loss_change_threshold=1e-24, loss_change_patience=10),
+        data=DataConfig(x=xor_data_centered(), y=xor_labels_T1(), problem_type=ExperimentType.XOR),
+        analysis=AnalysisConfig(convergence_analysis=False, save_plots=False, dead_data_analysis=True, mirror_pair_detection=True, failure_angles=True),
+        execution=ExecutionConfig(num_runs=1000, skip_existing=False, random_seeds=[18]),
+        description="Centered XOR with two nodes, ReLU, sum, and mirrored normal init.",
+        logging=LoggingConfig(train_epochs=50)
     )
 

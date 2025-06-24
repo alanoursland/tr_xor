@@ -32,11 +32,22 @@ The final `relu1_monitor` experiment provided more direct evidence for these hyp
 
 When the monitor detected a "dead data point" for a sufficient number of epochs, it applied a targeted corrective fix. The subsequent success of these runs demonstrates that the geometric failure was not just correlated with the training outcome but was an active impediment that could be diagnosed and resolved.
 
+### 2.4. The Perpendicular Trap in Mirror-Symmetric Networks
+
+The `relu1_mirror` experiment revealed that even when mirror symmetry is structurally enforced from initialization, a specific geometric failure persists. When hyperplanes initialize perpendicular to the optimal solution (approximately 90° offset), the model becomes trapped in local minima that achieve exactly 50% accuracy.
+
+This failure mode demonstrates that:
+* **Structural constraints alone are insufficient** - enforcing $w_2 = -w_1$ and $b_2 = -b_1$ eliminates the symmetry discovery problem but not all failure modes
+* **The perpendicular trap is a special case of out-of-bounds initialization** - the hyperplanes fail to effectively separate the data despite maintaining perfect symmetry
+* **Gradient-based optimization has fundamental limitations** - when symmetric errors cancel out, no rotational gradient exists to guide the model toward the optimal orientation
+
+The 98.4% success rate of mirror initialization (compared to 58% for standard initialization) confirms that symmetry discovery is a major challenge, but the remaining 1.6% failure rate reveals irreducible geometric constraints in the optimization landscape.
+
 ## 3. Implications for Prototype Surface Learning
 
 These results, and the geometric nature of the failure modes, reinforce a key tenet that learning is driven by **gradient flow from class-aligned surfaces**. In the `abs1` model, that flow is always present. In the `relu1` model, it is **fragile and conditional**, a fact confirmed by comparing the `normal` and `reinit` experiments.
 
-More broadly, this highlights a **critical role for inductive bias** in neural architectures. Although `relu1` can represent the same function as `abs1`, it lacks the structural guarantee that the absolute value provides. This makes the optimization landscape far more treacherous, even for a trivial dataset like XOR.
+More broadly, this highlights a **critical role for inductive bias** in neural architectures. Although `relu1` can represent the same function as `abs1`, it lacks the structural guarantee that the absolute value provides. This makes the optimization landscape far more treacherous, even for a trivial dataset like XOR. The `relu1_mirror` experiment demonstrates that even when we provide the structural bias of mirror symmetry, geometric initialization failures can still trap the model in suboptimal configurations.
 
 ## 4. Generalization, Heuristics, and Future Work
 
@@ -48,5 +59,5 @@ Therefore, we view these findings—from both the preventative heuristics and th
 
 This leads to the following questions for future investigation:
 * **Translating Principles to Practice:** How can the principles of data 'liveness' and geometric 'bounds', demonstrated here via direct intervention, be translated into scalable forms of regularization or adaptive optimization for high-dimensional networks?
-* **Analyzing Asymmetric Solutions:** What can be learned from the few successful but non-symmetric solutions? Do they represent an alternate, stable class of solutions or are they simply artifacts of the ReLU gradient's one-sided nature?
+* **Analyzing Asymmetric Solutions:** What can be learned from the few successful but non-symmetric solutions? Do they represent an alternate, stable class of solutions or are they simply artifacts of the ReLU gradient's one-sided nature? Additionally, how do symmetric local minima (as seen in `relu1_mirror` failures) differ fundamentally from asymmetric ones?
 * **Connecting to Prototype Surface Theory:** How do these initialization failures relate to the formation of prototype surfaces? Our gut feeling is that these failures are symptoms of a deeper problem: the inability to form a coherent, class-defining surface. Future work will continue to explore this connection.

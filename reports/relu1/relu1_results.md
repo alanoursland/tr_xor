@@ -14,6 +14,7 @@ This document summarizes empirical results from a sequence of experiments on the
 | **4. Re-init + 0.2 Margin** | 500 | 99.8% (499 runs) | 0.2% (1 run) |
 | **5. Re-init + 0.3 Margin** | 500 | **100.0%** (500 runs) | **0.0%** (0 runs) |
 | **6. In-Training Monitoring (`relu1_monitor`)**| 1000 | **100.0%** (1000 runs) | **0.0%** (0 runs) |
+| **7. Mirror Init (`relu1_mirror`)** | 1000 | 98.4% (984 runs) | 1.6% (16 runs) |
 
 ## 2. Results of Margin-Based Initialization
 
@@ -80,7 +81,33 @@ The monitor's success is directly attributable to its ability to correct for the
 * The monitoring system successfully rescued runs that began with known failure conditions. **751 runs that started with 'dead' data points were corrected by the monitor to achieve 100% accuracy.**
 * Crucially, this includes **487 runs where a class-1 (True) input was dead at initialization**—a condition that was previously predictive of certain failure in the unmonitored baseline experiment.
 
-## 7. Final Loss & Convergence (Standard Init)
+## 7. Results of Mirror Initialization (`relu1_mirror`)
+
+This experiment enforced mirror symmetry from initialization, setting $w_2 = -w_1$ and $b_2 = -b_1$ to eliminate the symmetry discovery problem.
+
+### 7.1. Primary Outcome: Classification Accuracy
+Mirror initialization achieved a **98.4% success rate** (984/1000 runs), with 16 runs failing to converge to 100% accuracy.
+
+### 7.2. Characterization of Failures: The Perpendicular Trap
+All 16 failures exhibited a distinct geometric pattern:
+* **Failed runs initialized with hyperplanes nearly perpendicular to the optimal solution** (mean angle difference: 87.64° ± 1.66°)
+* **Successful runs had widely distributed initial angles** (mean angle difference: 45.15° ± 25.63°)
+* All failures converged to exactly 50% accuracy, representing local minima
+
+### 7.3. Hyperplane Clustering
+The final hyperplanes formed 6 distinct clusters:
+* **Clusters 0 & 1**: The two optimal diagonal solutions (982 runs total)
+* **Clusters 2-5**: Four failure configurations representing horizontal/vertical local minima (12 runs)
+* **Noise points**: 6 additional outliers
+
+### 7.4. Mirror Symmetry Maintenance
+* **All 984 successful runs maintained perfect mirror symmetry** (cosine similarity = -1.0)
+* Even failed runs preserved their mirror structure throughout training
+* No dead data points occurred in any run (guaranteed by mirror initialization)
+
+This experiment demonstrates that enforced structural symmetry dramatically improves reliability but cannot overcome all geometric initialization failures, particularly the perpendicular trap where gradient provides no rotational signal.
+
+## 8. Final Loss & Convergence (Standard Init)
 
 *The following metrics refer to the `relu1_normal` experiment runs.*
 
@@ -92,7 +119,7 @@ The models that failed to achieve perfect accuracy also retained noticeably high
 | 50th | 123 |
 | 100th | 275 |
 
-## 8. Prototype Geometry and Hyperplane Clustering (Standard Init)
+## 9. Prototype Geometry and Hyperplane Clustering (Standard Init)
 
 *The following metrics refer to the `relu1_normal` experiment runs.*
 

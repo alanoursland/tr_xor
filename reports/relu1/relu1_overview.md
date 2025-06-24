@@ -79,6 +79,8 @@ Further analysis suggested that both "dead data" and "small margin" issues are s
 
 An "out-of-bounds" neuron is one whose hyperplane has shifted such that all data points lie on one side of it (i.e., in the same half-space). When this occurs, the neuron becomes unresponsive to the data distribution; its output is either always zero or always active for all inputs. It can no longer contribute to separating the classes, effectively reducing the model's capacity and trapping it in a suboptimal state. This hypothesis can be tested by monitoring the distance of each hyperplane from the data's origin during training.
 
+The `relu1_mirror` experiment revealed a particularly interesting manifestation of this failure mode: when mirror-symmetric hyperplanes initialize perpendicular to the optimal solution, they create local minima where both hyperplanes fail to separate the data effectively. Despite maintaining perfect symmetry, these configurations achieve only 50% accuracy and provide no gradient signal for rotation toward the optimal orientation.
+
 ---
 
 ## Training Configuration
@@ -104,6 +106,8 @@ We test a sequence of initialization strategies to diagnose and resolve the mode
 3.  **Re-init with Margin (`relu1_reinit_margin`)**: The final set of interventions. In addition to the "live data" check, this condition also re-initializes if any hyperplane is within a specified margin $\epsilon$ of any data point. We tested this condition with progressively larger margins of **$\epsilon=0.1$**, **$\epsilon=0.2$**, and **$\epsilon=0.3$**.
 
 4.  **In-Training Monitoring and Correction (`relu1_monitor`)**: The final diagnostic stage. This strategy reverts to the `Standard Init` to observe failures in their natural state. It employs a **real-time health monitor** to detect the "Dead Data Point" and "Out-of-Bounds Neuron" conditions during training and, in some cases, attempts to apply a **corrective fix** to rescue the run.
+
+5.  **Mirror Initialization (`relu1_mirror`)**: A structural intervention that enforces mirror symmetry from initialization by setting $w_2 = -w_1$ and $b_2 = -b_1$. This eliminates the symmetry discovery problem but can still fall victim to out-of-bounds configurations when initialized perpendicular to the optimal solution.
 
 ## Data Configuration
 
@@ -165,6 +169,8 @@ This experiment follows an iterative, hypothesis-driven process. The primary goa
 6.  Characterizing the temporal dynamics of when and how these geometric failures occur.
 7.  Evaluating the efficacy of targeted, mid-training interventions designed to rescue failing runs.
 8.  Analyzing how these interventions affect the emergence of symmetric geometric structures in the final learned model.
+9.  Testing whether **enforced structural symmetry** (`relu1_mirror`) is sufficient to ensure convergence or if geometric initialization failures persist.
+10. Characterizing how the out-of-bounds failure mode manifests in symmetric architectures, particularly the perpendicular initialization trap.
 
 ## Comments
 

@@ -1,0 +1,25 @@
+cff-version: 1.2.0
+title: "Prototype Surface Learning in Neural Networks: Evidence from XOR"
+message: "If you use this research, please cite it as below."
+type: software
+
+authors:
+  - given-names: Alan
+    family-names: Oursland
+    email: alan.oursland@gmail.com
+    orcid: https://orcid.org/0009-0006-4976-3801
+
+abstract: >
+  This project explores a geometric reinterpretation of neural network learning, where neurons model prototype surfaces rather than decision boundaries. Through controlled XOR experiments and theoretical analysis, the work provides evidence that activation patterns encode geometric deviation from learned class regions, not feature presence.
+
+repository-code: https://github.com/alanoursland/tr_xor
+date-released: 2025-01-24
+version: 1.0.0
+
+keywords:
+  - neural networks
+  - prototype surface learning
+  - XOR problem
+  - geometric learning
+
+license: MIT AND CC-BY-4.0

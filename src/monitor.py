@@ -110,7 +110,7 @@ class BaseMonitor:
     or interventions such as dead neuron detection or sample-level gradient tracking.
 
     Subclasses should override:
-        • check(targets: Tensor, batch_idx: Sequence[int]) → bool
+        • check(x: torch.Tensor, y: torch.Tensor, batch_idx: Sequence[int]) → bool
         • fix(x: Tensor, y: Tensor) → None
     """
     def __init__(
@@ -147,14 +147,14 @@ class BaseMonitor:
     def to(self, device: torch.device) -> None:
         self.manager.to(device)
 
-    def check(self, targets: torch.Tensor, batch_idx: Sequence[int]) -> bool:
+    def check(self, x: torch.Tensor, y: torch.Tensor, batch_idx: Sequence[int]) -> bool:
         """
         Subclasses should override this method to implement custom monitoring logic.
         Returns True if training should continue normally, or False to trigger intervention.
         """
         raise NotImplementedError("Subclasses must implement the check() method.")
 
-    def fix(self, x: torch.Tensor, y: torch.Tensor) -> None:
+    def fix(self, x: torch.Tensor, y: torch.Tensor, batch_idx: Sequence[int]) -> None:
         """
         Subclasses should override this method to implement corrective intervention
         when a monitored condition is violated.
@@ -191,231 +191,210 @@ class DeadSampleMonitor(BaseMonitor):
     # ---------------------------------------------------------------
     #  ---- EARLY-FAILURE HEURISTIC IMPLEMENTATION ------------------
     # ---------------------------------------------------------------
-    def check(self, targets: torch.Tensor, batch_idx: Sequence[int]):
-        z = self.activations["activation1_in"]       # (B, H)
-        a = self.forward_outputs["activation1_out"]  # (B, H)
-        preds = self.manager.model_output.squeeze(1) # (B, )
+    def check(self, x: torch.Tensor, y: torch.Tensor, batch_idx: Sequence[int]) -> bool:
+        """
+        Checks for samples that are both misclassified and have zero gradient flow.
+        
+        This method identifies "dead-and-wrong" samples by:
+        1.  Calculating a gradient-flow score for each sample. This score is zero
+            if all pre-ReLU activations for a sample are negative, indicating no
+            gradient will pass through the layer.
+        2.  Identifying which samples are misclassified based on the model's output.
+        3.  Tracking a "dead streak" counter for each sample in the dataset.
+        4.  Flagging samples whose streak of being "dead-and-wrong" exceeds a
+            predefined `patience` threshold.
 
-        # Infer dL/dŷ for MSE manually
-        dL_dy = 2.0 / preds.size(0) * (preds - targets)
+        Args:
+            x: The data points for the current batch.
+            y: The ground truth labels for the current batch.
+            batch_idx: The global indices of the samples in the current batch.
 
-        result = True
-        # gradient-flow score S_k  (ReLU passes grad only if z>0)
-        S = (z > 0).float().mul_(dL_dy.abs().unsqueeze(1)).sum(dim=1)  # (B,)
+        Returns:
+            bool: True if no samples are flagged, False if an intervention is needed.
+        """
+        # --- 1. Retrieve captured tensors from the hook manager ---
+        # (B, H) - Pre-activation values for the first hidden layer
+        pre_activations = self.activations["activation1_in"]
+        # (B,)   - Final model predictions for the batch
+        predictions = self.manager.model_output.squeeze(1)
 
-        wrong = (preds > self.classifier_threshold).int().ne_(targets.int())
-        dead_and_wrong = (S == 0) & wrong
+        # --- 2. Identify misclassified samples ---
+        # Convert predictions to binary classes (0 or 1)
+        predicted_classes = (predictions > self.classifier_threshold).int()
+        is_misclassified = predicted_classes.ne(y.int())
 
-        idx = torch.as_tensor(batch_idx, device=S.device)
-        cpu_idx = idx.cpu()
-        cpu_dw  = dead_and_wrong.cpu()
+        # --- 3. Calculate the gradient-flow score for each sample ---
+        # This score estimates how much gradient can flow back through the ReLU neurons.
+        # Note: This manually infers the gradient for Mean Squared Error loss.
+        # dL/dŷ = 2 * (ŷ - y) / B, where B is batch size.
+        manual_mse_gradient = 2.0 / predictions.size(0) * (predictions - y)
+        
+        # ReLU passes gradient only if its input (pre_activation) is > 0.
+        active_neurons_mask = (pre_activations > 0).float()
+        
+        # The score is the sum of absolute gradients flowing through active neurons.
+        # A score of 0 means no gradient can flow back for that sample.
+        gradient_flow_score = active_neurons_mask.mul(manual_mse_gradient.abs().unsqueeze(1)).sum(dim=1)
 
-        # update streak counter
-        self.dead_counter[cpu_idx] = torch.where(
-            cpu_dw.bool(),
-            self.dead_counter[cpu_idx] + 1,
-            torch.zeros_like(self.dead_counter[cpu_idx]),
-        )
+        # --- 4. Identify samples that are both "dead" and "misclassified" ---
+        has_zero_gradient_flow = (gradient_flow_score == 0)
+        is_dead_and_misclassified = has_zero_gradient_flow & is_misclassified
 
-        # flag any sample whose streak >= patience
-        flagged = torch.nonzero(self.dead_counter[cpu_idx] > self.patience).flatten()
-        if len(flagged):
-            result = False
-            ids = cpu_idx[flagged].tolist()
-            # print(f"⚠️\tEarly-failure detector: dead samples {ids} "
-            #       f"(>{self.patience} epochs) "
-            #     #   f"{self.dead_counter[cpu_idx]} "
-            #       )
+        # --- 5. Update the streak counter for the entire dataset ---
+        # Move necessary tensors to the CPU to update the counter
+        batch_idx_cpu = torch.as_tensor(batch_idx, dtype=torch.long)
+        dead_and_wrong_cpu = is_dead_and_misclassified.cpu()
+        
+        # For samples in the current batch:
+        # - If dead-and-wrong, increment their counter.
+        # - Otherwise, reset their counter to zero.
+        current_counts = self.dead_counter[batch_idx_cpu]
+        updated_counts = torch.where(dead_and_wrong_cpu, current_counts + 1, 0)
+        self.dead_counter[batch_idx_cpu] = updated_counts
 
+        # --- 6. Check if any sample's streak has exceeded patience ---
+        flagged_samples_in_batch = torch.nonzero(updated_counts > self.patience).flatten()
+        
         self.step_count += 1
-        return result
+
+        if len(flagged_samples_in_batch) > 0:
+            # Retrieve the global indices of the flagged samples for logging
+            flagged_global_idx = batch_idx_cpu[flagged_samples_in_batch].tolist()
+            # print(f"⚠️ Early-failure detector: dead samples {flagged_global_idx} "
+            #       f" (streak > {self.patience} epochs)")
+            return False  # Signal that an intervention is required
+
+        return True # All checks passed
 
     @torch.no_grad()
-    def fix(self, x: torch.Tensor, y: torch.Tensor):
-        self.fix_weight_nudge(x, y)
+    def fix(self, x: torch.Tensor, y: torch.Tensor, batch_idx: Sequence[int]):
+        """
+        Identifies samples that have been flagged for intervention and applies a
+        corrective nudge.
+
+        This method:
+        1.  Uses the `dead_counter` to find which samples in the current batch have
+            exceeded the `patience` threshold.
+        2.  For each flagged sample, it calls a specialized fix function (hardcoded
+            for now).
+        3.  Resets the `dead_counter` for the corrected samples to 0.
+        """
+        # --- 1. Identify which samples in THIS BATCH need fixing ---
+        batch_idx_cpu = torch.as_tensor(batch_idx, dtype=torch.long)
+        
+        # Get the streak count for each sample in the current batch
+        batch_dead_counts = self.dead_counter[batch_idx_cpu]
+        
+        # Find the *local* indices within the batch of samples that need fixing
+        local_idx_to_fix = torch.nonzero(batch_dead_counts > self.patience).flatten()
+
+        if len(local_idx_to_fix) == 0:
+            return  # No samples in this batch require fixing
+
+        # --- 2. Prepare for the fix ---
+        flagged_global_idx = batch_idx_cpu[local_idx_to_fix].tolist()
+        print(f"⚠️ Correcting persistently dead samples (global indices: {flagged_global_idx})")
+
+        model = self.model
+        W = model.linear1.weight
+        b = model.linear1.bias
+
+        # --- 3. Apply the chosen fix to each flagged sample ---
+        for i in local_idx_to_fix:
+            # Get the specific input tensor for the one sample we are fixing
+            sample_input = x[i]
+            
+            # --- Call the hardcoded, specialized fix method ---
+            self._fix_weight_nudge(sample_input, W, b)
+            # To use a different fix, you would change the line above, e.g.:
+            # self._fix_noise_injection(sample_input, W, b)
+
+        # --- 4. Reset the counter for the samples that were just fixed ---
+        self.dead_counter[flagged_global_idx] = 0
+        print(f"   ➤ Reset patience counter for samples {flagged_global_idx}.")
 
     # 92% get 100% accuracy
     @torch.no_grad()
-    def fix_noise_injection(self, x: torch.Tensor, y: torch.Tensor):
-        """
-        For each dead-and-wrong sample, inject scaled random noise into
-        the closest neuron's weight vector to help activate the sample.
-        """
-        model = self.model
-        W = model.linear1.weight          # (H, D)
-        b = model.linear1.bias            # (H,)
-        norms = W.detach().norm(dim=1)    # (H,)
+    def _fix_weight_nudge(self, xi: torch.Tensor, W: torch.Tensor, b: torch.Tensor):
+        """Applies a minimal-norm weight nudge to a single dead sample."""
+        zi = xi @ W.detach().T + b.detach() # Pre-activations for this one sample
+        
+        # Find the neuron closest to activating for this sample
+        norms = W.detach().norm(dim=1) + 1e-12
+        distances = zi / norms
+        closest_neuron_idx = torch.argmin(distances.abs()).item()
 
-        z = x @ W.detach().T + b.detach() # (B, H)
-        preds = self.manager.model_output.squeeze() 
-        wrong = (preds > self.classifier_threshold).int() != y.int()
+        # Calculate the minimal update to activate that neuron
+        z_closest = zi[closest_neuron_idx].item()
+        norm_x_sq = xi @ xi + 1e-12
+        eps = 1e-4  # Target activation value
 
-        dead_mask = (z <= 0).all(dim=1) & wrong
-        dead_indices = dead_mask.nonzero(as_tuple=False).flatten()
-
-        if len(dead_indices) == 0:
-            print("✔️  No dead-and-wrong samples to fix (noise injection).")
-            return
-
-        for i in dead_indices:
-            xi = x[i]                     # (D,)
-            zi = z[i]                     # (H,)
-            di = zi / norms               # signed scaled distances
-            closest = torch.argmin(di.abs()).item()
-
-            zj = zi[closest].item()
-            norm_x = xi.norm().item() + 1e-12  # avoid div/0
-            eps = 1e-4
-
-            projected_deficit = eps - zj
-            noise_magnitude = projected_deficit / norm_x
-
-            noise_direction = torch.randn_like(xi)
-            noise_direction = noise_direction / (noise_direction.norm() + 1e-12)
-            delta_w = noise_magnitude * noise_direction
-
-            W[closest] += delta_w
-
-            print(f"🧪 Dead sample {i.item()} (label = {y[i].item()})")
-            # print(f"    Input x = {xi.tolist()}")
-            # print(f"    Pre-activations z = {zi.tolist()}")
-            # print(f"    ➤ Closest neuron index: {closest} (|distance| = {di[closest].abs().item():.4f})")
-            print(f"      Injected noise: ∥Δw∥ = {delta_w.norm().item():.5f}")
-            # print(f"      Δw = {delta_w.tolist()}")
+        alpha = max(0.0, eps - z_closest) / norm_x_sq
+        delta_w = alpha * xi
+        
+        # Apply the fix
+        W[closest_neuron_idx] += delta_w
 
     # 100% get 100% accuracy
     @torch.no_grad()
-    def fix_weight_nudge(self, x: torch.Tensor, y: torch.Tensor):
-        """
-        For each flagged dead-and-wrong sample, compute and print:
-        • distance to each neuron's ReLU hyperplane (z = wᵀx + b)
-        • index of the closest neuron
-        • minimal-norm update to weights to activate the dead point
-        """
-        model = self.model
-        W = model.linear1.weight          # (H, D)
-        b = model.linear1.bias            # (H,)
-        norms = W.detach().norm(dim=1)    # (H,)
+    def _fix_noise_injection(self, xi: torch.Tensor, W: torch.Tensor, b: torch.Tensor):
+        """Injects scaled random noise to nudge a single dead sample."""
+        zi = xi @ W.detach().T + b.detach()
+        norms = W.detach().norm(dim=1) + 1e-12
+        distances = zi / norms
+        closest_neuron_idx = torch.argmin(distances.abs()).item()
+        
+        z_closest = zi[closest_neuron_idx].item()
+        norm_x = xi.norm().item() + 1e-12
+        eps = 1e-4
 
-        z = x @ W.detach().T + b.detach() # (B, H)
-        preds = self.manager.model_output.squeeze() 
-        wrong = (preds > self.classifier_threshold).int() != y.int()
+        projected_deficit = eps - z_closest
+        noise_magnitude = projected_deficit / norm_x
+        
+        noise_direction = torch.randn_like(xi)
+        noise_direction = noise_direction / (noise_direction.norm() + 1e-12)
+        delta_w = noise_magnitude * noise_direction
 
-        dead_mask = (z <= 0).all(dim=1) & wrong
-        dead_indices = dead_mask.nonzero(as_tuple=False).flatten()
-
-        if len(dead_indices) == 0:
-            return
-        print(f"⚠️    Correcting dead samples {[i.item() for i in dead_indices]}")
-        for i in dead_indices:
-            xi = x[i]                     # (D,)
-            zi = z[i]                     # (H,)
-            di = zi / norms               # signed scaled distances
-            closest = torch.argmin(di.abs()).item()
-
-            zj = zi[closest].item()
-            norm_x2 = xi @ xi + 1e-12     # avoid divide-by-zero
-            eps = 1e-4                    # small positive activation threshold
-
-            # Calculate the minimal weight update vector
-            alpha = max(0.0, eps - zj) / norm_x2
-            delta_w = alpha * xi         # shape (D,)
-            W[closest] += delta_w
-
-            # print(f"🧠  Dead sample {i.item()} (label = {y[i].item()})")
-            # print(f"    Input x = {xi.tolist()}")
-            # print(f"    Pre-activations z = {zi.tolist()}")
-            # print(f"    Distances to ReLU hyperplanes = {di.tolist()}")
-            # print(f"    ➤ Closest neuron index: {closest} (|distance| = {di[closest].abs().item():.4f})")
-            # print(f"      Projection patch: nudging weight[{closest}] by {delta_w.tolist()}")
+        W[closest_neuron_idx] += delta_w
 
     # 80% get 100% accuracy
     @torch.no_grad()
-    def fix_bias_nudge(self, x: torch.Tensor, y: torch.Tensor):
-        W = self.model.linear1.weight.detach()   # (H, D)
-        b = self.model.linear1.bias.detach()     # (H,)
-        norms = W.norm(dim=1)                    # (H,)
+    def _fix_bias_nudge(self, xi: torch.Tensor, W: torch.Tensor, b: torch.Tensor):
+        """Applies a bias nudge to a single dead sample."""
+        zi = xi @ W.detach().T + b.detach()
+        norms = W.detach().norm(dim=1) + 1e-12
+        distances = zi / norms
+        closest_neuron_idx = torch.argmin(distances.abs()).item()
 
-        z = x @ W.T + b                          # (B, H)
-        preds = self.forward_outputs["relu1_relu_out_out"].sum(dim=1)  # (B,)
-        wrong = (preds > self.classifier_threshold).int() != y.int()
-
-        dead_mask = (z <= 0).all(dim=1) & wrong  # (B,)
-        dead_indices = dead_mask.nonzero(as_tuple=False).flatten()
-
-        if len(dead_indices) == 0:
-            print("✔️  No dead-and-wrong samples to fix.")
-            return
-
-        for i in dead_indices:
-            xi = x[i]
-            zi = z[i]               # (H,)
-            di = zi / norms         # signed scaled distances
-            closest = torch.argmin(di.abs())
-            delta = -z[i, closest].item() + 1e-4   # just above zero
-            self.model.linear1.bias[closest] += delta
-
-            print(f"  Dead sample {i.item()} (label = {y[i].item()})")
-            print(f"    Input x = {xi.tolist()}")
-            print(f"    Pre-activations z = {zi.tolist()}")
-            print(f"    Distances to ReLU hyperplanes = {di.tolist()}")
-            print(f"    Closest neuron index: {closest.item()} (|distance| = {di[closest].abs().item():.4f})")
-            print(f"      Nudging bias[{closest}] by {delta:.5f} to activate sample.")
+        # Nudge the bias just enough to make the pre-activation positive
+        delta_b = -zi[closest_neuron_idx].item() + 1e-4
+        b[closest_neuron_idx] += delta_b
 
     # 98% get 100% accuracy
     @torch.no_grad()
-    def fix_weight_bias_nudge(self, x: torch.Tensor, y: torch.Tensor):
-        """
-        For each dead-and-wrong sample, compute the minimal-norm joint update
-        to both weight and bias to activate the sample (z = wᵀx + b > 0).
-        This is a constrained least-norm projection in augmented space.
-        """
-        model = self.model
-        W = model.linear1.weight           # (H, D)
-        b = model.linear1.bias             # (H,)
-        norms = W.detach().norm(dim=1)     # (H,)
+    def _fix_weight_bias_nudge(self, xi: torch.Tensor, W: torch.Tensor, b: torch.Tensor):
+        """Applies a joint weight and bias nudge to a single dead sample."""
+        zi = xi @ W.detach().T + b.detach()
+        norms = W.detach().norm(dim=1) + 1e-12
+        distances = zi / norms
+        closest_neuron_idx = torch.argmin(distances.abs()).item()
 
-        z = x @ W.detach().T + b.detach()  # (B, H)
-        preds = self.forward_outputs["relu1_relu_out_out"].sum(dim=1)
-        wrong = (preds > self.classifier_threshold).int() != y.int()
+        # Augmented input: [x; 1] for joint update
+        x_aug = torch.cat([xi, torch.ones(1, device=xi.device)])
+        norm_x_aug_sq = x_aug @ x_aug + 1e-12
 
-        dead_mask = (z <= 0).all(dim=1) & wrong
-        dead_indices = dead_mask.nonzero(as_tuple=False).flatten()
+        z_closest = zi[closest_neuron_idx].item()
+        eps = 1e-4
+        delta_needed = max(0.0, eps - z_closest)
 
-        if len(dead_indices) == 0:
-            # print("✔️  No dead-and-wrong samples to fix (weight+bias).")
-            return
+        # Calculate the minimal joint update vector
+        delta_theta = (delta_needed / norm_x_aug_sq) * x_aug
+        delta_w = delta_theta[:-1]
+        delta_b = delta_theta[-1].item()
 
-        print(f"⚠️    Dead samples detected. Correcting...  ")
-        for i in dead_indices:
-            xi = x[i]                     # (D,)
-            zi = z[i]                     # (H,)
-            di = zi / norms               # scaled distances
-            closest = torch.argmin(di.abs()).item()
-
-            # Augmented input: [x; 1] for bias
-            x_aug = torch.cat([xi, torch.ones(1, device=xi.device)])  # (D+1,)
-            norm_x_aug_sq = x_aug @ x_aug + 1e-12
-
-            zj = zi[closest].item()
-            eps = 1e-4
-            delta_needed = max(0.0, eps - zj)
-
-            delta_theta = (delta_needed / norm_x_aug_sq) * x_aug      # (D+1,)
-            delta_w = delta_theta[:-1]
-            delta_b = delta_theta[-1].item()
-
-            W[closest] += delta_w
-            b[closest] += delta_b
-
-            # print(f"⚙️  Dead sample {i.item()} (label = {y[i].item()})")
-            # print(f"    Input x = {xi.tolist()}")
-            # print(f"    Pre-activations z = {zi.tolist()}")
-            # print(f"    Distances to ReLU hyperplanes = {di.tolist()}")
-            # print(f"    ➤ Closest neuron index: {closest} (|distance| = {di[closest].abs().item():.4f})")
-            # print(f"      Joint min-norm patch:")
-            # print(f"        Δw = {delta_w.tolist()}")
-            # print(f"        Δb = {delta_b:.5f}")
+        # Apply the fix
+        W[closest_neuron_idx] += delta_w
+        b[closest_neuron_idx] += delta_b
 
 class BoundsMonitor(BaseMonitor):
     def __init__(
@@ -430,7 +409,7 @@ class BoundsMonitor(BaseMonitor):
         self.origin = origin if origin is not None else torch.zeros(hook_manager.model.linear1.in_features)
 
     @torch.no_grad()
-    def check(self, targets: torch.Tensor, batch_idx: Sequence[int]) -> bool:
+    def check(self, x: torch.Tensor, y: torch.Tensor, batch_idx: Sequence[int]) -> bool:
         W = self.model.linear1.weight.detach()  # (H, D)
         b = self.model.linear1.bias.detach()    # (H,)
         origin = self.origin.to(W.device)       # (D,)
@@ -448,7 +427,7 @@ class BoundsMonitor(BaseMonitor):
         return len(self.flagged_neurons) == 0
 
     @torch.no_grad()
-    def fix(self, x: torch.Tensor, y: torch.Tensor) -> None:
+    def fix(self, x: torch.Tensor, y: torch.Tensor, batch_idx: Sequence[int]) -> None:
         # print(f"⚠️    Zeroing node biases due to bounds violation...")
         for j in self.flagged_neurons.tolist():
             if self.model.linear1.bias is not None:
@@ -478,7 +457,7 @@ class LoggingMonitor(BaseMonitor):
     # ---------------------------------------------------------------
     #  --------- pretty printing as before --------------------------
     # ---------------------------------------------------------------
-    def check(self, targets: torch.Tensor, batch_idx: Sequence[int]):
+    def check(self, x: torch.Tensor, y: torch.Tensor, batch_idx: Sequence[int]):
         print(f"\n=== Step {self.step_count} Monitor Report ===")
 
         if self.activations:
@@ -518,23 +497,6 @@ class LoggingMonitor(BaseMonitor):
         # print("====================================\n")
         self.step_count += 1
 
-    # ---------------------------------------------------------------
-    #  helper for toy XOR case (unchanged) --------------------------
-    # ---------------------------------------------------------------
-    def compute_per_example_gradients(self, inputs, targets, criterion):
-        grads = []
-        print("\n[Per-Example Gradients and Losses]")
-        for i in range(inputs.size(0)):
-            self.model.zero_grad()
-            out   = self.model(inputs[i].unsqueeze(0))
-            loss  = criterion(out, targets[i].unsqueeze(0))
-            print(f"Data point {i}: loss = {loss.item():.6f}")
-            loss.backward(retain_graph=True)
-            w = self.model.linear1.weight.grad.detach().clone()
-            b = self.model.linear1.bias.grad.detach().clone()
-            grads.append((w, b))
-        return grads
-
 # In monitor.py
 
 class CompositeMonitor(BaseMonitor):
@@ -557,15 +519,15 @@ class CompositeMonitor(BaseMonitor):
         # 3. Store the list of monitors it will delegate to.
         self.monitors = monitors
 
-    def check(self, targets: torch.Tensor, batch_idx: Sequence[int]) -> bool:
+    def check(self, x: torch.Tensor, y: torch.Tensor, batch_idx: Sequence[int]) -> bool:
         # Delegate the 'check' call to each child monitor.
-        results = [m.check(targets, batch_idx) for m in self.monitors]
+        results = [m.check(x, y, batch_idx) for m in self.monitors]
         return all(results)
 
-    def fix(self, x: torch.Tensor, y: torch.Tensor) -> None:
+    def fix(self, x: torch.Tensor, y: torch.Tensor, batch_idx: Sequence[int]) -> None:
         # Delegate the 'fix' call to each child monitor.
         for m in self.monitors:
-            m.fix(x, y)
+            m.fix(x, y, batch_idx)
 
     def to(self, device: torch.device):
         # The parent 'to' method already calls manager.to(device),

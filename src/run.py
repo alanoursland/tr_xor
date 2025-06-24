@@ -125,8 +125,9 @@ def execute_training_run(
 
         health_monitor = config.training.health_monitor
         if health_monitor:    
-            if not health_monitor.check(targets=y, batch_idx=list(range(y.size(0)))):
-                health_monitor.fix(x, y)
+            batch_idx = list(range(y.size(0)))
+            if not health_monitor.check(x, y, batch_idx):
+                health_monitor.fix(x, y, batch_idx)
             # print(f"[epoch {epoch}] dead_data={metrics.dead_data_fraction:.2f}, torque={metrics.torque_ratio:.4f}, bias_drift={metrics.bias_drift:.2e}")
             # config.training.health_monitor.log_registered_state()
             # # Optional: respond to specific issues

@@ -19,7 +19,31 @@ The learned surface, defined by the hyperplane $Wx + b = 0$, consistently passed
 
 ### 2.2. Output Reflects Scaled Distance to the Surface
 
-The final geometry for all runs was not only correctly oriented but also precisely scaled. The mean absolute distance of `True` (class 1) inputs to the learned surface was consistently ~1.41421 and places the two True points at exactly √2 units away (mean 1.41421 ± 1e-7). This implies that the norm of the final weight vector, $||W||$, was also optimized to a specific value (approximately $1/\sqrt{2}$) to scale the model's output to be near 1 for the `True` inputs. Therefore, the network learns both the optimal placement and the optimal scaling of its prototype surface.
+The final geometry for all runs was not only correctly oriented but also precisely scaled. The mean absolute distance of `True` (class 1) inputs to the learned surface was consistently \~1.41421, placing the two `True` points at exactly √2 units away from the learned prototype surface (mean 1.41421 ± 1e-7). This implies that the norm of the final weight vector, $\|W\|$, was also optimized to a specific value—approximately $1/\sqrt{2}$—so that the model’s output magnitude for `True` inputs approaches 1. Thus, the network does not simply orient a surface: it learns both its optimal *placement* and *scaling*.
+
+The affine form of the surface equation:
+
+$$
+y = Wx + b
+$$
+
+can be decomposed geometrically as a projection operator:
+
+$$
+y = \frac{v \cdot x}{\sqrt{\lambda}} + b
+$$
+
+where $v$ is a unit vector defining the direction of projection, and $\lambda$ is a positive scaling factor (analogous to an eigenvalue). Choosing any point $\mu$ **on the learned decision boundary**—that is, any $\mu$ satisfying $W\mu + b = 0$—we can rewrite:
+
+$$
+b = -\frac{v \cdot \mu}{\sqrt{\lambda}}
+\quad \Rightarrow \quad
+y = \frac{v \cdot (x - \mu)}{\sqrt{\lambda}}
+$$
+
+This formulation shows that the model computes a signed, scaled projection of the input relative to a surface centered at $\mu$, with orientation $v$, and scaling $1/\sqrt{\lambda}$. The choice of $\mu$ introduces translation invariance along the surface: any point on the decision boundary defines the same geometric decomposition.
+
+This interpretation reinforces the prototype surface hypothesis. The model is not merely learning a separating hyperplane; it is constructing a **directional deviation measure** from a class-defining region. The neuron behaves not as a binary detector, but as a calibrated distance function from the prototype surface—a surface that, by training objective, must intersect the class-0 examples and symmetrically distance itself from class-1 inputs.
 
 ## 3. Learning Dynamics and Convergence Speed
 
@@ -29,7 +53,7 @@ A plausible explanation is that when the initial weight norm is far from the opt
 
 Even when minimal re-orientation was needed, performance was still dictated by scale. In the `Large` initialization runs, trials requiring the smallest angle changes were still extremely slow, averaging 628.8 epochs to converge. This reinforces the conclusion that correcting the initial weight scale, rather than its orientation, was the primary bottleneck in the training process.
 
-We suspect that the L2-distance between the intial and final states may correlate more strongly with the training epochs. This aspect of our experiment invites more investigation.
+The initial orientation and magnitudes both affect convergence speed and need to be studied jointly. We can't draw any strong conclusions from the data. Although, we suspect that the L2-distance between the intial and final states may correlate more strongly with the training epochs. This aspect of our experiment invites more investigation.
 
 ## 4. Interpretation and Representational Duality
 

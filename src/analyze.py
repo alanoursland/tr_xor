@@ -17,6 +17,7 @@ from configs import ExperimentConfig, ExperimentType, get_experiment_config, lis
 import matplotlib.pyplot as plt
 import json
 import math
+import torch.nn as nn
 
 def targets_to_class_labels(y):
     if y.ndim == 2 and y.shape[1] > 1:
@@ -26,6 +27,13 @@ def targets_to_class_labels(y):
         # Convert binary thresholding to labels
         y_indices = y.long()
     return y_indices
+
+def get_linear_layers(model: nn.Module) -> Dict[str, nn.Linear]:
+    return {
+        name: module
+        for name, module in model.named_modules()
+        if isinstance(module, nn.Linear)
+    }
 
 def configure_analysis_from_config(config: ExperimentConfig) -> Tuple[List[str], Dict[str, Any]]:
     """
@@ -641,7 +649,7 @@ def generate_config_hash(config: ExperimentConfig) -> str:
     config_str = json.dumps(hash_dict, sort_keys=True)
     return hashlib.md5(config_str.encode()).hexdigest()[:8]
 
-def load_all_run_results(results_dir: Path) -> List[Dict[str, Any]]:
+def load_all_run_results(results_dir: Path, config: ExperimentConfig) -> List[Dict[str, Any]]:
     """
     Load results from all training runs in an experiment.
     
@@ -672,7 +680,7 @@ def load_all_run_results(results_dir: Path) -> List[Dict[str, Any]]:
         run_id = int(run_dir.name)
         
         try:
-            run_result = load_single_run_result(run_dir, run_id)
+            run_result = load_single_run_result(run_dir, run_id, config)
             all_results.append(run_result)
             
         except Exception as e:
@@ -694,7 +702,7 @@ def load_all_run_results(results_dir: Path) -> List[Dict[str, Any]]:
     
     return all_results
 
-def load_single_run_result(run_dir: Path, run_id: int) -> Dict[str, Any]:
+def load_single_run_result(run_dir: Path, run_id: int, config: ExperimentConfig) -> Dict[str, Any]:
     """
     Load results from a single training run.
     
@@ -718,6 +726,7 @@ def load_single_run_result(run_dir: Path, run_id: int) -> Dict[str, Any]:
     try:
         model_state_dict = torch.load(model_path, map_location='cpu')
         result['model_state_dict'] = model_state_dict
+        result['model_linear_layers'] = get_linear_layers(config.model)
     except Exception as e:
         raise RuntimeError(f"Failed to load model from {model_path}: {e}")
     
@@ -1665,7 +1674,7 @@ def analyze_loss_curve_patterns(loss_histories: List[List[float]]) -> Dict[str, 
 
 def analyze_prototype_surface(run_results, experiment_data, config):
     # Test 1: Distance of points to hyperplanes
-    distance_test = test_distance_to_hyperplanes(run_results, experiment_data)
+    distance_test = test_distance_to_hyperplanes(run_results, experiment_data, config)
     
     # Test 2: Mirror weight detection  
     mirror_test = test_mirror_weights(run_results)
@@ -1675,44 +1684,67 @@ def analyze_prototype_surface(run_results, experiment_data, config):
         'mirror_test': mirror_test
     }
 
-def test_distance_to_hyperplanes(run_results, experiment_data):
-   """
-   Test if classification correlates with distance to learned hyperplanes.
-   """
-   x_train = experiment_data['x_train']
-   y_train = experiment_data['y_train']
-   
-   results = []
-   
-   for result in run_results:
-       if result.get('accuracy', 0) < 0.75:  # Only test successful models
-           continue
-           
-       # Load model weights
-       state_dict = result['model_state_dict']
-       W = state_dict['linear1.weight']  # Assuming first layer is 'linear1'
-       b = state_dict['linear1.bias']
-       
-       # Compute distances from each point to each hyperplane
-       distances = []
-       for i in range(W.shape[0]):  # For each neuron
-           w = W[i]
-           bias = b[i]
-           
-           # Distance = |Wx + b| / ||W||
-           point_distances = torch.abs(w @ x_train.T + bias) / torch.norm(w)
-           distances.append(point_distances)
-       
-       # Find minimum distance to any hyperplane for each point
-       min_distances = torch.stack(distances).min(dim=0)[0]
-       
-       results.append({
-           'run_id': result['run_id'],
-           'distances': min_distances,
-           'labels': y_train
-       })
-   
-   return results
+def test_distance_to_hyperplanes(run_results, experiment_data, config):
+    """
+    Test if classification correlates with distance to learned hyperplanes
+    for each linear layer in the model.
+    
+    Args:
+        run_results: list of run result dicts (with model_state_dict and model_linear_layers)
+        experiment_data: dict with 'x_train' and 'y_train'
+        config: experiment config (used to access model for latent layer reconstruction)
+    
+    Returns:
+        List of results per run, including distances for each linear layer.
+    """
+    x_train = experiment_data['x_train']
+    y_train = experiment_data['y_train']
+
+    results = []
+
+    for result in run_results:
+        if result.get('accuracy', 0) < 0.75:
+            continue
+
+        state_dict = result['model_state_dict']
+
+        # Build layer input dictionary by manually replicating forward pass
+        layer_inputs = {}
+        layer_inputs["linear1"] = x_train
+
+        # Recompute latent input to linear2 (or deeper layers if added later)
+        x = x_train
+        x = config.model.linear1(x)
+        x = config.model.activation(x)
+        if hasattr(config.model, "scale"):
+            x = config.model.scale(x)
+        layer_inputs["linear2"] = x
+
+        run_result = {
+            "run_id": result["run_id"],
+            "layer_distances": {}
+        }
+
+        for layer_name, layer in result["model_linear_layers"].items():
+            W = state_dict[f"{layer_name}.weight"]
+            b = state_dict[f"{layer_name}.bias"]
+            x_input = layer_inputs[layer_name]
+
+            distances = []
+            for i in range(W.shape[0]):
+                w = W[i]
+                bias = b[i]
+                d = torch.abs(w @ x_input.T + bias) / torch.norm(w)
+                distances.append(d)
+
+            run_result["layer_distances"][layer_name] = {
+                "unit_distances": distances,  # list of [N] tensors
+                "labels": y_train
+            }
+
+        results.append(run_result)
+
+    return results
 
 def test_mirror_weights(run_results):
     """
@@ -1835,61 +1867,76 @@ def analyze_accuracy_distribution(run_results: List[Dict[str, Any]], config: Exp
 
 def analyze_weight_reorientation(run_results: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
-    Analyze weight reorientation patterns: angles and norm ratios between initial and final weights.
-    
+    Analyze weight reorientation patterns (angles and norm ratios) across all linear layers 
+    and training runs. Supports multiple layers per model.
+
     Args:
         run_results: List of results from all training runs
-        
+
     Returns:
-        Dictionary containing weight reorientation analysis
+        Dictionary containing layer-wise reorientation analysis
     """
-    angles = []
-    norm_ratios = []
-    epochs_completed = []
-    
+    # Aggregated data per layer
+    layer_data = {}
+
     for result in run_results:
         run_dir = result["run_dir"]
         run_id = result["run_id"]
         epochs = result.get("epochs_completed", None)
-        
-        if epochs is None:
+        layer_map = result.get("model_linear_layers", {})
+
+        if epochs is None or not layer_map:
             continue
-            
+
         try:
-            # Load initial and final weights
-            w_final = torch.load(run_dir / "model.pt", map_location="cpu")["linear1.weight"].squeeze()
-            w_init = torch.load(run_dir / "model_init.pt", map_location="cpu")["linear1.weight"].squeeze()
-            
-            # Compute angles and norm ratios per hyperplane
-            angles_per_unit = compute_angles_between(w_init, w_final)
-            ratios_per_unit = compute_norm_ratios(w_init, w_final)
-            
-
-            angles.extend(angles_per_unit)
-            norm_ratios.extend(ratios_per_unit)
-
-            # Duplicate epochs for each unit
-            epochs_completed.extend([epochs] * len(angles_per_unit))
-            
+            model_final = torch.load(run_dir / "model.pt", map_location="cpu")
+            model_init = torch.load(run_dir / "model_init.pt", map_location="cpu")
         except Exception as e:
             print(f"⚠️ Run {run_id}: Failed to load weight vectors: {e}")
             continue
-    
-    # Create percentile bins and compute statistics
-    angle_percentile_stats = compute_percentile_bins(angles, epochs_completed, "angle")
-    norm_ratio_percentile_stats = compute_percentile_bins(norm_ratios, epochs_completed, "norm_ratio")
-    
-    return {
-        "angle_analysis": angle_percentile_stats,
-        "norm_ratio_analysis": norm_ratio_percentile_stats,
-        "raw_data": {
-            "angles": angles,
-            "norm_ratios": norm_ratios, 
-            "epochs_completed": epochs_completed
-        }
+
+        for layer_name in layer_map.keys():
+            try:
+                w_final = model_final[f"{layer_name}.weight"].squeeze()
+                w_init = model_init[f"{layer_name}.weight"].squeeze()
+
+                angles_per_unit = compute_angles_between(w_init, w_final)
+                ratios_per_unit = compute_norm_ratios(w_init, w_final)
+
+                # Initialize storage for layer if not already
+                if layer_name not in layer_data:
+                    layer_data[layer_name] = {
+                        "angles": [],
+                        "norm_ratios": [],
+                        "epochs_completed": []
+                    }
+
+                layer_data[layer_name]["angles"].extend(angles_per_unit)
+                layer_data[layer_name]["norm_ratios"].extend(ratios_per_unit)
+                layer_data[layer_name]["epochs_completed"].extend([epochs] * len(angles_per_unit))
+
+            except Exception as e:
+                print(f"⚠️ Run {run_id}, layer {layer_name}: Failed to process weights: {e}")
+                continue
+
+    # Final analysis output
+    output = {
+        "per_layer_analysis": {},
+        "raw_data": layer_data
     }
 
-def compute_percentile_bins(values: List[float], epochs: List[int], metric_name: str) -> Dict[str, Any]:
+    for layer_name, data in layer_data.items():
+        angle_stats = compute_percentile_bins(data["angles"], data["epochs_completed"], metric="angle")
+        ratio_stats = compute_percentile_bins(data["norm_ratios"], data["epochs_completed"], metric="norm_ratio")
+
+        output["per_layer_analysis"][layer_name] = {
+            "angle_analysis": angle_stats,
+            "norm_ratio_analysis": ratio_stats
+        }
+
+    return output
+
+def compute_percentile_bins(values: List[float], epochs: List[int], metric: str) -> Dict[str, Any]:
     """
     Bin data by percentiles and compute mean epochs for each bin.
     
@@ -2472,39 +2519,65 @@ def generate_analysis_report(
     prototype_support = "✅" if (avg_acc == 1.0 and distance_test) else "⚠️ Partial"
 
 
+    ############################################################################################
+    # Collect distances from hyperplanes
+    ############################################################################################
+
     # Extract prototype surface distance test results
     distance_entries = analysis_results.get("prototype_surface", {}).get("distance_test", [])
 
-    # Accumulate distances per class
-    class0_distances = []
-    class1_distances = []
+    # Initialize nested structure: layer → unit → class → list of distances
+    distance_by_layer_unit = {}
 
     for entry in distance_entries:
-        dists = entry["distances"]
-        labels = entry["labels"]
+        layer_distances = entry.get("layer_distances", {})
+        
+        for layer_name, layer_data in layer_distances.items():
+            unit_distances = layer_data.get("unit_distances")  # list of tensors/lists, one per unit
+            labels = layer_data.get("labels")
 
-        for dist, label in zip(dists, labels):
-            # Convert label to scalar class index if needed
-            if isinstance(label, torch.Tensor):
-                if label.ndim == 0:
-                    label = label.item()
-                elif label.ndim == 1 and label.shape[0] > 1:
-                    label = torch.argmax(label).item()
+            if unit_distances is None or labels is None:
+                continue
 
-            if label == 0:
-                class0_distances.append(dist)
-            elif label == 1:
-                class1_distances.append(dist)
+            # Convert labels to numpy
+            if isinstance(labels, torch.Tensor):
+                labels = labels.detach().cpu().numpy()
+            elif not isinstance(labels, np.ndarray):
+                labels = np.array(labels)
 
-    # Convert to numpy arrays for stats
-    d0 = np.array(class0_distances)
-    d1 = np.array(class1_distances)
+            for unit_idx, unit_dists in enumerate(unit_distances):
+                # Convert distances to numpy
+                if isinstance(unit_dists, torch.Tensor):
+                    unit_dists = unit_dists.detach().cpu().numpy()
+                elif not isinstance(unit_dists, np.ndarray):
+                    unit_dists = np.array(unit_dists)
 
-    # Compute stats
-    class0_mean = d0.mean()
-    class0_std = d0.std()
-    class1_mean = d1.mean()
-    class1_std = d1.std()
+                for i in range(len(labels)):
+                    label = labels[i]
+                    dist = unit_dists[i]
+
+                    # Handle one-hot or tensor labels
+                    if isinstance(label, np.ndarray) and label.ndim == 1 and label.shape[0] > 1:
+                        label = np.argmax(label)
+                    elif isinstance(label, (torch.Tensor, np.generic)):
+                        label = int(label)
+
+                    if label not in (0, 1):
+                        continue
+
+                    # Initialize structure
+                    if layer_name not in distance_by_layer_unit:
+                        distance_by_layer_unit[layer_name] = {}
+                    if unit_idx not in distance_by_layer_unit[layer_name]:
+                        distance_by_layer_unit[layer_name][unit_idx] = {0: [], 1: []}
+
+                    distance_by_layer_unit[layer_name][unit_idx][label].append(dist)
+
+    # Now:
+    # distance_by_layer_unit[layer][unit][class] = list of distances
+
+    ############################################################################################
+
 
     # Accuracy validation
     failed_runs = total_runs - success_runs if isinstance(total_runs, int) and isinstance(success_runs, int) else "?"
@@ -2598,9 +2671,26 @@ def generate_analysis_report(
 
     ############################################################################################
 
-    report += "\n## 🧠 Prototype Surface Geometry\n\n"
-    report += f"* **Mean absolute distance of class 0 points to surface**: {class0_mean:.1e} ± {class0_std:.1e}\n\n"
-    report += f"* **Mean absolute distance of class 1 points to surface**: {class1_mean:.5f} ± {class1_std:.1e}\n\n"
+    report += "\n## 📏 Prototype Surface Geometry\n\n"
+
+    for layer_name, units in distance_by_layer_unit.items():
+        report += f"### Layer: `{layer_name}`\n\n"
+        
+        for unit_idx, class_dists in units.items():
+            d0 = np.array(class_dists[0])
+            d1 = np.array(class_dists[1])
+            
+            if len(d0) == 0 or len(d1) == 0:
+                continue  # Skip units with missing data
+            
+            d0_mean, d0_std = d0.mean(), d0.std()
+            d1_mean, d1_std = d1.mean(), d1.std()
+            ratio = d1_mean / (d0_mean + 1e-12)
+
+            report += f"- **Unit {unit_idx}**\n"
+            report += f"  - Mean distance to class 0: `{d0_mean:.2e} ± {d0_std:.2e}`\n"
+            report += f"  - Mean distance to class 1: `{d1_mean:.5f} ± {d1_std:.2e}`\n"
+            report += f"  - Separation ratio (class1/class0): `{ratio:.2f}`\n\n"
 
     report += "\n---\n\n"
 
@@ -2862,6 +2952,9 @@ def main() -> int:
         print(f"  Problem Type: {config.data.problem_type}")
         print(f"  Expected Runs: {config.execution.num_runs}")
 
+        # Get the linear layer information
+        linear_layers = get_linear_layers(config.model)
+
         # Check if results directory exists
         results_dir = Path("results") / experiment_name
         if not results_dir.exists():
@@ -2880,7 +2973,7 @@ def main() -> int:
         # Load experiment data and results
         print("Loading experiment data and results...")
         experiment_data = load_experiment_data(config)
-        run_results = load_all_run_results(results_dir)
+        run_results = load_all_run_results(results_dir, config)
         print(f"✓ Loaded results from {len(run_results)} runs")
 
         # Perform comprehensive analysis

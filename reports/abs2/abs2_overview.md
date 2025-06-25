@@ -1,34 +1,28 @@
-Here is the draft of `abs2_overview.md` written in standard prose:
+# **Experiment Report: Single Absolute Value Unit with BCE Loss (abs2)**
 
----
+## **Experiment Overview**
 
-# Experiment Report: Single Absolute Value Unit with BCE Loss (abs2)
+This report details the next experiment in a series systematically exploring how prototype surface learning principles apply to networks of increasing complexity. This experiment advances from the single-layer, regression-based model in `abs1` to a **two-layer, two-output, classification-based MLP**.
 
-## Experiment Overview
+The primary motivation is twofold. First, by adopting a more standard classification architecture—using two logit outputs and Binary Cross-Entropy (BCE) loss—we address the valid methodological question of why a simpler loss like MSE was used previously. Second, and more importantly, this increase in complexity allows us to study how the **learning dynamics** and **interpretability** change with a deeper network. The goal is to investigate whether a coherent prototype surface still emerges, to expose any new problems or failure modes that arise, and to use these insights to eventually inform methods for improving training and interpretability.
 
-This experiment evaluates whether a minimal neural network consisting of a single linear neuron with an absolute value activation can solve the XOR classification task using a two-output Binary Cross-Entropy (BCE) loss. It is the first experiment in the `abs2` series and builds directly on prior work from `abs1`, extending the prototype surface framework to a classification setting that uses logit outputs and a binary classification objective.
+## **Model Architecture**
 
-The central question is whether the network can still align a learned prototype surface with the XOR structure and successfully classify based on deviations from this surface, even when optimized under BCE rather than Mean Squared Error (MSE). The experiment also highlights how the network utilizes this single deviation signal to generate class-specific predictions across multiple random initializations.
+This experiment uses a standard, two-layer feed-forward network. The architecture consists of:
+1.  A linear layer mapping 2D inputs to a single scalar output.
+2.  An absolute value activation. This choice is *motivated* by the PSL theory's interpretation of neuron outputs as unsigned distances, but the network itself is not explicitly designed to enforce this interpretation. It is an exploratory choice.
+3.  A **static, non-learnable scaling layer**, which serves as a tool for interpretability and as a hook for manual regularization in future work. In a multi-layer network, the effective "gain" on a signal is a product of the norms of the weight matrices from each layer (e.g., `||W₀|| * ||W₁||`). This layer allows us to conceptually isolate that product into a single parameter, which can be examined like an eigenvalue representing the principal scaling factor of the transformation. By normalizing the weight vectors for analysis, we can decouple the learned *orientation* of the hyperplanes from their *scale*, which simplifies clustering and geometric analysis.
+4.  A final linear layer that maps the single feature from the first layer to two output logits, one for each class (`XOR = False`, `XOR = True`).
 
-## Model Architecture
+This setup allows us to explore whether the single feature learned by the first layer is sufficient to drive a two-output classifier and to observe if the error signals from two distinct outputs alter the nature of that learned feature.
 
-The architecture is deliberately minimal and consists of the following layers:
+## **Loss Function and Targets**
 
-* A linear layer that maps 2D inputs to a single scalar projection.
-* An absolute value activation, which interprets this projection as an unsigned distance from a learned surface.
-* A static, non-learnable scaling layer to preserve geometric interpretability by preventing internal weight magnitudes from drifting arbitrarily.
-* A second linear layer that maps the scaled distance signal to two output logits—one for each class (XOR = False, XOR = True).
+The model is trained using `nn.BCEWithLogitsLoss`, which is a standard choice for binary classification tasks. The XOR labels are one-hot encoded:
+* `[1.0, 0.0]` for `XOR = False`
+* `[0.0, 1.0]` for `XOR = True`
 
-This setup enables the model to act as a prototype surface evaluator: the absolute value unit measures deviation from a central surface, while the final linear layer interprets that distance in terms of class affinity.
-
-## Loss Function and Targets
-
-The model is trained using `nn.BCEWithLogitsLoss`, which expects raw logits and internally applies the sigmoid function. The XOR labels are provided as one-hot float vectors:
-
-* \[1.0, 0.0] for XOR = False
-* \[0.0, 1.0] for XOR = True
-
-This configuration allows each output neuron to independently evaluate whether the input belongs to its corresponding class. The use of two outputs emphasizes that class decisions are made by comparing affinities, not by passing a single score through a threshold.
+This configuration frames the task as a multi-label classification problem where the final decision is based on comparing the two output logits.
 
 ## Data Configuration
 
@@ -45,7 +39,7 @@ with corresponding one-hot targets based on the XOR truth table. This centering 
 
 * Loss function: Binary Cross-Entropy with Logits (`nn.BCEWithLogitsLoss`)
 * Optimizer: Adam (learning rate = 0.01, betas = (0.9, 0.99))
-* Maximum epochs: 400
+* Maximum epochs: 5000
 * Early stopping: triggered if loss falls below 1e-7 or stops improving by more than 1e-24 over 10 epochs
 * Batch size: full (4 data points)
 * Runs: 50, each with different random initialization
@@ -53,12 +47,11 @@ with corresponding one-hot targets based on the XOR truth table. This centering 
 
 This configuration allows reliable and interpretable comparisons across training runs while focusing on the convergence behavior of a single-unit architecture.
 
-## Experimental Focus
+## **Experimental Focus**
 
-The experiment is designed to test three main hypotheses:
+This experiment is exploratory and designed to investigate three primary questions:
+1.  How well does a standard two-layer MLP with an absolute value activation solve the XOR task when trained with BCE loss and a two-output structure?
+2.  If the model succeeds, does it converge to a stable geometric solution where the first layer learns a surface aligned with the `XOR=False` class, similar to the behavior observed in the simpler `abs1` model?
+3.  How does the second learnable layer transform the single feature signal from the first layer into two distinct class logits? Furthermore, do the backpropagated error signals from two outputs fundamentally change the geometric feature learned by the first layer compared to the single-output model?
 
-1. That a single absolute value unit can solve XOR classification under a 2-output BCE loss, despite the minimal model capacity.
-2. That the model converges to a stable geometric solution where the learned surface intersects the XOR=False class, and deviations from this surface distinguish class membership.
-3. That downstream layers can reliably transform a scalar geometric distance into meaningful class logits without requiring additional hidden units or nonlinearities.
-
-The results of this experiment will clarify how well the prototype surface learning framework generalizes from regression-based training to logit-based classification, and whether a single-unit deviation signal is sufficient to drive high-confidence, surface-based decision making.
+The results will provide critical insights into how the principles of prototype surface learning scale with increasing network complexity and how learning dynamics are affected by standard classification architectures.

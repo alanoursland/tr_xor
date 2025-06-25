@@ -626,7 +626,7 @@ def config_abs2_single_bce() -> ExperimentConfig:
         model=model,
         training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=5000, stop_training_loss_threshold=1e-7, loss_change_threshold=1e-24, loss_change_patience=10),
         data=DataConfig(x=xor_data_centered(), y=xor_labels_one_hot(), problem_type=ExperimentType.XOR),
-        analysis=AnalysisConfig(accuracy_fn=accuracy_one_hot, save_plots=False),
+        analysis=AnalysisConfig(accuracy_fn=accuracy_one_hot, save_plots=True),
         execution=ExecutionConfig(num_runs=50, skip_existing=False),
         description="Centered XOR with 2-output BCE loss using a single Abs unit.",
         logging=LoggingConfig(train_epochs=50)

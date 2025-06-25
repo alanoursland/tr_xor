@@ -2194,6 +2194,11 @@ def analyze_xor_accuracy_distribution(accuracies: List[float]) -> Dict[str, Any]
     }
 
 def plot_hyperplanes(weights, biases, x, y, title, filename=None):
+    input_dim = weights.shape[-1]
+    if input_dim != 2:
+        # print(f"⚠️ Skipping plot: hyperplane visualization only supported for 2D inputs (got input_dim={input_dim})")
+        return
+
     mpl.rcParams['font.family'] = 'DejaVu Sans'
     mpl.rcParams['axes.titlesize'] = 16
     mpl.rcParams['axes.labelsize'] = 14
@@ -2205,19 +2210,21 @@ def plot_hyperplanes(weights, biases, x, y, title, filename=None):
     y_cpu = y.detach().cpu()
     weights = weights.detach().cpu()  # (n_units, 2)
     biases = biases.detach().cpu()    # (n_units,)
-    mean = torch.zeros(2)
+    mean = torch.zeros(input_dim)
 
     plt.figure(figsize=(6, 6))
 
     # XOR input points
-    for xi, yi in zip(x_cpu, y_cpu):
-        marker = 'o' if yi == 0 else '^'
+    y_labels = targets_to_class_labels(y_cpu.unsqueeze(1) if y_cpu.ndim == 1 else y_cpu)
+    for xi, yi_label  in zip(x_cpu, y_labels):
+        marker = 'o' if yi_label == 0 else '^'
         plt.scatter(xi[0], xi[1], marker=marker, s=100, color='black', edgecolors='k', linewidths=1)
 
     # Draw each hyperplane and normal
     for i, (W, b) in enumerate(zip(weights, biases)):
         norm = torch.norm(W)
         normal = W / norm
+
         distance = (W @ mean + b) / norm
         projection_on_plane = mean - distance * normal
         perp = torch.tensor([-normal[1], normal[0]])
@@ -2296,13 +2303,13 @@ def generate_experiment_visualizations(
                     module.bias,
                     x=x,
                     y=y,
-                    title=f"{experiment_name} Run {run_id:03d} (Trained) — Layer {name}",
+                    title=f"{experiment_name} Run {run_id:03d} (Trained) \n Layer {name}",
                     filename=layer_plot_path
                 )
         init_model_path = run_result['run_dir'] / "model_init.pt"
         if init_model_path.exists():
             # Reconstruct the model and load initial weights
-            initial_model = config.model.__class__()  # assumes default constructor is valid
+            initial_model = config.model
             initial_weights = torch.load(init_model_path, map_location="cpu")
             initial_model.load_state_dict(initial_weights)
 

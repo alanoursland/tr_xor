@@ -349,7 +349,7 @@ def config_abs1_normal() -> ExperimentConfig:
         training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=400, stop_training_loss_threshold=1e-7),
         data=DataConfig(x=xor_data_centered(), y=xor_labels_T1(), problem_type=ExperimentType.XOR),
         analysis=AnalysisConfig(accuracy_fn=accuracy_binary_threshold),
-        execution=ExecutionConfig(num_runs=10, skip_existing=False),
+        execution=ExecutionConfig(num_runs=50, skip_existing=False),
         description="Centered XOR with single absolute value unit and normal init.",
         logging=LoggingConfig(train_epochs=200)
     )

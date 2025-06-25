@@ -7,18 +7,25 @@ Focuses on prototype surface investigation, distance field analysis, and
 comparative studies across activation functions and training runs.
 """
 
-import numpy as np
-import plotly.graph_objects as go
-import torch
-from typing import Dict, List, Tuple, Any
-from pathlib import Path
-import sys
-from configs import ExperimentConfig, ExperimentType, get_experiment_config, list_experiments
-import matplotlib.pyplot as plt
+import hashlib
 import json
 import math
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+import numpy as np
+import plotly.graph_objects as go
+import re
+import sys
+import torch
 import torch.nn as nn
+import traceback
+
+from collections import defaultdict
+from configs import ExperimentConfig, ExperimentType, get_experiment_config, list_experiments
 from itertools import chain
+from pathlib import Path
+from sklearn.cluster import DBSCAN
+from typing import Dict, List, Tuple, Any
 
 def targets_to_class_labels(y):
     if y.ndim == 2 and y.shape[1] > 1:
@@ -635,8 +642,6 @@ def generate_config_hash(config: ExperimentConfig) -> str:
     Returns:
         Unique hash string
     """
-    import hashlib
-    import json
     
     # Create a simplified config dict for hashing (excluding objects)
     hash_dict = {
@@ -768,7 +773,6 @@ def load_single_run_result(run_dir: Path, run_id: int, config: ExperimentConfig)
         if file_path.exists():
             try:
                 if filename.endswith('.json'):
-                    import json
                     with open(file_path, 'r') as f:
                         result[key] = json.load(f)
                 elif filename.endswith('.pt'):
@@ -816,7 +820,6 @@ def extract_epoch_from_filename(filename: str) -> int:
     Returns:
         Epoch number
     """
-    import re
     match = re.search(r'epoch_(\d+)', filename)
     if match:
         return int(match.group(1))
@@ -1685,61 +1688,65 @@ def analyze_prototype_surface(run_results, experiment_data, config):
         'mirror_test': mirror_test
     }
 
-def test_distance_to_hyperplanes(run_results, experiment_data, config):
+def test_distance_to_hyperplanes(run_results: List[Dict[str, Any]], experiment_data: Dict[str, Any], config) -> List[Dict[str, Any]]:
     """
     Test if classification correlates with distance to learned hyperplanes
-    for each linear layer in the model.
-    
+    for each linear layer in the model, using correct layer-specific input data.
+
     Args:
-        run_results: list of run result dicts (with model_state_dict and model_linear_layers)
-        experiment_data: dict with 'x_train' and 'y_train'
-        config: experiment config (used to access model for latent layer reconstruction)
-    
+        run_results: List of run result dicts (with model_state_dict and model_linear_layers)
+        experiment_data: Dict with 'x_train' and 'y_train'
+        config: Experiment config (used to reconstruct model)
+
     Returns:
-        List of results per run, including distances for each linear layer.
+        List of per-run results, each with layer-wise distances and labels.
     """
     x_train = experiment_data['x_train']
     y_train = experiment_data['y_train']
-
     results = []
 
     for result in run_results:
         if result.get('accuracy', 0) < 0.75:
             continue
 
-        state_dict = result['model_state_dict']
+        model = config.model
+        model.load_state_dict(result["model_state_dict"])
+        model.eval()
 
-        # Build layer input dictionary by manually replicating forward pass
         layer_inputs = {}
-        layer_inputs["linear1"] = x_train
+        current = x_train
 
-        # Recompute latent input to linear2 (or deeper layers if added later)
-        x = x_train
-        x = config.model.linear1(x)
-        x = config.model.activation(x)
-        if hasattr(config.model, "scale"):
-            x = config.model.scale(x)
-        layer_inputs["linear2"] = x
+        # Run forward pass and record inputs to each Linear layer
+        for name, module in model.named_modules():
+            if isinstance(module, torch.nn.Linear):
+                layer_inputs[name] = current  # input to this linear layer
+                current = module(current)
+            elif isinstance(module, (torch.nn.ReLU, torch.nn.Tanh, torch.nn.Sigmoid)):
+                current = module(current)
+            elif name == "scale":
+                current = model.scale(current)
+            # skip other modules for now
 
         run_result = {
             "run_id": result["run_id"],
             "layer_distances": {}
         }
 
-        for layer_name, layer in result["model_linear_layers"].items():
+        state_dict = result["model_state_dict"]
+
+        for layer_name, x_input in layer_inputs.items():
             W = state_dict[f"{layer_name}.weight"]
             b = state_dict[f"{layer_name}.bias"]
-            x_input = layer_inputs[layer_name]
 
             distances = []
             for i in range(W.shape[0]):
                 w = W[i]
                 bias = b[i]
                 d = torch.abs(w @ x_input.T + bias) / torch.norm(w)
-                distances.append(d)
+                distances.append(d)  # list of tensors, one per unit
 
             run_result["layer_distances"][layer_name] = {
-                "unit_distances": distances,  # list of [N] tensors
+                "unit_distances": distances,
                 "labels": y_train
             }
 
@@ -1838,7 +1845,6 @@ def plot_failure_angle_histogram(
     output_path: Path,
     title: str
 ):
-    import matplotlib.pyplot as plt
 
     plt.figure(figsize=(6, 4), dpi=300)
 
@@ -2018,87 +2024,77 @@ def compute_percentile_bins(values: List[float], epochs: List[int], metric: str)
 
 def analyze_hyperplane_clustering(run_results: List[Dict[str, Any]], eps: float = 0.1, min_samples: int = 2) -> Dict[str, Any]:
     """
-    Cluster final hyperplane weights across runs using DBSCAN.
-    
+    Cluster final hyperplane weights across runs, layer by layer, using DBSCAN.
+
     Args:
-        run_results: List of results from all training runs
-        eps: DBSCAN epsilon parameter (distance threshold)
-        min_samples: DBSCAN minimum samples per cluster
-        
+        run_results: List of results from all training runs.
+        eps: DBSCAN epsilon parameter (distance threshold).
+        min_samples: DBSCAN minimum samples per cluster.
+
     Returns:
-        Dictionary containing clustering analysis results
+        Dictionary mapping layer names to their clustering results.
     """
-    from sklearn.cluster import DBSCAN
-    import numpy as np
-    
-    # Extract final weights and biases from all runs
-    weights = []
-    biases = []
-    run_ids = []
-    
+    layer_data = defaultdict(list)  # layer_name → list of (weights, bias, run_id)
+
     for result in run_results:
+        run_id = result.get("run_id", "?")
         try:
-            # Get final weights and biases
-            w_final = result["model_state_dict"]["linear1.weight"].cpu().numpy()
-            b_final = result["model_state_dict"]["linear1.bias"].cpu().numpy()
-            
-            # Handle different shapes
-            if w_final.ndim == 2:
-                w_final = w_final.flatten()
-            if b_final.ndim > 0:
-                b_final = b_final.flatten()
-            
-            weights.append(w_final)
-            biases.append(b_final)
-            run_ids.append(result["run_id"])
-            
+            state_dict = result["model_state_dict"]
+            for key in state_dict:
+                if ".weight" in key and "bias" not in key:
+                    layer_name = key.replace(".weight", "")
+                    w_final = state_dict[key].cpu().numpy()
+                    b_final = state_dict.get(f"{layer_name}.bias", None)
+                    if b_final is not None:
+                        b_final = b_final.cpu().numpy()
+                    else:
+                        b_final = np.zeros(w_final.shape[0])
+                    layer_data[layer_name].append((w_final, b_final, run_id))
         except Exception as e:
-            print(f"⚠️ Run {result.get('run_id', '?')}: Failed to extract weights: {e}")
+            print(f"⚠️ Run {run_id}: Failed to extract weights: {e}")
             continue
-    
-    if len(weights) < 2:
-        return {"error": "Insufficient weight data for clustering"}
-    
-    weights_array = np.array(weights)
-    biases_array = np.array(biases)
-    
-    # Perform DBSCAN clustering on weights only
-    clustering = DBSCAN(eps=eps, min_samples=min_samples).fit(weights_array)
-    
-    # Analyze clusters
-    labels = clustering.labels_
-    unique_labels = set(labels)
-    n_clusters = len(unique_labels) - (1 if -1 in unique_labels else 0)
-    
-    # Compute cluster statistics
-    cluster_info = {}
-    for label in unique_labels:
-        if label == -1:  # Skip noise points
-            continue
-            
-        mask = labels == label
-        cluster_weights = weights_array[mask]
-        cluster_biases = biases_array[mask]
-        cluster_run_ids = [run_ids[i] for i in range(len(run_ids)) if mask[i]]
-        
-        cluster_info[f"cluster_{label}"] = {
-            "size": int(np.sum(mask)),
-            "run_ids": cluster_run_ids,
-            "weight_centroid": cluster_weights.mean(axis=0).tolist(),
-            "bias_centroid": cluster_biases.mean(axis=0).tolist(),
-            "weight_std": cluster_weights.std(axis=0).tolist(),
-            "bias_std": cluster_biases.std(axis=0).tolist()
-        }
-    
-    # Count noise points
-    noise_count = int(np.sum(labels == -1))
-    
-    return {
-        "clustering_params": {"eps": eps, "min_samples": min_samples},
-        "n_clusters": n_clusters,
-        "noise_points": noise_count,
-        "cluster_info": cluster_info
-    }
+
+    results = {}
+
+    for layer_name, entries in layer_data.items():
+        try:
+            weights, biases, run_ids = zip(*entries)
+            weights_array = np.array([w.flatten() for w in weights])
+            biases_array = np.array([b.flatten() for b in biases])
+
+            clustering = DBSCAN(eps=eps, min_samples=min_samples).fit(weights_array)
+            labels = clustering.labels_
+            unique_labels = set(labels)
+            n_clusters = len(unique_labels) - (1 if -1 in unique_labels else 0)
+            noise_count = int(np.sum(labels == -1))
+
+            cluster_info = {}
+            for label in unique_labels:
+                if label == -1:
+                    continue
+                mask = labels == label
+                cluster_weights = weights_array[mask]
+                cluster_biases = biases_array[mask]
+                cluster_run_ids = [run_ids[i] for i in range(len(run_ids)) if mask[i]]
+                cluster_info[f"{layer_name}_cluster_{label}"] = {
+                    "size": int(np.sum(mask)),
+                    "run_ids": cluster_run_ids,
+                    "weight_centroid": cluster_weights.mean(axis=0).tolist(),
+                    "bias_centroid": cluster_biases.mean(axis=0).tolist(),
+                    "weight_std": cluster_weights.std(axis=0).tolist(),
+                    "bias_std": cluster_biases.std(axis=0).tolist()
+                }
+
+            results[layer_name] = {
+                "clustering_params": {"eps": eps, "min_samples": min_samples},
+                "n_clusters": n_clusters,
+                "noise_points": noise_count,
+                "cluster_info": cluster_info
+            }
+        except Exception as e:
+            results[layer_name] = {"error": f"Failed to cluster: {str(e)}"}
+
+    return results
 
 def compute_accuracy_summary_stats(accuracies: List[float]) -> Dict[str, float]:
     """
@@ -2197,13 +2193,7 @@ def analyze_xor_accuracy_distribution(accuracies: List[float]) -> Dict[str, Any]
         'level_descriptions': xor_levels,        
     }
 
-def plot_hyperplanes(model, x, y, title, filename=None):
-    import matplotlib.pyplot as plt
-    import matplotlib as mpl
-    import torch
-
-    model.eval()
-
+def plot_hyperplanes(weights, biases, x, y, title, filename=None):
     mpl.rcParams['font.family'] = 'DejaVu Sans'
     mpl.rcParams['axes.titlesize'] = 16
     mpl.rcParams['axes.labelsize'] = 14
@@ -2213,9 +2203,8 @@ def plot_hyperplanes(model, x, y, title, filename=None):
 
     x_cpu = x.detach().cpu()
     y_cpu = y.detach().cpu()
-
-    weights = model.linear1.weight.detach().cpu()  # (n_units, 2)
-    biases = model.linear1.bias.detach().cpu()     # (n_units,)
+    weights = weights.detach().cpu()  # (n_units, 2)
+    biases = biases.detach().cpu()    # (n_units,)
     mean = torch.zeros(2)
 
     plt.figure(figsize=(6, 6))
@@ -2293,21 +2282,23 @@ def generate_experiment_visualizations(
         # Create output directory
         plot_dir = output_dir / f"{run_id:03d}"
         plot_dir.mkdir(parents=True, exist_ok=True)
-        plot_path = plot_dir / "hyperplanes.png"
 
         # Prepare XOR data
         x = config.data.x
         y = config.data.y
 
         # Plot using the styled helper
-        plot_hyperplanes(
-            model=model,
-            x=x,
-            y=y,
-            title=f"{experiment_name} Run {run_id:03d}",
-            filename=plot_path
-        )
-
+        for name, module in model.named_modules():
+            if isinstance(module, torch.nn.Linear):
+                layer_plot_path = plot_dir / f"hyperplanes_{name}.png"
+                plot_hyperplanes(
+                    module.weight,
+                    module.bias,
+                    x=x,
+                    y=y,
+                    title=f"{experiment_name} Run {run_id:03d} (Trained) — Layer {name}",
+                    filename=layer_plot_path
+                )
         init_model_path = run_result['run_dir'] / "model_init.pt"
         if init_model_path.exists():
             # Reconstruct the model and load initial weights
@@ -2315,17 +2306,18 @@ def generate_experiment_visualizations(
             initial_weights = torch.load(init_model_path, map_location="cpu")
             initial_model.load_state_dict(initial_weights)
 
-            # Path to save the initial hyperplane plot
-            init_plot_path = plot_dir / "init_hyperplanes.png"
-
             # Plot using the same helper
-            plot_hyperplanes(
-                model=initial_model,
-                x=x,
-                y=y,
-                title=f"{experiment_name} Run {run_id:03d} (Initial)",
-                filename=init_plot_path
-            )
+            for name, module in initial_model.named_modules():
+                if isinstance(module, torch.nn.Linear):
+                    layer_plot_path = plot_dir / f"init_hyperplanes_{name}.png"
+                    plot_hyperplanes(
+                        module.weight,
+                        module.bias,
+                        x=x,
+                        y=y,
+                        title=f"{experiment_name} Run {run_id:03d} (Initial) — Layer {name}",
+                        filename=layer_plot_path
+                    )
 
 
 def plot_epoch_distribution(run_results: List[Dict[str, Any]], plot_config: Dict[str, Any], output_dir: Path, experiment_name: str) -> None:
@@ -2418,7 +2410,7 @@ def compute_norm_ratios(w_init: torch.Tensor, w_final: torch.Tensor) -> List[flo
 
     return ratios.tolist()
 
-def plot_weight_angle_and_magnitude_vs_epochs(run_results: List[Dict[str, Any]], output_dir: Path, experiment_name: str):
+def plot_weight_angle_and_magnitude_vs_epochs(run_results: List[Dict[str, Any]], layer_name: str, output_dir: Path, experiment_name: str):
     all_angles = []
     all_ratios = []
     all_epochs = []
@@ -2431,11 +2423,16 @@ def plot_weight_angle_and_magnitude_vs_epochs(run_results: List[Dict[str, Any]],
             continue
 
         try:
-            w_final = torch.load(run_dir / "model.pt", map_location="cpu")["linear1.weight"].squeeze()
-            w_init = torch.load(run_dir / "model_init.pt", map_location="cpu")["linear1.weight"].squeeze()
+            w_final = torch.load(run_dir / "model.pt", map_location="cpu")[f"{layer_name}.weight"]
+            w_init = torch.load(run_dir / "model_init.pt", map_location="cpu")[f"{layer_name}.weight"]
         except Exception as e:
-            print(f"⚠️ Run {run_id}: Failed to load weight vectors: {e}")
+            print(f"⚠️ Run {run_id}: Failed to load weights for layer {layer_name}: {e}")
             continue
+
+        if w_final.ndim == 1:
+            w_final = w_final.unsqueeze(0)
+            w_init = w_init.unsqueeze(0)
+
 
         angles = compute_angles_between(w_init, w_final)
         norm_ratios = compute_norm_ratios(w_init, w_final)  # w_init.norm().item() / w_final.norm().item()
@@ -2444,31 +2441,34 @@ def plot_weight_angle_and_magnitude_vs_epochs(run_results: List[Dict[str, Any]],
         all_ratios.append(norm_ratios)
         all_epochs.append(epochs_completed)
 
+    if not all_angles:
+        print(f"⚠️ No valid data for layer {layer_name}")
+        return
+
     max_angles = [max(run_angles) for run_angles in all_angles]
     mean_ratios = [np.mean(r) for r in all_ratios]
-
 
     # === Plot 1: Angle vs Epochs ===
     fig_angle, ax_angle = plt.subplots(figsize=(6, 4), dpi=300)
     ax_angle.scatter(max_angles, all_epochs, alpha=0.8)
-    ax_angle.set_title(f"Angle Between W_init and W_final\n{experiment_name}")
+    ax_angle.set_title(f"Angle Between W_init and W_final\n{experiment_name} {layer_name}")
     ax_angle.set_xlabel("Angle (degrees)")
     ax_angle.set_ylabel("Epochs Completed")
     ax_angle.grid(True)
     plt.tight_layout()
-    angle_path = output_dir / f"{experiment_name}_angle_vs_epochs.png"
+    angle_path = output_dir / f"{experiment_name}_{layer_name}_angle_vs_epochs.png"
     fig_angle.savefig(angle_path)
     plt.close(fig_angle)
 
     # === Plot 2: Norm Ratio vs Epochs ===
     fig_ratio, ax_ratio = plt.subplots(figsize=(6, 4), dpi=300)
     ax_ratio.scatter(mean_ratios, all_epochs, alpha=0.8)
-    ax_ratio.set_title(f"Norm(W_init)/Norm(W_final) vs Epochs\n{experiment_name}")
+    ax_ratio.set_title(f"Norm(W_init)/Norm(W_final) vs Epochs\n{experiment_name} {layer_name}")
     ax_ratio.set_xlabel("Norm Ratio")
     ax_ratio.set_ylabel("Epochs Completed")
     ax_ratio.grid(True)
     plt.tight_layout()
-    ratio_path = output_dir / f"{experiment_name}_normratio_vs_epochs.png"
+    ratio_path = output_dir / f"{experiment_name}_{layer_name}_normratio_vs_epochs.png"
     fig_ratio.savefig(ratio_path)
     plt.close(fig_ratio)
 
@@ -2620,12 +2620,6 @@ def generate_analysis_report(
     # Extract weight reorientation data
     weight_reorientation = analysis_results.get("weight_reorientation", {})
     failure_angles = analysis_results.get("failure_angle_analysis", {})
-
-    # Extract hyperplane clustering data
-    hyperplane_clustering = analysis_results.get("hyperplane_clustering", {})
-    cluster_info = hyperplane_clustering.get("cluster_info", {})
-    n_clusters = hyperplane_clustering.get("n_clusters", 0)
-    noise_points = hyperplane_clustering.get("noise_points", 0)
 
     ############################################################################################
 
@@ -2821,28 +2815,45 @@ def generate_analysis_report(
 
     report += "## 🎯 Hyperplane Clustering\n\n"
 
-    if cluster_info:
-        report += f"* **Number of clusters discovered**: {n_clusters}\n"
-        if noise_points > 0:
-            report += f"* **Noise points**: {noise_points}\n"
-        report += "\n"
-        
-        # Report each cluster
-        for cluster_name, info in cluster_info.items():
-            cluster_id = cluster_name.split('_')[1]
-            size = info["size"]
-            weight_centroid = info["weight_centroid"]
-            bias_centroid = info["bias_centroid"]
-            
-            report += f"### ◼ Cluster {cluster_id}\n\n"
-            report += f"* **Size**: {size} runs\n"
-            report += f"* **Weight centroid**: [{weight_centroid[0]:.6f}, {weight_centroid[1]:.6f}]\n"
-            report += f"* **Bias centroid**: {bias_centroid[0]:.6f}\n"
-            report += f"* **Hyperplane equation**: {weight_centroid[0]:.6f}x₁ + {weight_centroid[1]:.6f}x₂ + {bias_centroid[0]:.6f} = 0\n\n"
-    else:
-        report += "* **No clustering data available**\n\n"
+    hyperplane_clustering = analysis_results.get("hyperplane_clustering", {})
 
-    report += "---\n\n"
+    if not hyperplane_clustering:
+        report += "* **No clustering data available**\n\n"
+    else:
+        for layer_name, layer_result in hyperplane_clustering.items():
+            cluster_info = layer_result.get("cluster_info", {})
+            n_clusters = layer_result.get("n_clusters", 0)
+            noise_points = layer_result.get("noise_points", 0)
+
+            report += f"### 🔹 Layer `{layer_name}`\n"
+            report += f"* **Number of clusters discovered**: {n_clusters}\n"
+            if noise_points > 0:
+                report += f"* **Noise points**: {noise_points}\n"
+            report += "\n"
+
+            for cluster_name, info in cluster_info.items():
+                # Extract just the numeric cluster ID
+                cluster_id = cluster_name.rsplit("_", 1)[-1]
+                size = info["size"]
+                weight_centroid = info["weight_centroid"]
+                bias_centroid = info["bias_centroid"]
+
+                report += f"#### ◼ Cluster {cluster_id}\n"
+                report += f"* **Size**: {size} runs\n"
+                report += f"* **Weight centroid**: [{', '.join(f'{w:.6f}' for w in weight_centroid)}]\n"
+                report += f"* **Bias centroid**: [{', '.join(f'{b:.6f}' for b in bias_centroid)}]\n"
+
+                # Try to generate a readable hyperplane equation if 2D
+                if len(weight_centroid) == 2 and len(bias_centroid) == 1:
+                    w0, w1 = weight_centroid
+                    b0 = bias_centroid[0]
+                    report += f"* **Hyperplane equation**: {w0:.6f}x₁ + {w1:.6f}x₂ + {b0:.6f} = 0\n"
+
+                report += "\n"
+
+            report += "\n"
+
+        report += "---\n\n"
 
     ############################################################################################
 
@@ -3171,7 +3182,14 @@ def main() -> int:
 
         if config.analysis.convergence_analysis:
             output_dir = Path("results") / config.execution.experiment_name
-            plot_weight_angle_and_magnitude_vs_epochs(run_results, output_dir, config.execution.experiment_name)
+            layer_names = run_results[0].get("model_linear_layers", [])
+            for layer_name in layer_names:
+                plot_weight_angle_and_magnitude_vs_epochs(
+                    run_results=run_results,
+                    layer_name=layer_name,
+                    output_dir=output_dir,
+                    experiment_name=config.execution.experiment_name
+            )
 
         # Generate comprehensive report
         print("📄 Generating analysis report...")
@@ -3201,7 +3219,6 @@ def main() -> int:
     except Exception as e:
         print(f"\n✗ Unexpected error during experiment analysis:")
         print(f"  {type(e).__name__}: {e}")
-        import traceback
 
         print("\nFull traceback:")
         traceback.print_exc()

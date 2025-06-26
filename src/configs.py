@@ -15,6 +15,7 @@ import torch
 import torch.nn as nn
 import models
 import monitor
+import itertools
 
 # ==============================================================================
 # Configuration Schema and Types
@@ -632,4 +633,191 @@ def config_abs2_single_bce() -> ExperimentConfig:
         logging=LoggingConfig(train_epochs=50)
     )
 
+@experiment("abs2_single_bce_l2reg")
+def abs2_single_bce_l2reg() -> ExperimentConfig:
+    model = models.Model_Xor2(middle=1, activation=models.Abs()).init()
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01, betas=(0.9, 0.99), weight_decay=1e-1)
+    loss_function = nn.BCEWithLogitsLoss()
+
+    return ExperimentConfig(
+        model=model,
+        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=5000, stop_training_loss_threshold=1e-7, loss_change_threshold=1e-24, loss_change_patience=10),
+        data=DataConfig(x=xor_data_centered(), y=xor_labels_one_hot(), problem_type=ExperimentType.XOR),
+        analysis=AnalysisConfig(accuracy_fn=accuracy_one_hot, save_plots=True),
+        execution=ExecutionConfig(num_runs=50, skip_existing=False),
+        description="Centered XOR with 2-output BCE loss, L2 reg, using a single Abs unit.",
+        logging=LoggingConfig(train_epochs=50)
+    )
+
+@experiment("abs2_single_mse")
+def config_abs2_single_mse() -> ExperimentConfig:
+    model = models.Model_Xor2(middle=1, activation=models.Abs()).init()
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01, betas=(0.9, 0.99))
+    loss_function = nn.MSELoss()
+
+    return ExperimentConfig(
+        model=model,
+        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=5000, stop_training_loss_threshold=1e-7, loss_change_threshold=1e-24, loss_change_patience=10),
+        data=DataConfig(x=xor_data_centered(), y=xor_labels_one_hot(), problem_type=ExperimentType.XOR),
+        analysis=AnalysisConfig(accuracy_fn=accuracy_one_hot, save_plots=True),
+        execution=ExecutionConfig(num_runs=50, skip_existing=False),
+        description="Centered XOR with 2-output MSE loss using a single Abs unit.",
+        logging=LoggingConfig(train_epochs=50)
+    )
+
+@experiment("abs2_single_mse_l2reg")
+def config_abs2_single_mse_l2reg() -> ExperimentConfig:
+    model = models.Model_Xor2(middle=1, activation=models.Abs()).init()
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01, betas=(0.9, 0.99), weight_decay=1e-1)
+    loss_function = nn.MSELoss()
+
+    return ExperimentConfig(
+        model=model,
+        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=5000, stop_training_loss_threshold=1e-7, loss_change_threshold=1e-24, loss_change_patience=10),
+        data=DataConfig(x=xor_data_centered(), y=xor_labels_one_hot(), problem_type=ExperimentType.XOR),
+        analysis=AnalysisConfig(accuracy_fn=accuracy_one_hot, save_plots=False),
+        execution=ExecutionConfig(num_runs=50, skip_existing=False),
+        description="Centered XOR with 2-output MSE loss, L2 reg, using a single Abs unit.",
+        logging=LoggingConfig(train_epochs=50)
+    )
+
+@experiment("abs2_single_bce_confidence")
+def config_abs2_single_bce_confidence() -> ExperimentConfig:
+    model = models.Model_Xor2_Confidence(middle=1, activation=models.Abs()).init()
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01, betas=(0.9, 0.99))
+    loss_function = nn.BCEWithLogitsLoss()
+
+    return ExperimentConfig(
+        model=model,
+        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=5000, stop_training_loss_threshold=1e-7, loss_change_threshold=1e-24, loss_change_patience=10),
+        data=DataConfig(x=xor_data_centered(), y=xor_labels_one_hot(), problem_type=ExperimentType.XOR),
+        analysis=AnalysisConfig(accuracy_fn=accuracy_one_hot, save_plots=True),
+        execution=ExecutionConfig(num_runs=50, skip_existing=False),
+        description="Centered XOR with 2-output BCE loss using a single Abs unit. Includes a confidence final layer.",
+        logging=LoggingConfig(train_epochs=50)
+    )
+
+@experiment("abs2_single_bce_confidence_l2reg")
+def abs2_abs2_single_bce_confidence_l2reg() -> ExperimentConfig:
+    model = models.Model_Xor2_Confidence(middle=1, activation=models.Abs()).init()
+
+    optimizer_grouped_parameters = [
+        {
+            'params': itertools.chain(model.linear1.parameters(), model.linear2.parameters()),
+            'weight_decay': 1e-1  # Apply L2 regularization here
+        },
+        {
+            'params': model.confidence.parameters(),
+            'weight_decay': 0.0             # Do NOT apply L2 regularization here
+        }
+    ]
+    optimizer = torch.optim.Adam(optimizer_grouped_parameters, lr=0.01, betas=(0.9, 0.99), weight_decay=1e-1)
+    loss_function = nn.BCEWithLogitsLoss()
+
+    return ExperimentConfig(
+        model=model,
+        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=5000, stop_training_loss_threshold=1e-7, loss_change_threshold=1e-24, loss_change_patience=10),
+        data=DataConfig(x=xor_data_centered(), y=xor_labels_one_hot(), problem_type=ExperimentType.XOR),
+        analysis=AnalysisConfig(accuracy_fn=accuracy_one_hot, save_plots=True),
+        execution=ExecutionConfig(num_runs=50, skip_existing=False),
+        description="Centered XOR with 2-output BCE loss, L2 reg, using a single Abs unit.",
+        logging=LoggingConfig(train_epochs=50)
+    )
+
+@experiment("relu2_two_bce")
+def config_relu2_two_bce() -> ExperimentConfig:
+    model = models.Model_Xor2(middle=2, activation=nn.ReLU()).init()
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01, betas=(0.9, 0.99))
+    loss_function = nn.BCEWithLogitsLoss()
+
+    return ExperimentConfig(
+        model=model,
+        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=5000, stop_training_loss_threshold=1e-7, loss_change_threshold=1e-24, loss_change_patience=10),
+        data=DataConfig(x=xor_data_centered(), y=xor_labels_one_hot(), problem_type=ExperimentType.XOR),
+        analysis=AnalysisConfig(accuracy_fn=accuracy_one_hot, save_plots=False),
+        execution=ExecutionConfig(num_runs=50, skip_existing=False),
+        description="Centered XOR with 2-output BCE loss using a two ReLU units.",
+        logging=LoggingConfig(train_epochs=50)
+    )
+
+@experiment("relu2_two_bce_l2reg")
+def config_relu2_two_bce_l2reg() -> ExperimentConfig:
+    model = models.Model_Xor2(middle=2, activation=nn.ReLU()).init()
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01, betas=(0.9, 0.99), weight_decay=1e-1)
+    loss_function = nn.BCEWithLogitsLoss()
+
+    return ExperimentConfig(
+        model=model,
+        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=5000, stop_training_loss_threshold=1e-7, loss_change_threshold=1e-24, loss_change_patience=10),
+        data=DataConfig(x=xor_data_centered(), y=xor_labels_one_hot(), problem_type=ExperimentType.XOR),
+        analysis=AnalysisConfig(accuracy_fn=accuracy_one_hot, save_plots=False),
+        execution=ExecutionConfig(num_runs=50, skip_existing=False),
+        description="Centered XOR with 2-output BCE loss, L2 reg, and two ReLU units.",
+        logging=LoggingConfig(train_epochs=50)
+    )
+
+@experiment("relu2_one_bce_l2reg")
+def config_relu2_one_bce_l2reg() -> ExperimentConfig:
+    model = models.Model_Xor2(middle=1, activation=nn.ReLU()).init()
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01, betas=(0.9, 0.99), weight_decay=1e-1)
+    loss_function = nn.BCEWithLogitsLoss()
+
+    return ExperimentConfig(
+        model=model,
+        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=5000, stop_training_loss_threshold=1e-7, loss_change_threshold=1e-24, loss_change_patience=10),
+        data=DataConfig(x=xor_data_centered(), y=xor_labels_one_hot(), problem_type=ExperimentType.XOR),
+        analysis=AnalysisConfig(accuracy_fn=accuracy_one_hot, save_plots=False),
+        execution=ExecutionConfig(num_runs=50, skip_existing=False),
+        description="Centered XOR with 2-output BCE loss, L2 reg, and one ReLU unit.",
+        logging=LoggingConfig(train_epochs=50)
+    )
+
+@experiment("relu2_three_bce_l2reg")
+def config_relu2_three_bce_l2reg() -> ExperimentConfig:
+    model = models.Model_Xor2(middle=3, activation=nn.ReLU()).init()
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01, betas=(0.9, 0.99), weight_decay=1e-1)
+    loss_function = nn.BCEWithLogitsLoss()
+
+    return ExperimentConfig(
+        model=model,
+        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=5000, stop_training_loss_threshold=1e-7, loss_change_threshold=1e-24, loss_change_patience=10),
+        data=DataConfig(x=xor_data_centered(), y=xor_labels_one_hot(), problem_type=ExperimentType.XOR),
+        analysis=AnalysisConfig(accuracy_fn=accuracy_one_hot, save_plots=False),
+        execution=ExecutionConfig(num_runs=50, skip_existing=False),
+        description="Centered XOR with 2-output BCE loss, L2 reg, and three ReLU units.",
+        logging=LoggingConfig(train_epochs=50)
+    )
+
+@experiment("relu2_four_bce_l2reg")
+def config_relu2_four_bce_l2reg() -> ExperimentConfig:
+    model = models.Model_Xor2(middle=4, activation=nn.ReLU()).init()
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01, betas=(0.9, 0.99), weight_decay=1e-1)
+    loss_function = nn.BCEWithLogitsLoss()
+
+    return ExperimentConfig(
+        model=model,
+        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=5000, stop_training_loss_threshold=1e-7, loss_change_threshold=1e-24, loss_change_patience=10),
+        data=DataConfig(x=xor_data_centered(), y=xor_labels_one_hot(), problem_type=ExperimentType.XOR),
+        analysis=AnalysisConfig(accuracy_fn=accuracy_one_hot, save_plots=False),
+        execution=ExecutionConfig(num_runs=50, skip_existing=False),
+        description="Centered XOR with 2-output BCE loss, L2 reg, and four ReLU units.",
+        logging=LoggingConfig(train_epochs=50)
+    )
+
+
+@experiment("relu2_eight_bce_l2reg")
+def config_relu2_eight_bce_l2reg() -> ExperimentConfig:
+    model = models.Model_Xor2(middle=8, activation=nn.ReLU()).init()
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01, betas=(0.9, 0.99), weight_decay=1e-1)
+    loss_function = nn.BCEWithLogitsLoss()
+
+    return ExperimentConfig(
+        model=model,
+        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=5000, stop_training_loss_threshold=1e-7, loss_change_threshold=1e-24, loss_change_patience=10),
+        data=DataConfig(x=xor_data_centered(), y=xor_labels_one_hot(), problem_type=ExperimentType.XOR),
+        analysis=AnalysisConfig(accuracy_fn=accuracy_one_hot, save_plots=False),
+        execution=ExecutionConfig(num_runs=50, skip_existing=False),
+        description="Centered XOR with 2-output BCE loss, L2 reg, and eight ReLU units.",
+        logging=LoggingConfig(train_epochs=50)
+    )
 

@@ -196,7 +196,33 @@ class Model_Xor2(nn.Module):
         
         return self
 
+class Model_Xor2_Confidence(nn.Module):
+    def __init__(self, middle, activation):
+        super().__init__()
+        self.linear1 = nn.Linear(2, middle)
+        self.activation = activation
+        self.scale = StaticScale(middle)
+        self.linear2 = nn.Linear(middle, 2)
+        self.confidence = Confidence()
 
+    def forward(self, x):
+        x = self.linear1(x)
+        x = self.activation(x)
+        x = self.scale(x)
+        x = self.linear2(x)
+        x = self.confidence(x)
+        return x
+
+    def init(self):
+        nn.init.kaiming_normal_(self.linear1.weight, nonlinearity='relu')
+        nn.init.zeros_(self.linear1.bias)
+
+        nn.init.ones_(self.scale.weight)
+
+        nn.init.xavier_normal_(self.linear2.weight)
+        nn.init.zeros_(self.linear2.bias)
+        
+        return self
 
 class ParametricAbs(nn.Module):
     """
@@ -290,3 +316,37 @@ class StaticScale(nn.Module):
 
     def forward(self, x):
         return x * self.weight
+    
+class Confidence(nn.Module):
+    """
+    A custom PyTorch layer that scales the input by a single learnable parameter.
+
+    This layer multiplies the input tensor by a scalar 'confidence' parameter,
+    which is learned during the training process.
+
+    Args:
+        initial_value (float, optional): The initial value for the confidence
+                                         parameter. Defaults to 1.0.
+
+    Shape:
+        - Input: (N, *) where * means any number of additional dimensions.
+        - Output: (N, *), same shape as the input.
+    """
+    def __init__(self, initial_value: float = 1.0):
+        super(Confidence, self).__init__()
+        # Initialize the single learnable parameter.
+        # We wrap it in nn.Parameter to ensure it is registered as a model parameter
+        # and will be updated during the training process (e.g., by an optimizer).
+        self.confidence = nn.Parameter(torch.tensor(initial_value))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        The forward pass of the layer.
+
+        Args:
+            x (torch.Tensor): The input tensor.
+
+        Returns:
+            torch.Tensor: The input tensor scaled by the confidence parameter.
+        """
+        return x * torch.square(self.confidence)

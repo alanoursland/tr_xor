@@ -15,7 +15,7 @@ import torch
 import traceback
 
 from collections import defaultdict
-from configs import ExperimentConfig, ExperimentType, get_experiment_config, list_experiments
+from configs import ExperimentConfig, get_experiment_config, list_experiments
 from pathlib import Path
 from sklearn.cluster import DBSCAN
 from typing import Dict, List, Tuple, Any
@@ -25,193 +25,6 @@ from analysis.stats import compute_basic_statistics, compute_summary_statistics
 from analysis.visualization import plot_hyperplanes, plot_failure_angle_histogram, plot_epoch_distribution, plot_weight_angle_and_magnitude_vs_epochs
 from analysis.geometry import compute_angles_between, compute_norm_ratios
 from analysis.reporting import generate_analysis_report
-
-def configure_analysis_from_config(config: ExperimentConfig) -> Tuple[List[str], Dict[str, Any]]:
-    """
-    Configure analysis pipeline based on experiment configuration.
-    
-    Args:
-        config: Complete experiment configuration
-        
-    Returns:
-        Tuple of (analysis_plan, plot_config) where:
-        - analysis_plan: List of analysis types to perform
-        - plot_config: Dictionary of visualization configuration
-    """
-    analysis_plan = []
-    
-    # Always include basic statistics
-    analysis_plan.append('basic_stats')
-    
-    # Always analyze accuracy and convergence for training experiments
-    analysis_plan.append('accuracy_analysis')
-    
-    analysis_plan.append('convergence_timing')
-    analysis_plan.append('weight_reorientation')
-    analysis_plan.append('hyperplane_clustering')
-    
-    # Geometric analysis
-    if config.analysis.geometric_analysis:
-        analysis_plan.extend([
-            'hyperplane_plots',
-            'prototype_regions'
-        ])
-        
-        if config.analysis.decision_boundary_analysis:
-            analysis_plan.append('decision_boundaries')
-            
-        if config.analysis.distance_field_analysis:
-            analysis_plan.append('distance_fields')
-    
-    # Weight analysis
-    if config.analysis.weight_analysis:
-        analysis_plan.append('weight_patterns')
-        
-        if config.analysis.mirror_pair_detection:
-            analysis_plan.append('mirror_weights')
-            
-        if config.analysis.symmetry_analysis:
-            analysis_plan.append('weight_symmetry')
-            
-        if config.analysis.weight_evolution_tracking:
-            analysis_plan.append('weight_evolution')
-            
-        if config.analysis.weight_clustering:
-            analysis_plan.append('weight_clustering')
-    
-    # Activation analysis
-    if config.analysis.activation_analysis:
-        analysis_plan.extend([
-            'activation_patterns',
-            'activation_landscapes'
-        ])
-        
-        if config.analysis.sparsity_analysis:
-            analysis_plan.append('activation_sparsity')
-            
-        if config.analysis.zero_activation_regions:
-            analysis_plan.append('zero_activation_analysis')
-    
-    # Convergence and training dynamics
-    if config.analysis.convergence_analysis:
-        analysis_plan.append('convergence_analysis')
-        
-        if config.analysis.training_dynamics:
-            analysis_plan.append('training_dynamics')
-            
-        if config.analysis.loss_landscape_analysis:
-            analysis_plan.append('loss_landscape')
-    
-    # Cross-run comparison (only if multiple runs)
-    if config.analysis.cross_run_comparison and config.execution.num_runs > 1:
-        analysis_plan.extend([
-            'run_consistency',
-            'solution_stability'
-        ])
-        
-        if config.analysis.statistical_analysis:
-            analysis_plan.append('statistical_analysis')
-            
-        if config.analysis.stability_analysis:
-            analysis_plan.append('stability_metrics')
-    
-    # Prototype surface theory validation
-    if config.analysis.prototype_surface_analysis:
-        analysis_plan.append('prototype_surface')
-        
-        if config.analysis.separation_order_analysis:
-            analysis_plan.append('separation_order')
-            
-        if config.analysis.minsky_papert_metrics:
-            analysis_plan.append('minsky_papert_analysis')
-    
-    # Problem-specific analysis
-    if config.data.problem_type == ExperimentType.XOR:
-        analysis_plan.extend([
-            'xor_specific_analysis',
-            'xor_accuracy_distribution'
-        ])
-    elif config.data.problem_type == ExperimentType.PARITY:
-        analysis_plan.append('parity_specific_analysis')
-    
-    # Model-specific analysis
-    model_type = type(config.model).__name__
-    
-    if model_type == 'Model_Abs1':
-        analysis_plan.extend([
-            'absolute_value_theory',
-            'single_unit_analysis',
-            'abs_distance_validation'
-        ])
-    elif 'ReLU' in model_type:
-        analysis_plan.extend([
-            'relu_decomposition_analysis',
-            'relu_mirror_validation'
-        ])
-    elif 'Sigmoid' in model_type:
-        analysis_plan.append('sigmoid_saturation_analysis')
-    
-    # Activation-specific analysis based on model architecture
-    activation_type = extract_activation_type(config.model)
-    if activation_type == 'abs':
-        analysis_plan.append('absolute_value_separation_order_validation')
-    elif activation_type == 'relu':
-        if config.analysis.mirror_pair_detection:
-            analysis_plan.append('mirror_pair_validation')
-    
-    analysis_plan.append('export_data')
-
-    # Remove duplicates while preserving order
-    analysis_plan = list(dict.fromkeys(analysis_plan))
-    
-    # Configure visualization settings
-    plot_config = {
-        'save_plots': config.analysis.save_plots,
-        'format': config.analysis.plot_format,
-        'dpi': config.analysis.plot_dpi,
-        'interactive': config.analysis.interactive_plots,
-        'style': config.analysis.plot_style,
-        
-        # Analysis spatial configuration
-        'bounds': config.analysis.analysis_bounds,
-        'resolution': config.analysis.analysis_resolution,
-        
-        # Problem-specific visualization settings
-        'problem_type': config.data.problem_type,
-        'data_points': config.data.x,
-        'labels': config.data.y,
-        
-        # Model-specific visualization settings
-        'model_type': model_type,
-        'activation_type': activation_type,
-        'num_runs': config.execution.num_runs,
-        
-        # Training context for visualization
-        'epochs': config.training.epochs,
-        'loss_change_threshold': getattr(config.training, 'loss_change_threshold', 1e-6),
-        
-        # Experiment metadata
-        'experiment_name': config.execution.experiment_name,
-        'description': config.description
-    }
-    
-    # Add problem-specific plot settings
-    if config.data.problem_type == ExperimentType.XOR:
-        plot_config.update({
-            'expected_accuracy_levels': [0.0, 0.25, 0.5, 0.75, 1.0],
-            'xor_corners': config.data.x,
-            'decision_boundary_focus': True
-        })
-    
-    # Add model-specific plot settings
-    if model_type == 'Model_Abs1':
-        plot_config.update({
-            'single_unit_focus': True,
-            'distance_field_emphasis': True,
-            'prototype_surface_highlight': True
-        })
-    
-    return analysis_plan, plot_config
 
 def analyze_dead_data(run_results: List[Dict[str, Any]], config: ExperimentConfig) -> Dict[str, Any]:
     """
@@ -955,7 +768,6 @@ def main() -> int:
         print(f"\nExperiment Details:")
         print(f"  Description: {config.description}")
         print(f"  Model Type: {type(config.model).__name__}")
-        print(f"  Problem Type: {config.data.problem_type}")
         print(f"  Expected Runs: {config.execution.num_runs}")
 
         # Get the linear layer information
@@ -970,12 +782,6 @@ def main() -> int:
 
         print(f"✓ Results directory found: {results_dir}")
 
-        # Configure analysis based on experiment config
-        print("\nConfiguring analysis pipeline...")
-        analysis_plan, plot_config = configure_analysis_from_config(config)
-        print(f"✓ Analysis plan configured ({len(analysis_plan)} analysis types)")
-        # print(analysis_plan)
-        
         # Load experiment data and results
         print("Loading experiment data and results...")
         experiment_data = load_experiment_data(config)
@@ -989,19 +795,19 @@ def main() -> int:
         analysis_results = {}
 
         # Basic statistics and aggregation
-        if "basic_stats" in analysis_plan:
+        if True:
             print("📊 Computing basic statistics...")
             analysis_results["basic_stats"] = compute_basic_statistics(run_results, config)
             print("  ✓ Basic statistics computed")
 
         # Accuracy and convergence analysis
-        if "accuracy_analysis" in analysis_plan:
+        if True:
             print("🎯 Analyzing accuracy patterns...")
             analysis_results["accuracy"] = analyze_accuracy_distribution(run_results, config)
             print("  ✓ Accuracy analysis completed")
             
         # Convergence timing analysis  
-        if "convergence_timing" in analysis_plan:  # Add this to your analysis plan
+        if True:  # Add this to your analysis plan
             print("⏱️ Analyzing convergence timing...")
             convergence_epochs = [run_data.get("epochs_completed", None) for run_data in run_results]
             percentiles_data = {
@@ -1020,13 +826,13 @@ def main() -> int:
             print("  ✓ Convergence timing analysis completed")
 
         # Weight reorientation analysis
-        if "weight_reorientation" in analysis_plan:
+        if True:
             print("🔄 Analyzing weight reorientation...")
             analysis_results["weight_reorientation"] = analyze_weight_reorientation(run_results)
             print("  ✓ Weight reorientation analysis completed")
 
         # Hyperplane clustering analysis
-        if "hyperplane_clustering" in analysis_plan:
+        if True:
             print("🎯 Analyzing hyperplane clustering...")
             analysis_results["hyperplane_clustering"] = analyze_hyperplane_clustering(run_results)
             print("  ✓ Hyperplane clustering analysis completed")
@@ -1041,7 +847,7 @@ def main() -> int:
         #     print("  ✓ Geometric analysis completed")
 
         # # Weight pattern analysis
-        # if "weight_analysis" in analysis_plan:
+        # if config.analysis.weight_analysis:
         #     print("⚖️  Analyzing weight patterns...")
         #     analysis_results["weights"] = analyze_weight_patterns(
         #         run_results, config
@@ -1049,7 +855,7 @@ def main() -> int:
         #     print("  ✓ Weight analysis completed")
 
         # Prototype surface tests
-        if "prototype_surface" in analysis_plan:
+        if config.analysis.prototype_surface_analysis:
             print("🔬 Analyzing prototype surface ...")
             analysis_results["prototype_surface"] = analyze_prototype_surface(
                 run_results, experiment_data, config
@@ -1127,7 +933,7 @@ def main() -> int:
         print(f"  ✓ Report saved to {report_path}")
 
         # Export analysis data
-        if "export_data" in analysis_plan:
+        if True:
             print("💾 Exporting analysis data...")
             export_analysis_data(analysis_results, results_dir, "analysis_data.json")
             print("  ✓ Analysis data exported")

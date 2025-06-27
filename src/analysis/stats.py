@@ -3,7 +3,7 @@ import numpy as np
 
 from typing import Dict, List, Tuple, Any
 from analysis.utils import targets_to_class_labels
-from configs import ExperimentConfig, ExperimentType, get_experiment_config, list_experiments
+from configs import ExperimentConfig, get_experiment_config, list_experiments
 
 def compute_data_statistics(x: torch.Tensor, y: torch.Tensor) -> Dict[str, Any]:
     """
@@ -169,7 +169,6 @@ def compute_basic_statistics(run_results: List[Dict[str, Any]], config: Experime
             'experiment_name': config.execution.experiment_name,
             'description': config.description,
             'model_type': type(config.model).__name__,
-            'problem_type': config.data.problem_type.value if config.data.problem_type else 'unknown',
             'training_epochs': config.training.epochs
         },
         
@@ -248,39 +247,29 @@ def compute_distribution_statistics(metrics: Dict[str, List[float]], config: Exp
     if metrics['accuracies']:
         accuracies = metrics['accuracies']
         
-        if config.data.problem_type == ExperimentType.XOR:
-            # XOR has discrete accuracy levels: 0%, 25%, 50%, 75%, 100%
-            acc_bins = {0.0: 0, 0.25: 0, 0.5: 0, 0.75: 0, 1.0: 0}
-            
-            for acc in accuracies:
-                # Round to nearest XOR accuracy level
-                if acc <= 0.125:
-                    acc_bins[0.0] += 1
-                elif acc <= 0.375:
-                    acc_bins[0.25] += 1
-                elif acc <= 0.625:
-                    acc_bins[0.5] += 1
-                elif acc <= 0.875:
-                    acc_bins[0.75] += 1
-                else:
-                    acc_bins[1.0] += 1
-            
-            distributions['accuracy_distribution'] = {
-                'type': 'discrete_xor',
-                'bins': acc_bins,
-                'perfect_rate': acc_bins[1.0] / len(accuracies),
-                'failure_rate': acc_bins[0.0] / len(accuracies),
-                'partial_success_rate': (acc_bins[0.25] + acc_bins[0.5] + acc_bins[0.75]) / len(accuracies)
-            }
-        else:
-            # Generic continuous accuracy distribution
-            acc_tensor = torch.tensor(accuracies)
-            distributions['accuracy_distribution'] = {
-                'type': 'continuous',
-                'histogram': compute_histogram(acc_tensor, bins=10),
-                'perfect_rate': sum(1 for acc in accuracies if acc >= 0.99) / len(accuracies),
-                'high_performance_rate': sum(1 for acc in accuracies if acc >= 0.8) / len(accuracies)
-            }
+        # XOR has discrete accuracy levels: 0%, 25%, 50%, 75%, 100%
+        acc_bins = {0.0: 0, 0.25: 0, 0.5: 0, 0.75: 0, 1.0: 0}
+        
+        for acc in accuracies:
+            # Round to nearest XOR accuracy level
+            if acc <= 0.125:
+                acc_bins[0.0] += 1
+            elif acc <= 0.375:
+                acc_bins[0.25] += 1
+            elif acc <= 0.625:
+                acc_bins[0.5] += 1
+            elif acc <= 0.875:
+                acc_bins[0.75] += 1
+            else:
+                acc_bins[1.0] += 1
+        
+        distributions['accuracy_distribution'] = {
+            'type': 'discrete_xor',
+            'bins': acc_bins,
+            'perfect_rate': acc_bins[1.0] / len(accuracies),
+            'failure_rate': acc_bins[0.0] / len(accuracies),
+            'partial_success_rate': (acc_bins[0.25] + acc_bins[0.5] + acc_bins[0.75]) / len(accuracies)
+        }
     
     # Loss distribution
     if metrics['final_losses']:
@@ -320,28 +309,17 @@ def compute_success_statistics(run_results: List[Dict[str, Any]], config: Experi
     failed_runs = sum(1 for r in run_results if r.get('final_loss', float('inf')) == float('inf'))
     
     # Problem-specific success criteria
-    if config.data.problem_type == ExperimentType.XOR:
-        # XOR-specific success metrics
-        perfect_xor_runs = sum(1 for r in run_results if r.get('accuracy', 0) >= 1.0)
-        partial_success_runs = sum(1 for r in run_results if r.get('accuracy', 0) >= 0.75)
-        complete_failure_runs = sum(1 for r in run_results if r.get('accuracy', 0) <= 0.25)
-        
-        success_metrics = {
-            'perfect_solution_rate': perfect_xor_runs / total_runs,
-            'high_success_rate': partial_success_runs / total_runs,
-            'complete_failure_rate': complete_failure_runs / total_runs,
-            'learning_success_rate': (total_runs - complete_failure_runs) / total_runs
-        }
-    else:
-        # Generic success metrics
-        high_accuracy_runs = sum(1 for r in run_results if r.get('accuracy', 0) >= 0.8)
-        low_accuracy_runs = sum(1 for r in run_results if r.get('accuracy', 0) <= 0.6)
-        
-        success_metrics = {
-            'high_accuracy_rate': high_accuracy_runs / total_runs,
-            'low_accuracy_rate': low_accuracy_runs / total_runs,
-            'learning_success_rate': (total_runs - low_accuracy_runs) / total_runs
-        }
+    # XOR-specific success metrics
+    perfect_xor_runs = sum(1 for r in run_results if r.get('accuracy', 0) >= 1.0)
+    partial_success_runs = sum(1 for r in run_results if r.get('accuracy', 0) >= 0.75)
+    complete_failure_runs = sum(1 for r in run_results if r.get('accuracy', 0) <= 0.25)
+    
+    success_metrics = {
+        'perfect_solution_rate': perfect_xor_runs / total_runs,
+        'high_success_rate': partial_success_runs / total_runs,
+        'complete_failure_rate': complete_failure_runs / total_runs,
+        'learning_success_rate': (total_runs - complete_failure_runs) / total_runs
+    }
     
     # Common success metrics
     success_metrics.update({

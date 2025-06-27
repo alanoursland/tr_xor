@@ -5,7 +5,7 @@ import re
 
 from typing import Dict, List, Tuple, Any
 from pathlib import Path
-from configs import ExperimentConfig, ExperimentType
+from configs import ExperimentConfig
 from analysis.grid import create_boundary_focused_grid, create_high_dim_sample_grid
 from analysis.stats import compute_data_statistics, compute_class_centroids
 from analysis.utils import extract_activation_type, count_model_parameters, get_linear_layers, analyze_model_state_dict
@@ -27,47 +27,15 @@ def load_experiment_data(config: ExperimentConfig) -> Dict[str, Any]:
     y_train = config.data.y.clone()
     
     # Determine problem-specific analysis bounds and parameters
-    if config.data.problem_type == ExperimentType.XOR:
-        # XOR-specific settings
-        analysis_bounds = [(-2.5, 2.5), (-2.5, 2.5)]  # Slightly larger than data bounds
-        expected_accuracy_levels = [0.0, 0.25, 0.5, 0.75, 1.0]  # Only possible XOR accuracies
-        problem_dimensionality = 2
-        is_boolean_problem = True
-        class_names = ['False', 'True']
-        
-        # XOR corner points for reference
-        corner_points = x_train.clone()
-        
-    elif config.data.problem_type == ExperimentType.PARITY:
-        # Parity problem settings
-        n_bits = x_train.shape[1]
-        analysis_bounds = [(-1.5, 1.5)] * n_bits  # Bounds for each dimension
-        expected_accuracy_levels = [i / (2**n_bits) for i in range(2**n_bits + 1)]
-        problem_dimensionality = n_bits
-        is_boolean_problem = True
-        class_names = ['Even', 'Odd']
-        
-        # All boolean hypercube corners
-        corner_points = x_train.clone()
-        
-    else:
-        # Generic problem settings
-        # Infer bounds from data with some padding
-        data_min = x_train.min(dim=0)[0]
-        data_max = x_train.max(dim=0)[0]
-        padding = (data_max - data_min) * 0.2  # 20% padding
-        analysis_bounds = [(min_val.item() - pad.item(), max_val.item() + pad.item()) 
-                          for min_val, max_val, pad in zip(data_min, data_max, padding)]
-        
-        # Determine expected accuracy levels based on data
-        unique_labels = torch.unique(y_train)
-        num_classes = len(unique_labels)
-        expected_accuracy_levels = [i / len(x_train) for i in range(len(x_train) + 1)]
-        
-        problem_dimensionality = x_train.shape[1]
-        is_boolean_problem = set(y_train.tolist()).issubset({0.0, 1.0})
-        class_names = [f'Class_{int(label)}' for label in unique_labels]
-        corner_points = None
+    # XOR-specific settings
+    analysis_bounds = [(-2.5, 2.5), (-2.5, 2.5)]  # Slightly larger than data bounds
+    expected_accuracy_levels = [0.0, 0.25, 0.5, 0.75, 1.0]  # Only possible XOR accuracies
+    problem_dimensionality = 2
+    is_boolean_problem = True
+    class_names = ['False', 'True']
+    
+    # XOR corner points for reference
+    corner_points = x_train.clone()
     
     # Generate analysis grids for visualization
     if problem_dimensionality == 2:
@@ -96,7 +64,6 @@ def load_experiment_data(config: ExperimentConfig) -> Dict[str, Any]:
         'y_train': y_train,
         
         # Problem characterization
-        'problem_type': config.data.problem_type,
         'problem_dimensionality': problem_dimensionality,
         'is_boolean_problem': is_boolean_problem,
         'num_classes': len(torch.unique(y_train)),
@@ -121,7 +88,6 @@ def load_experiment_data(config: ExperimentConfig) -> Dict[str, Any]:
         
         # Model context
         'model_type': type(config.model).__name__,
-        'activation_type': extract_activation_type(config.model),
         'model_parameters': count_model_parameters(config.model),
         
         # Training context
@@ -424,7 +390,6 @@ def generate_config_hash(config: ExperimentConfig) -> str:
     hash_dict = {
         'model_type': type(config.model).__name__,
         'epochs': config.training.epochs,
-        'problem_type': config.data.problem_type.value if config.data.problem_type else None,
         'num_runs': config.execution.num_runs,
         'description': config.description
     }

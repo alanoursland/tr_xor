@@ -3,6 +3,66 @@ import torch
 import numpy as np
 
 
+def process_prototype_surface_distances(analysis_results):
+    """
+    Extract and process prototype surface distance test results.
+    
+    Returns:
+        Dict[str, Dict[int, Dict[int, List[float]]]]: 
+        Nested structure: layer → unit → class → list of distances
+    """
+    # Extract prototype surface distance test results
+    distance_entries = analysis_results.get("prototype_surface", {}).get("distance_test", [])
+
+    # Initialize nested structure: layer → unit → class → list of distances
+    distance_by_layer_unit = {}
+
+    for entry in distance_entries:
+        layer_distances = entry.get("layer_distances", {})
+
+        for layer_name, layer_data in layer_distances.items():
+            unit_distances = layer_data.get("unit_distances")  # list of tensors/lists, one per unit
+            labels = layer_data.get("labels")
+
+            if unit_distances is None or labels is None:
+                continue
+
+            # Convert labels to numpy
+            if isinstance(labels, torch.Tensor):
+                labels = labels.detach().cpu().numpy()
+            elif not isinstance(labels, np.ndarray):
+                labels = np.array(labels)
+
+            for unit_idx, unit_dists in enumerate(unit_distances):
+                # Convert distances to numpy
+                if isinstance(unit_dists, torch.Tensor):
+                    unit_dists = unit_dists.detach().cpu().numpy()
+                elif not isinstance(unit_dists, np.ndarray):
+                    unit_dists = np.array(unit_dists)
+
+                for i in range(len(labels)):
+                    label = labels[i]
+                    dist = unit_dists[i]
+
+                    # Handle one-hot or tensor labels
+                    if isinstance(label, np.ndarray) and label.ndim == 1 and label.shape[0] > 1:
+                        label = np.argmax(label)
+                    elif isinstance(label, (torch.Tensor, np.generic)):
+                        label = int(label)
+
+                    if label not in (0, 1):
+                        continue
+
+                    # Initialize structure
+                    if layer_name not in distance_by_layer_unit:
+                        distance_by_layer_unit[layer_name] = {}
+                    if unit_idx not in distance_by_layer_unit[layer_name]:
+                        distance_by_layer_unit[layer_name][unit_idx] = {0: [], 1: []}
+
+                    distance_by_layer_unit[layer_name][unit_idx][label].append(dist)
+
+    return distance_by_layer_unit
+
 def generate_report_header(config) -> str:
     """Generate the report header with experiment name and description."""
     name = config.execution.experiment_name
@@ -110,6 +170,108 @@ def generate_loss_distribution_section(basic_stats) -> str:
     return report
 
 
+def generate_geometry_section(distance_by_layer_unit):
+    """Generate the prototype surface geometry section."""
+    report = "## 📏 Prototype Surface Geometry\n\n"
+
+    for layer_name, units in distance_by_layer_unit.items():
+        report += f"### Layer: `{layer_name}`\n\n"
+
+        for unit_idx, class_dists in units.items():
+            d0 = np.array(class_dists[0])
+            d1 = np.array(class_dists[1])
+
+            if len(d0) == 0 or len(d1) == 0:
+                continue  # Skip units with missing data
+
+            d0_mean, d0_std = d0.mean(), d0.std()
+            d1_mean, d1_std = d1.mean(), d1.std()
+            ratio = d1_mean / (d0_mean + 1e-12)
+
+            report += f"- **Unit {unit_idx}**\n"
+            report += f"  - Mean distance to class 0: `{d0_mean:.2e} ± {d0_std:.2e}`\n"
+            report += f"  - Mean distance to class 1: `{d1_mean:.5f} ± {d1_std:.2e}`\n"
+            report += f"  - Separation ratio (class1/class0): `{ratio:.2f}`\n\n"
+
+    report += "\n---\n\n"
+    return report
+
+def generate_weight_reorientation_section(weight_reorientation):
+    """Generate the weight reorientation analysis section."""
+    per_layer_analysis = weight_reorientation.get("per_layer_analysis", {})
+
+    if not per_layer_analysis:
+        return "No weight reorientation data available.\n\n"
+
+    report = ""
+    
+    for layer_name, layer_stats in per_layer_analysis.items():
+        angle_data = layer_stats.get("angle_analysis", {})
+        norm_data = layer_stats.get("norm_ratio_analysis", {})
+
+        report += f"### Layer: `{layer_name}` – Angle Between Initial and Final Weights\n\n"
+        report += "| Percentile | Angle Range (°) | Mean Epochs to Convergence |\n"
+        report += "| ---------- | ---------------- | -------------------------- |\n"
+
+        if angle_data:
+            for percentile_range, stats in angle_data.items():
+                low, high = stats["range"]
+                mean_epochs = stats["mean_epochs"]
+                report += f"| {percentile_range:<10} | {low:.1f} – {high:.1f}       | {mean_epochs:.1f}                       |\n"
+        else:
+            report += "| N/A        | No data available | N/A                        |\n"
+
+        report += f"\n### Layer: `{layer_name}` – Initial / Final Norm Ratio\n\n"
+        report += "| Percentile | Ratio Range | Mean Epochs to Convergence |\n"
+        report += "| ---------- | ------------ | -------------------------- |\n"
+
+        if norm_data:
+            for percentile_range, stats in norm_data.items():
+                low, high = stats["range"]
+                mean_epochs = stats["mean_epochs"]
+                report += f"| {percentile_range:<10} | {low:.2f} – {high:.2f}  | {mean_epochs:.1f}                       |\n"
+        else:
+            report += "| N/A        | No data available | N/A                        |\n"
+
+        report += "\n---\n\n"
+    
+    return report
+
+def generate_combined_norm_ratio_section(weight_reorientation):
+    """Generate the combined norm ratio analysis section."""
+    report = "### ◼ Initial / Final Norm Ratio (All Layers Combined)\n\n"
+    report += "| Percentile | Ratio Range | Mean Epochs to Convergence |\n"
+    report += "| ---------- | ------------ | -------------------------- |\n"
+
+    # Pull from per_layer_analysis
+    per_layer_analysis = weight_reorientation.get("per_layer_analysis", {})
+
+    # Collect all norm ratios and epochs from all layers
+    all_ratios = []
+    all_epochs = []
+
+    for layer_stats in per_layer_analysis.values():
+        layer_ratios = layer_stats.get("norm_ratio_analysis", {})
+        for bin_data in layer_ratios.values():
+            low, high = bin_data["range"]
+            count = bin_data["count"]
+            mean_epochs = bin_data["mean_epochs"]
+            # Store per-bin representative values (flatten bins across layers)
+            all_ratios.append((low, high, mean_epochs, count))
+            all_epochs.extend([mean_epochs] * count)
+
+    if all_ratios:
+        # Re-bin across all ratios (flattened)
+        # You could re-bucket if needed, but here's a simple way to output the flattened bins:
+        for i, (low, high, mean_epochs, count) in enumerate(sorted(all_ratios, key=lambda x: x[0])):
+            label = f"{i+1:>2}"
+            report += f"| {label:<10} | {low:.2f} – {high:.2f}  | {mean_epochs:.1f}                       |\n"
+    else:
+        report += "| N/A        | No data available | N/A                        |\n"
+
+    report += "\n---\n\n"
+    return report
+
 def generate_mirror_analysis_section(analysis_results, config) -> str:
     """Generate the mirror weight symmetry analysis section."""
     if not config.analysis.mirror_pair_detection:
@@ -149,7 +311,6 @@ def generate_mirror_analysis_section(analysis_results, config) -> str:
 
     report += "\n---\n\n"
     return report
-
 
 def generate_analysis_report(
     analysis_results: Dict[str, Any],
@@ -223,58 +384,7 @@ def generate_analysis_report(
     # Collect distances from hyperplanes
     ############################################################################################
 
-    # Extract prototype surface distance test results
-    distance_entries = analysis_results.get("prototype_surface", {}).get("distance_test", [])
-
-    # Initialize nested structure: layer → unit → class → list of distances
-    distance_by_layer_unit = {}
-
-    for entry in distance_entries:
-        layer_distances = entry.get("layer_distances", {})
-
-        for layer_name, layer_data in layer_distances.items():
-            unit_distances = layer_data.get("unit_distances")  # list of tensors/lists, one per unit
-            labels = layer_data.get("labels")
-
-            if unit_distances is None or labels is None:
-                continue
-
-            # Convert labels to numpy
-            if isinstance(labels, torch.Tensor):
-                labels = labels.detach().cpu().numpy()
-            elif not isinstance(labels, np.ndarray):
-                labels = np.array(labels)
-
-            for unit_idx, unit_dists in enumerate(unit_distances):
-                # Convert distances to numpy
-                if isinstance(unit_dists, torch.Tensor):
-                    unit_dists = unit_dists.detach().cpu().numpy()
-                elif not isinstance(unit_dists, np.ndarray):
-                    unit_dists = np.array(unit_dists)
-
-                for i in range(len(labels)):
-                    label = labels[i]
-                    dist = unit_dists[i]
-
-                    # Handle one-hot or tensor labels
-                    if isinstance(label, np.ndarray) and label.ndim == 1 and label.shape[0] > 1:
-                        label = np.argmax(label)
-                    elif isinstance(label, (torch.Tensor, np.generic)):
-                        label = int(label)
-
-                    if label not in (0, 1):
-                        continue
-
-                    # Initialize structure
-                    if layer_name not in distance_by_layer_unit:
-                        distance_by_layer_unit[layer_name] = {}
-                    if unit_idx not in distance_by_layer_unit[layer_name]:
-                        distance_by_layer_unit[layer_name][unit_idx] = {0: [], 1: []}
-
-                    distance_by_layer_unit[layer_name][unit_idx][label].append(dist)
-
-    # Now:
-    # distance_by_layer_unit[layer][unit][class] = list of distances
+    distance_by_layer_unit = process_prototype_surface_distances(analysis_results)
 
     ############################################################################################
 
@@ -303,102 +413,9 @@ def generate_analysis_report(
     report += generate_overview_section(config)
     report += generate_accuracy_section(distributions, total_runs)
     report += generate_convergence_section(convergence_timing, config)
-
-    ############################################################################################
-
-    report += "\n## 📏 Prototype Surface Geometry\n\n"
-
-    for layer_name, units in distance_by_layer_unit.items():
-        report += f"### Layer: `{layer_name}`\n\n"
-
-        for unit_idx, class_dists in units.items():
-            d0 = np.array(class_dists[0])
-            d1 = np.array(class_dists[1])
-
-            if len(d0) == 0 or len(d1) == 0:
-                continue  # Skip units with missing data
-
-            d0_mean, d0_std = d0.mean(), d0.std()
-            d1_mean, d1_std = d1.mean(), d1.std()
-            ratio = d1_mean / (d0_mean + 1e-12)
-
-            report += f"- **Unit {unit_idx}**\n"
-            report += f"  - Mean distance to class 0: `{d0_mean:.2e} ± {d0_std:.2e}`\n"
-            report += f"  - Mean distance to class 1: `{d1_mean:.5f} ± {d1_std:.2e}`\n"
-            report += f"  - Separation ratio (class1/class0): `{ratio:.2f}`\n\n"
-
-    report += "\n---\n\n"
-
-    ############################################################################################
-
-    per_layer_analysis = weight_reorientation.get("per_layer_analysis", {})
-
-    if per_layer_analysis:
-        for layer_name, layer_stats in per_layer_analysis.items():
-            angle_data = layer_stats.get("angle_analysis", {})
-            norm_data = layer_stats.get("norm_ratio_analysis", {})
-
-            report += f"### Layer: `{layer_name}` – Angle Between Initial and Final Weights\n\n"
-            report += "| Percentile | Angle Range (°) | Mean Epochs to Convergence |\n"
-            report += "| ---------- | ---------------- | -------------------------- |\n"
-
-            if angle_data:
-                for percentile_range, stats in angle_data.items():
-                    low, high = stats["range"]
-                    mean_epochs = stats["mean_epochs"]
-                    report += f"| {percentile_range:<10} | {low:.1f} – {high:.1f}       | {mean_epochs:.1f}                       |\n"
-            else:
-                report += "| N/A        | No data available | N/A                        |\n"
-
-            report += f"\n### Layer: `{layer_name}` – Initial / Final Norm Ratio\n\n"
-            report += "| Percentile | Ratio Range | Mean Epochs to Convergence |\n"
-            report += "| ---------- | ------------ | -------------------------- |\n"
-
-            if norm_data:
-                for percentile_range, stats in norm_data.items():
-                    low, high = stats["range"]
-                    mean_epochs = stats["mean_epochs"]
-                    report += f"| {percentile_range:<10} | {low:.2f} – {high:.2f}  | {mean_epochs:.1f}                       |\n"
-            else:
-                report += "| N/A        | No data available | N/A                        |\n"
-
-            report += "\n---\n\n"
-    else:
-        report += "No weight reorientation data available.\n\n"
-
-    ############################################################################################
-
-    report += "### ◼ Initial / Final Norm Ratio (All Layers Combined)\n\n"
-    report += "| Percentile | Ratio Range | Mean Epochs to Convergence |\n"
-    report += "| ---------- | ------------ | -------------------------- |\n"
-
-    # Pull from per_layer_analysis
-    per_layer_analysis = weight_reorientation.get("per_layer_analysis", {})
-
-    # Collect all norm ratios and epochs from all layers
-    all_ratios = []
-    all_epochs = []
-
-    for layer_stats in per_layer_analysis.values():
-        layer_ratios = layer_stats.get("norm_ratio_analysis", {})
-        for bin_data in layer_ratios.values():
-            low, high = bin_data["range"]
-            count = bin_data["count"]
-            mean_epochs = bin_data["mean_epochs"]
-            # Store per-bin representative values (flatten bins across layers)
-            all_ratios.append((low, high, mean_epochs, count))
-            all_epochs.extend([mean_epochs] * count)
-
-    if all_ratios:
-        # Re-bin across all ratios (flattened)
-        # You could re-bucket if needed, but here's a simple way to output the flattened bins:
-        for i, (low, high, mean_epochs, count) in enumerate(sorted(all_ratios, key=lambda x: x[0])):
-            label = f"{i+1:>2}"
-            report += f"| {label:<10} | {low:.2f} – {high:.2f}  | {mean_epochs:.1f}                       |\n"
-    else:
-        report += "| N/A        | No data available | N/A                        |\n"
-
-    report += "\n---\n\n"
+    report += generate_geometry_section(distance_by_layer_unit)
+    report += generate_weight_reorientation_section(weight_reorientation)
+    report += generate_combined_norm_ratio_section(weight_reorientation)
 
     ############################################################################################
 

@@ -3,10 +3,158 @@ import torch
 import numpy as np
 
 
+def generate_report_header(config) -> str:
+    """Generate the report header with experiment name and description."""
+    name = config.execution.experiment_name
+    description = config.description or "No description provided."
+
+    report = f"# 🧪 Experiment Report: `{name}`\n\n"
+    report += f"**Description**: {description}\n\n"
+
+    return report
+
+
+def generate_overview_section(config) -> str:
+    """Generate the overview section with training configuration details."""
+    report = "## 🎯 Overview\n\n"
+
+    # Training Configuration
+    report += f"* **Total runs**: {config.execution.num_runs}\n"
+    report += f"* **Loss function**: {config.training.loss_function.__class__.__name__}\n"
+    report += f"* **Optimizer**: {config.training.optimizer.__class__.__name__}\n"
+    if config.training.batch_size:
+        report += f"* **Batch size**: {config.training.batch_size}\n"
+    report += f"* **Max epochs**: {config.training.epochs}\n"
+
+    # Early Stopping Criteria
+    if config.training.stop_training_loss_threshold is not None:
+        report += f"* **Stops when loss < {config.training.stop_training_loss_threshold:.1e}**\n"
+
+    if config.training.loss_change_threshold is not None and config.training.loss_change_patience is not None:
+        report += (
+            f"* **Stops if loss does not improve by ≥ {config.training.loss_change_threshold:.1e} "
+            f"over {config.training.loss_change_patience} epochs**\n"
+        )
+
+    report += "\n---\n\n"
+    return report
+
+
+def generate_accuracy_section(distributions, total_runs) -> str:
+    """Generate the classification accuracy section."""
+    acc_bins = distributions.get("accuracy_distribution", {}).get("bins", {})
+
+    report = "## 🎯 Classification Accuracy\n\n"
+
+    for acc in sorted(acc_bins.keys(), reverse=True):
+        count = acc_bins.get(acc, 0)
+        if count > 0:
+            report += f"* {count}/{total_runs} runs achieved {int(100*acc)}% accuracy\n"
+
+    report += "\n---\n\n"
+    return report
+
+
+def generate_convergence_section(convergence_timing, config) -> str:
+    """Generate the convergence timing section."""
+    if not config.analysis.convergence_analysis:
+        return ""
+
+    report = "## ⏱️ Convergence Timing (Epochs to MSE < 1e-7)\n\n"
+    report += "| Percentile | Epochs |\n| ---------- | ------ |\n"
+
+    percentiles = convergence_timing.get("percentiles", {})
+
+    if percentiles:
+        labels = ["0th", "10th", "25th", "50th", "75th", "90th", "100th"]
+        for label in labels:
+            value = percentiles.get(label, "N/A")
+            report += f"| {label:<10} | {value}     |\n"
+    else:
+        report += "| N/A        | No convergence data available |\n"
+
+    report += "\n---\n\n"
+    return report
+
+
+def generate_loss_distribution_section(basic_stats) -> str:
+    """Generate the final loss distribution section."""
+    report = "## 📉 Final Loss Distribution\n\n"
+
+    final_losses = basic_stats.get("summary", {}).get("final_losses", {})
+
+    if final_losses:
+        # Extract additional statistics we need
+        mean_loss = final_losses.get("mean", 0.0)
+        min_loss = final_losses.get("min", 0.0)
+        max_loss = final_losses.get("max", 0.0)
+
+        # Calculate variance from the raw metrics if available
+        raw_metrics = basic_stats.get("raw_metrics", {})
+        final_loss_values = raw_metrics.get("final_losses", [])
+
+        if final_loss_values:
+            variance = np.var(final_loss_values)
+        else:
+            variance = 0.0
+
+        report += f"* **Mean final loss**: {mean_loss:.2e}\n\n"
+        report += f"* **Variance**: {variance:.2e}\n\n"
+        report += f"* **Range**:\n\n"
+        report += f"  * 0th percentile: {min_loss:.2e}\n"
+        report += f"  * 100th percentile: {max_loss:.2e}\n\n"
+    else:
+        report += "* **No final loss data available**\n\n"
+
+    report += "\n---\n\n"
+    return report
+
+
+def generate_mirror_analysis_section(analysis_results, config) -> str:
+    """Generate the mirror weight symmetry analysis section."""
+    if not config.analysis.mirror_pair_detection:
+        return ""
+
+    report = "## 🔍 Mirror Weight Symmetry\n\n"
+
+    mirror_data = analysis_results.get("prototype_surface", {}).get("mirror_test", [])
+    total_runs = len(mirror_data)
+    perfect_threshold = 1e-3  # similarity diff from -1.0
+
+    mirror_sims = []
+    detected_runs = 0
+    perfect_mirrors = 0
+
+    for entry in mirror_data:
+        pairs = entry.get("mirror_pairs", [])
+        if pairs:
+            detected_runs += 1
+            sim = pairs[0][2]  # cosine similarity (e.g. -0.99998)
+            mirror_sims.append(sim)
+            if abs(sim + 1.0) < perfect_threshold:
+                perfect_mirrors += 1
+
+    if mirror_sims:
+        sims_tensor = torch.tensor(mirror_sims)
+        mean_sim = sims_tensor.mean().item()
+        std_sim = sims_tensor.std().item()
+        mean_error = abs(mean_sim + 1.0)
+
+        report += f"* **Mirror pairs detected**: {detected_runs} / {total_runs} runs\n"
+        report += f"* **Perfect mirror symmetry** (cosine ~ -1.0): {perfect_mirrors} runs\n"
+        report += f"* **Mean mirror similarity**: {mean_sim:.5f} ± {std_sim:.5f}\n"
+        report += f"* **Mean mirror error (|cos + 1|)**: {mean_error:.5f}\n"
+    else:
+        report += "* No mirror pairs detected in any run.\n"
+
+    report += "\n---\n\n"
+    return report
+
+
 def generate_analysis_report(
     analysis_results: Dict[str, Any],
     config: Any,  # Replace Any with actual ExperimentConfig type
-    template: str = "comprehensive"
+    template: str = "comprehensive",
 ) -> str:
     """
     Generate a Markdown-formatted analysis report of the experiment.
@@ -21,7 +169,7 @@ def generate_analysis_report(
     """
     ############################################################################################
 
-    loss_change_threshold = 0.01 # replaced with config.training.loss_change_threshold
+    loss_change_threshold = 0.01  # replaced with config.training.loss_change_threshold
 
     # Extract top-level blocks from analysis_results
     # Path: basic_stats
@@ -71,7 +219,6 @@ def generate_analysis_report(
     geometry_ok = "✔️" if distance_test else "⚠️ Not available"
     prototype_support = "✅" if (avg_acc == 1.0 and distance_test) else "⚠️ Partial"
 
-
     ############################################################################################
     # Collect distances from hyperplanes
     ############################################################################################
@@ -84,7 +231,7 @@ def generate_analysis_report(
 
     for entry in distance_entries:
         layer_distances = entry.get("layer_distances", {})
-        
+
         for layer_name, layer_data in layer_distances.items():
             unit_distances = layer_data.get("unit_distances")  # list of tensors/lists, one per unit
             labels = layer_data.get("labels")
@@ -131,7 +278,6 @@ def generate_analysis_report(
 
     ############################################################################################
 
-
     # Accuracy validation
     failed_runs = total_runs - success_runs if isinstance(total_runs, int) and isinstance(success_runs, int) else "?"
     all_success = success_runs == total_runs if isinstance(total_runs, int) and isinstance(success_runs, int) else False
@@ -152,67 +298,10 @@ def generate_analysis_report(
     description = config.description or experiment_info.get("description", "No description provided.")
 
     # Start Markdown report
-    report = f"# 🧪 Experiment Report: `{name}`\n\n"
-    report += f"**Description**: {description}\n\n"
-
-    ############################################################################################
-
-    loss_fn = config.training.loss_function
-
-    report += "## 🎯 Overview\n\n"
-
-    # 🏃 Training Configuration
-    report += f"* **Total runs**: {config.execution.num_runs}\n"
-    report += f"* **Loss function**: {config.training.loss_function.__class__.__name__}\n"
-    report += f"* **Optimizer**: {config.training.optimizer.__class__.__name__}\n"
-    if config.training.batch_size:
-        report += f"* **Batch size**: {config.training.batch_size}\n"
-    report += f"* **Max epochs**: {config.training.epochs}\n"
-
-    # ⏹ Early Stopping Criteria
-    if config.training.stop_training_loss_threshold is not None:
-        report += f"* **Stops when loss < {config.training.stop_training_loss_threshold:.1e}**\n"
-
-    if (
-        config.training.loss_change_threshold is not None
-        and config.training.loss_change_patience is not None
-    ):
-        report += (
-            f"* **Stops if loss does not improve by ≥ {config.training.loss_change_threshold:.1e} "
-            f"over {config.training.loss_change_patience} epochs**\n"
-        )
-
-    report += "\n---\n\n"
-
-    ############################################################################################
-
-    acc_bins = distributions.get("accuracy_distribution", {}).get("bins", {})
-
-    report += "## 🎯 Classification Accuracy\n\n"
-
-    for acc in sorted(acc_bins.keys(), reverse=True):
-        count = acc_bins.get(acc, 0)
-        if count > 0:
-            report += f"* {count}/{total_runs} runs achieved {int(100*acc)}% accuracy\n"
-
-
-    report += "\n---\n\n"
-
-    ############################################################################################
-
-    if config.analysis.convergence_analysis:
-        report += "## ⏱️ Convergence Timing (Epochs to MSE < 1e-7)\n\n"
-        report += "| Percentile | Epochs |\n| ---------- | ------ |\n"
-
-        if percentiles:
-            labels = ["0th", "10th", "25th", "50th", "75th", "90th", "100th"]
-            for label in labels:
-                value = percentiles.get(label, "N/A")
-                report += f"| {label:<10} | {value}     |\n"
-        else:
-            report += "| N/A        | No convergence data available |\n"
-
-        report += "\n---\n\n"
+    report += generate_report_header(config)
+    report += generate_overview_section(config)
+    report += generate_accuracy_section(distributions, total_runs)
+    report += generate_convergence_section(convergence_timing, config)
 
     ############################################################################################
 
@@ -220,14 +309,14 @@ def generate_analysis_report(
 
     for layer_name, units in distance_by_layer_unit.items():
         report += f"### Layer: `{layer_name}`\n\n"
-        
+
         for unit_idx, class_dists in units.items():
             d0 = np.array(class_dists[0])
             d1 = np.array(class_dists[1])
-            
+
             if len(d0) == 0 or len(d1) == 0:
                 continue  # Skip units with missing data
-            
+
             d0_mean, d0_std = d0.mean(), d0.std()
             d1_mean, d1_std = d1.mean(), d1.std()
             ratio = d1_mean / (d0_mean + 1e-12)
@@ -312,29 +401,7 @@ def generate_analysis_report(
 
     ############################################################################################
 
-    report += "## 📉 Final Loss Distribution\n\n"
-
-    if final_losses:
-        # Extract additional statistics we need
-        mean_loss = final_losses.get("mean", 0.0)
-        min_loss = final_losses.get("min", 0.0) 
-        max_loss = final_losses.get("max", 0.0)
-        
-        # Calculate variance from the raw metrics if available
-        raw_metrics = basic_stats['raw_metrics']
-        final_loss_values = raw_metrics['final_losses']
-        
-        variance = np.var(final_loss_values)
-        
-        report += f"* **Mean final loss**: {mean_loss:.2e}\n\n"
-        report += f"* **Variance**: {variance:.2e}\n\n"
-        report += f"* **Range**:\n\n"
-        report += f"  * 0th percentile: {min_loss:.2e}\n"
-        report += f"  * 100th percentile: {max_loss:.2e}\n\n"
-    else:
-        report += "* **No final loss data available**\n\n"
-
-    report += "\n---\n\n"
+    report += generate_loss_distribution_section(basic_stats)
 
     ############################################################################################
 
@@ -417,47 +484,18 @@ def generate_analysis_report(
                 report += f"* {summary['alive']} runs with **no dead inputs** reached {acc_percent}% accuracy\n"
             if summary["dead"] > 0:
                 report += f"* {summary['dead']} runs with **dead inputs** reached {acc_percent}% accuracy\n"
-                report += f"|    {summary['class0_dead']} runs with class-0 dead inputs reached {acc_percent}% accuracy\n"
-                report += f"|    {summary['class1_dead']} runs with class-1 dead inputs reached {acc_percent}% accuracy\n"
-        
+                report += (
+                    f"|    {summary['class0_dead']} runs with class-0 dead inputs reached {acc_percent}% accuracy\n"
+                )
+                report += (
+                    f"|    {summary['class1_dead']} runs with class-1 dead inputs reached {acc_percent}% accuracy\n"
+                )
+
         report += "\n---\n\n"
 
     ############################################################################################
 
-    if config.analysis.mirror_pair_detection:
-        report += "## 🔍 Mirror Weight Symmetry\n\n"
-
-        mirror_data = analysis_results.get("prototype_surface", {}).get("mirror_test", [])
-        total_runs = len(mirror_data)
-        perfect_threshold = 1e-3  # similarity diff from -1.0
-
-        mirror_sims = []
-        detected_runs = 0
-        perfect_mirrors = 0
-
-        for entry in mirror_data:
-            pairs = entry.get("mirror_pairs", [])
-            if pairs:
-                detected_runs += 1
-                sim = pairs[0][2]  # cosine similarity (e.g. -0.99998)
-                mirror_sims.append(sim)
-                if abs(sim + 1.0) < perfect_threshold:
-                    perfect_mirrors += 1
-
-        if mirror_sims:
-            sims_tensor = torch.tensor(mirror_sims)
-            mean_sim = sims_tensor.mean().item()
-            std_sim = sims_tensor.std().item()
-            mean_error = abs(mean_sim + 1.0)
-
-            report += f"* **Mirror pairs detected**: {detected_runs} / {total_runs} runs\n"
-            report += f"* **Perfect mirror symmetry** (cosine ~ -1.0): {perfect_mirrors} runs\n"
-            report += f"* **Mean mirror similarity**: {mean_sim:.5f} ± {std_sim:.5f}\n"
-            report += f"* **Mean mirror error (|cos + 1|)**: {mean_error:.5f}\n"
-        else:
-            report += "* No mirror pairs detected in any run.\n"
-
-        report += "\n---\n\n"
+    report += generate_mirror_analysis_section(analysis_results, config)
 
     ############################################################################################
 
@@ -474,8 +512,12 @@ def generate_analysis_report(
             count_f = len(layer_data["failure"])
 
             report += f"### Layer: `{layer_name}`\n\n"
-            report += f"* **Success units (n={count_s})** – mean angle diff: {stats_s['mean']:.2f}° ± {stats_s['std']:.2f}°\n"
-            report += f"* **Failure units (n={count_f})** – mean angle diff: {stats_f['mean']:.2f}° ± {stats_f['std']:.2f}°\n"
+            report += (
+                f"* **Success units (n={count_s})** – mean angle diff: {stats_s['mean']:.2f}° ± {stats_s['std']:.2f}°\n"
+            )
+            report += (
+                f"* **Failure units (n={count_f})** – mean angle diff: {stats_f['mean']:.2f}° ± {stats_f['std']:.2f}°\n"
+            )
             report += "* Failed units tend to cluster near 90°, consistent with the no-torque trap hypothesis.\n\n"
 
         report += "See `failure_angle_histogram.png` for visual confirmation.\n\n"
@@ -483,4 +525,3 @@ def generate_analysis_report(
     ############################################################################################
 
     return report
-

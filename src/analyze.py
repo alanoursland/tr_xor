@@ -22,9 +22,15 @@ from typing import Dict, List, Tuple, Any
 from analysis.loader import load_experiment_data, load_all_run_results
 from analysis.utils import extract_activation_type, get_linear_layers
 from analysis.stats import compute_basic_statistics, compute_summary_statistics
-from analysis.visualization import plot_hyperplanes, plot_failure_angle_histogram, plot_epoch_distribution, plot_weight_angle_and_magnitude_vs_epochs
+from analysis.visualization import (
+    plot_hyperplanes,
+    plot_failure_angle_histogram,
+    plot_epoch_distribution,
+    plot_weight_angle_and_magnitude_vs_epochs,
+)
 from analysis.geometry import compute_angles_between, compute_norm_ratios
 from analysis.reporting import generate_analysis_report
+
 
 def analyze_dead_data(run_results: List[Dict[str, Any]], config: ExperimentConfig) -> Dict[str, Any]:
     """
@@ -65,7 +71,6 @@ def analyze_dead_data(run_results: List[Dict[str, Any]], config: ExperimentConfi
             dead_class0 = int((is_dead & (y == 0)).sum().item())
             dead_class1 = int((is_dead & (y == 1)).sum().item())
 
-
             results["dead_counts"].append(total_dead)
             results["dead_class0_counts"].append(dead_class0)
             results["dead_class1_counts"].append(dead_class1)
@@ -77,82 +82,78 @@ def analyze_dead_data(run_results: List[Dict[str, Any]], config: ExperimentConfi
 def summarize_all_runs(all_results: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
     Create summary statistics across all runs.
-    
+
     Args:
         all_results: List of all run results
-        
+
     Returns:
         Dictionary of summary statistics
     """
     if not all_results:
         return {}
-    
+
     # Extract key metrics
-    final_losses = [r.get('final_loss', float('inf')) for r in all_results]
-    accuracies = [r.get('accuracy', 0.0) for r in all_results]
-    training_times = [r.get('training_time', 0.0) for r in all_results]
-    
+    final_losses = [r.get("final_loss", float("inf")) for r in all_results]
+    accuracies = [r.get("accuracy", 0.0) for r in all_results]
+    training_times = [r.get("training_time", 0.0) for r in all_results]
+
     # Convert to tensors for easy computation
-    losses_tensor = torch.tensor([l for l in final_losses if l != float('inf')])
+    losses_tensor = torch.tensor([l for l in final_losses if l != float("inf")])
     accuracies_tensor = torch.tensor(accuracies)
     times_tensor = torch.tensor(training_times)
-    
+
     summary = {
-        'total_runs': len(all_results),
-        'successful_runs': len(losses_tensor),
-        'failed_runs': len(all_results) - len(losses_tensor),
-        
+        "total_runs": len(all_results),
+        "successful_runs": len(losses_tensor),
+        "failed_runs": len(all_results) - len(losses_tensor),
         # Loss statistics
-        'loss_stats': {
-            'mean': losses_tensor.mean().item() if len(losses_tensor) > 0 else float('inf'),
-            'std': losses_tensor.std().item() if len(losses_tensor) > 0 else 0.0,
-            'min': losses_tensor.min().item() if len(losses_tensor) > 0 else float('inf'),
-            'max': losses_tensor.max().item() if len(losses_tensor) > 0 else float('inf'),
-            'median': losses_tensor.median().item() if len(losses_tensor) > 0 else float('inf')
+        "loss_stats": {
+            "mean": losses_tensor.mean().item() if len(losses_tensor) > 0 else float("inf"),
+            "std": losses_tensor.std().item() if len(losses_tensor) > 0 else 0.0,
+            "min": losses_tensor.min().item() if len(losses_tensor) > 0 else float("inf"),
+            "max": losses_tensor.max().item() if len(losses_tensor) > 0 else float("inf"),
+            "median": losses_tensor.median().item() if len(losses_tensor) > 0 else float("inf"),
         },
-        
         # Accuracy statistics
-        'accuracy_stats': {
-            'mean': accuracies_tensor.mean().item(),
-            'std': accuracies_tensor.std().item(),
-            'min': accuracies_tensor.min().item(),
-            'max': accuracies_tensor.max().item(),
-            'median': accuracies_tensor.median().item()
+        "accuracy_stats": {
+            "mean": accuracies_tensor.mean().item(),
+            "std": accuracies_tensor.std().item(),
+            "min": accuracies_tensor.min().item(),
+            "max": accuracies_tensor.max().item(),
+            "median": accuracies_tensor.median().item(),
         },
-        
         # Training time statistics
-        'time_stats': {
-            'mean': times_tensor.mean().item(),
-            'std': times_tensor.std().item(),
-            'min': times_tensor.min().item(),
-            'max': times_tensor.max().item(),
-            'total': times_tensor.sum().item()
+        "time_stats": {
+            "mean": times_tensor.mean().item(),
+            "std": times_tensor.std().item(),
+            "min": times_tensor.min().item(),
+            "max": times_tensor.max().item(),
+            "total": times_tensor.sum().item(),
         },
-        
         # Success metrics
-        'convergence_rate': sum(1 for r in all_results if r.get('converged', False)) / len(all_results),
-        'perfect_accuracy_rate': sum(1 for r in all_results if r.get('perfect_accuracy', False)) / len(all_results),
-        
+        "convergence_rate": sum(1 for r in all_results if r.get("converged", False)) / len(all_results),
+        "perfect_accuracy_rate": sum(1 for r in all_results if r.get("perfect_accuracy", False)) / len(all_results),
         # Best runs
-        'best_loss_run': min(all_results, key=lambda r: r.get('final_loss', float('inf')))['run_id'],
-        'best_accuracy_run': max(all_results, key=lambda r: r.get('accuracy', 0.0))['run_id'],
+        "best_loss_run": min(all_results, key=lambda r: r.get("final_loss", float("inf")))["run_id"],
+        "best_accuracy_run": max(all_results, key=lambda r: r.get("accuracy", 0.0))["run_id"],
     }
-    
+
     return summary
+
 
 def analyze_prototype_surface(run_results, experiment_data, config):
     # Test 1: Distance of points to hyperplanes
     distance_test = test_distance_to_hyperplanes(run_results, experiment_data, config)
-    
-    # Test 2: Mirror weight detection  
-    mirror_test = test_mirror_weights(run_results)
-    
-    return {
-        'distance_test': distance_test,
-        'mirror_test': mirror_test
-    }
 
-def test_distance_to_hyperplanes(run_results: List[Dict[str, Any]], experiment_data: Dict[str, Any], config) -> List[Dict[str, Any]]:
+    # Test 2: Mirror weight detection
+    mirror_test = test_mirror_weights(run_results)
+
+    return {"distance_test": distance_test, "mirror_test": mirror_test}
+
+
+def test_distance_to_hyperplanes(
+    run_results: List[Dict[str, Any]], experiment_data: Dict[str, Any], config
+) -> List[Dict[str, Any]]:
     """
     Test if classification correlates with distance to learned hyperplanes
     for each linear layer in the model, using correct layer-specific input data.
@@ -165,12 +166,12 @@ def test_distance_to_hyperplanes(run_results: List[Dict[str, Any]], experiment_d
     Returns:
         List of per-run results, each with layer-wise distances and labels.
     """
-    x_train = experiment_data['x_train']
-    y_train = experiment_data['y_train']
+    x_train = experiment_data["x_train"]
+    y_train = experiment_data["y_train"]
     results = []
 
     for result in run_results:
-        if result.get('accuracy', 0) < 0.75:
+        if result.get("accuracy", 0) < 0.75:
             continue
 
         model = config.model
@@ -191,10 +192,7 @@ def test_distance_to_hyperplanes(run_results: List[Dict[str, Any]], experiment_d
                 current = model.scale(current)
             # skip other modules for now
 
-        run_result = {
-            "run_id": result["run_id"],
-            "layer_distances": {}
-        }
+        run_result = {"run_id": result["run_id"], "layer_distances": {}}
 
         state_dict = result["model_state_dict"]
 
@@ -209,48 +207,45 @@ def test_distance_to_hyperplanes(run_results: List[Dict[str, Any]], experiment_d
                 d = torch.abs(w @ x_input.T + bias) / torch.norm(w)
                 distances.append(d)  # list of tensors, one per unit
 
-            run_result["layer_distances"][layer_name] = {
-                "unit_distances": distances,
-                "labels": y_train
-            }
+            run_result["layer_distances"][layer_name] = {"unit_distances": distances, "labels": y_train}
 
         results.append(run_result)
 
     return results
+
 
 def test_mirror_weights(run_results):
     """
     Test if ReLU models learn mirror weight pairs (w_i ≈ -w_j).
     """
     mirror_results = []
-    
+
     for result in run_results:
-        if result.get('accuracy', 0) < 0.75:  # Only test successful models
+        if result.get("accuracy", 0) < 0.75:  # Only test successful models
             continue
-            
+
         # Load model weights
-        state_dict = result['model_state_dict']
-        W = state_dict['linear1.weight']  # First layer weights
-        
+        state_dict = result["model_state_dict"]
+        W = state_dict["linear1.weight"]  # First layer weights
+
         # Normalize weights for comparison
         W_norm = W / W.norm(dim=1, keepdim=True)
-        
+
         # Find mirror pairs
         mirror_pairs = []
         for i in range(W_norm.shape[0]):
-            for j in range(i+1, W_norm.shape[0]):
+            for j in range(i + 1, W_norm.shape[0]):
                 # Check if w_i ≈ -w_j
                 cosine_sim = (W_norm[i] @ W_norm[j]).item()
                 if cosine_sim < -0.95:  # Close to -1
                     mirror_pairs.append((i, j, cosine_sim))
-        
-        mirror_results.append({
-            'run_id': result['run_id'],
-            'mirror_pairs': mirror_pairs,
-            'mirror_count': len(mirror_pairs)
-        })
-    
+
+        mirror_results.append(
+            {"run_id": result["run_id"], "mirror_pairs": mirror_pairs, "mirror_count": len(mirror_pairs)}
+        )
+
     return mirror_results
+
 
 def analyze_failure_angles(run_results: List[Dict[str, Any]]) -> Dict[str, Any]:
     w_ideal_A = torch.tensor([0.54, -0.54])
@@ -267,7 +262,7 @@ def analyze_failure_angles(run_results: List[Dict[str, Any]]) -> Dict[str, Any]:
             init_weights = torch.load(init_path, map_location="cpu")
         except Exception as e:
             print(f"⚠️ Skipping run {r['run_id']}: failed to load init weights ({e})")
-            continue
+            raise e
 
         for name, tensor in init_weights.items():
             if not name.endswith(".weight"):
@@ -278,10 +273,7 @@ def analyze_failure_angles(run_results: List[Dict[str, Any]]) -> Dict[str, Any]:
             layer_name = name.replace(".weight", "")
 
             if layer_name not in layer_results:
-                layer_results[layer_name] = {
-                    "success": [],
-                    "failure": []
-                }
+                layer_results[layer_name] = {"success": [], "failure": []}
 
             for i in range(tensor.shape[0]):
                 w = tensor[i]
@@ -303,44 +295,42 @@ def analyze_failure_angles(run_results: List[Dict[str, Any]]) -> Dict[str, Any]:
 
     return layer_results
 
+
 def analyze_accuracy_distribution(run_results: List[Dict[str, Any]], config: ExperimentConfig) -> Dict[str, Any]:
     """
     Analyze accuracy distribution patterns across training runs.
-    
+
     Args:
         run_results: List of results from all training runs
         config: Experiment configuration for context
-        
+
     Returns:
         Dictionary containing comprehensive accuracy analysis
     """
     if not run_results:
-        return {'error': 'No run results provided'}
-    
+        return {"error": "No run results provided"}
+
     print(f"  Analyzing accuracy distribution for {len(run_results)} runs...")
-    
+
     # Extract accuracy data
-    accuracies = [r.get('accuracy', 0.0) for r in run_results]
-    
+    accuracies = [r.get("accuracy", 0.0) for r in run_results]
+
     if not accuracies:
-        return {'error': 'No accuracy data found in run results'}
-    
+        return {"error": "No accuracy data found in run results"}
+
     # Create comprehensive accuracy analysis
     accuracy_analysis = {
-        'raw_data': {
-            'accuracies': accuracies,
-            'num_runs': len(accuracies)
-        },
-        
-        'summary_statistics': compute_accuracy_summary_stats(accuracies),
-        'distribution_analysis': analyze_xor_accuracy_distribution(accuracies),
+        "raw_data": {"accuracies": accuracies, "num_runs": len(accuracies)},
+        "summary_statistics": compute_accuracy_summary_stats(accuracies),
+        "distribution_analysis": analyze_xor_accuracy_distribution(accuracies),
     }
-    
+
     return accuracy_analysis
+
 
 def analyze_weight_reorientation(run_results: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
-    Analyze weight reorientation patterns (angles and norm ratios) across all linear layers 
+    Analyze weight reorientation patterns (angles and norm ratios) across all linear layers
     and training runs. Supports multiple layers per model.
 
     Args:
@@ -366,7 +356,7 @@ def analyze_weight_reorientation(run_results: List[Dict[str, Any]]) -> Dict[str,
             model_init = torch.load(run_dir / "model_init.pt", map_location="cpu")
         except Exception as e:
             print(f"⚠️ Run {run_id}: Failed to load weight vectors: {e}")
-            continue
+            raise e
 
         for layer_name in layer_map.keys():
             try:
@@ -378,11 +368,7 @@ def analyze_weight_reorientation(run_results: List[Dict[str, Any]]) -> Dict[str,
 
                 # Initialize storage for layer if not already
                 if layer_name not in layer_data:
-                    layer_data[layer_name] = {
-                        "angles": [],
-                        "norm_ratios": [],
-                        "epochs_completed": []
-                    }
+                    layer_data[layer_name] = {"angles": [], "norm_ratios": [], "epochs_completed": []}
 
                 layer_data[layer_name]["angles"].extend(angles_per_unit)
                 layer_data[layer_name]["norm_ratios"].extend(ratios_per_unit)
@@ -390,78 +376,248 @@ def analyze_weight_reorientation(run_results: List[Dict[str, Any]]) -> Dict[str,
 
             except Exception as e:
                 print(f"⚠️ Run {run_id}, layer {layer_name}: Failed to process weights: {e}")
-                continue
+                raise e
 
     # Final analysis output
-    output = {
-        "per_layer_analysis": {},
-        "raw_data": layer_data
-    }
+    output = {"per_layer_analysis": {}, "raw_data": layer_data}
 
     for layer_name, data in layer_data.items():
         angle_stats = compute_percentile_bins(data["angles"], data["epochs_completed"], metric="angle")
         ratio_stats = compute_percentile_bins(data["norm_ratios"], data["epochs_completed"], metric="norm_ratio")
 
-        output["per_layer_analysis"][layer_name] = {
-            "angle_analysis": angle_stats,
-            "norm_ratio_analysis": ratio_stats
-        }
+        output["per_layer_analysis"][layer_name] = {"angle_analysis": angle_stats, "norm_ratio_analysis": ratio_stats}
 
     return output
+
 
 def compute_percentile_bins(values: List[float], epochs: List[int], metric: str) -> Dict[str, Any]:
     """
     Bin data by percentiles and compute mean epochs for each bin.
-    
+
     Args:
         values: List of metric values (angles or norm ratios)
         epochs: List of corresponding epochs completed
         metric_name: Name of the metric for labeling
-        
+
     Returns:
         Dictionary with percentile bin statistics
     """
     if not values:
         return {}
-    
+
     # Convert to numpy for percentile calculations
     values_array = np.array(values)
     epochs_array = np.array(epochs)
-    
+
     # Define percentile boundaries
     percentiles = [0, 10, 25, 50, 75, 90, 100]
     boundaries = np.percentile(values_array, percentiles)
-    
+
     bin_stats = {}
-    
+
     # Create bins: 0-10%, 10-25%, 25-50%, 50-75%, 75-90%, 90-100%
-    bin_ranges = [
-        (0, 10), (10, 25), (25, 50), (50, 75), (75, 90), (90, 100)
-    ]
-    
+    bin_ranges = [(0, 10), (10, 25), (25, 50), (50, 75), (75, 90), (90, 100)]
+
     for i, (low_pct, high_pct) in enumerate(bin_ranges):
         low_val = boundaries[percentiles.index(low_pct)]
         high_val = boundaries[percentiles.index(high_pct)]
-        
+
         # Find values in this range
         if i == len(bin_ranges) - 1:  # Last bin includes upper boundary
             mask = (values_array >= low_val) & (values_array <= high_val)
         else:
             mask = (values_array >= low_val) & (values_array < high_val)
-        
+
         if np.any(mask):
             bin_epochs = epochs_array[mask]
             mean_epochs = np.mean(bin_epochs)
-            
+
             bin_stats[f"{low_pct}–{high_pct}%"] = {
                 "range": (low_val, high_val),
                 "mean_epochs": mean_epochs,
-                "count": len(bin_epochs)
+                "count": len(bin_epochs),
             }
-    
+
     return bin_stats
 
-def analyze_hyperplane_clustering(run_results: List[Dict[str, Any]], eps: float = 0.1, min_samples: int = 2) -> Dict[str, Any]:
+
+def extract_layer_parameters(
+    run_results: List[Dict[str, Any]], exclude_layers: set = ["scale"]
+) -> Dict[str, List[Tuple]]:
+    """
+    Extract weights and biases from all runs, organized by layer.
+
+    Args:
+        run_results: List of results from all training runs.
+        exclude_layers: A set of layer names to ignore during extraction.
+
+    Returns:
+        Dict[layer_name, List[Tuple[weights, biases, run_id]]]
+    """
+    if exclude_layers is None:
+        exclude_layers = set()
+
+    layer_data = defaultdict(list)
+
+    for result in run_results:
+        run_id = result.get("run_id", "?")
+        try:
+            state_dict = result["model_state_dict"]
+            layer_names = {key.replace(".weight", "") for key in state_dict if ".weight" in key}
+            
+            for layer_name in layer_names:
+                # --- THIS IS THE FIX ---
+                # Skip any layer specified in the exclusion set.
+                if layer_name in exclude_layers:
+                    continue
+                # ----------------------
+
+                w_key = f"{layer_name}.weight"
+                b_key = f"{layer_name}.bias"
+                w_final = state_dict[w_key].cpu().numpy()
+                b_tensor = state_dict.get(b_key)
+                b_final = b_tensor.cpu().numpy() if b_tensor is not None else np.zeros(w_final.shape[0])
+                layer_data[layer_name].append((w_final, b_final, run_id))
+        except Exception as e:
+            print(f"⚠️ Run {run_id}: Failed to extract parameters: {e}")
+            raise e
+
+    return dict(layer_data)
+
+def collate_hyperplanes(layer_entries: List[Tuple[np.ndarray, np.ndarray, str]]) -> Dict[int, Dict[str, Any]]:
+    """
+    Reorganizes layer parameters from a run-centric to a unit-centric view
+    using a vectorized NumPy approach.
+
+    Args:
+        layer_entries: A list of tuples, where each tuple represents one run
+                       and contains (weights, biases, run_id).
+
+    Returns:
+        A dictionary mapping each unit index to its collected data, identical
+        in structure to the looped version.
+    """
+    if not layer_entries:
+        return {}
+
+    # 1. Unpack the data using the efficient zip pattern.
+    weights_list, biases_list, run_ids_list = zip(*layer_entries)
+    # print(f"weights_list is {len(weights_list)}")
+    # print(f"biases_list is {len(biases_list)}")
+    # print(f"run_ids_list is {len(run_ids_list)}")
+
+    # 2. Step 1: Stack into large NumPy arrays.
+    # If we have R runs, and each weight matrix is (U, F) for (Units, Features),
+    # all_weights becomes a single (R, U, F) array.
+    # all_biases becomes a single (R, U) array.
+    all_weights = np.stack(weights_list)
+    all_biases = np.stack(biases_list)
+    # print(f"all_weights is {all_weights.shape}")
+    # print(f"all_biases is {all_biases.shape}")
+
+    # Get dimensions needed for reshaping and repeating
+    num_runs, num_units, num_features = all_weights.shape
+
+    # 3. Reshape the arrays to flatten the run and unit dimensions together.
+    # This creates a single long list of all hyperplanes.
+    # Shape becomes: (num_runs * num_units, num_features)
+    weights_array = all_weights.reshape(-1, num_features)
+    # print(f"{weights_array is {weights_array.shape}}")
+    # Shape becomes: (num_runs * num_units,)
+    biases_array = all_biases.reshape(-1)
+
+    # 4. Create the corresponding list of run_ids.
+    # We need to repeat each run_id `num_units` times.
+    run_ids = np.repeat(run_ids_list, num_units).tolist()
+
+    # print(f"{biases_array is {biases_array.shape}}")
+    # print(f"{run_ids is {len(run_ids)}}")
+    return weights_array, biases_array, run_ids
+
+
+def cluster_units(
+    weights_array: np.ndarray, eps: float, min_samples: int, metric: str = "euclidean"
+) -> Tuple[np.ndarray, int, int]:
+    """
+    Perform DBSCAN clustering on weight data.
+
+    Args:
+        weights_array: Array of weight vectors to cluster
+        eps: DBSCAN epsilon parameter
+        min_samples: DBSCAN minimum samples per cluster
+
+    Returns:
+        Tuple of (cluster_labels, n_clusters, noise_count)
+    """
+    clustering = DBSCAN(eps=eps, min_samples=min_samples, metric=metric).fit(weights_array)
+    labels = clustering.labels_
+    unique_labels = set(labels)
+    n_clusters = len(unique_labels) - (1 if -1 in unique_labels else 0)
+    noise_count = int(np.sum(labels == -1))
+
+    return labels, n_clusters, noise_count
+
+
+def format_clustering_results(
+    layer_name: str,
+    labels: np.ndarray,
+    weights_array: np.ndarray,
+    biases_array: np.ndarray,
+    run_ids: List,
+    n_clusters: int,
+    noise_count: int,
+    eps: float,
+    min_samples: int,
+) -> Dict[str, Any]:
+    """
+    Format clustering results into the expected output structure.
+
+    Args:
+        layer_name: Name of the layer
+        labels: Cluster labels from DBSCAN
+        weights_array: Original weight data
+        biases_array: Original bias data
+        run_ids: Run identifiers
+        n_clusters: Number of clusters found
+        noise_count: Number of noise points
+        eps: DBSCAN epsilon parameter
+        min_samples: DBSCAN minimum samples parameter
+
+    Returns:
+        Formatted clustering results dictionary
+    """
+    unique_labels = set(labels)
+    cluster_info = {}
+
+    for label in unique_labels:
+        if label == -1:  # Skip noise points
+            continue
+
+        mask = labels == label
+        cluster_weights = weights_array[mask]
+        cluster_biases = biases_array[mask]
+        cluster_run_ids = [run_ids[i] for i in range(len(run_ids)) if mask[i]]
+
+        cluster_info[f"{layer_name}_cluster_{label}"] = {
+            "size": int(np.sum(mask)),
+            "run_ids": cluster_run_ids,
+            "weight_centroid": cluster_weights.mean(axis=0).tolist(),
+            "bias_centroid": cluster_biases.mean(axis=0).tolist(),
+            "weight_std": cluster_weights.std(axis=0).tolist(),
+            "bias_std": cluster_biases.std(axis=0).tolist(),
+        }
+
+    return {
+        "clustering_params": {"eps": eps, "min_samples": min_samples},
+        "n_clusters": n_clusters,
+        "noise_points": noise_count,
+        "cluster_info": cluster_info,
+    }
+
+
+def analyze_hyperplane_clustering(
+    run_results: List[Dict[str, Any]], config: ExperimentConfig, eps: float = 0.1, min_samples: int = 2
+) -> Dict[str, Any]:
     """
     Cluster final hyperplane weights across runs, layer by layer, using DBSCAN.
 
@@ -473,140 +629,118 @@ def analyze_hyperplane_clustering(run_results: List[Dict[str, Any]], eps: float 
     Returns:
         Dictionary mapping layer names to their clustering results.
     """
-    layer_data = defaultdict(list)  # layer_name → list of (weights, bias, run_id)
+    accuracy_threshold = config.analysis.accuracy_threshold
+    successful_runs = [r for r in run_results if r.get("accuracy", 0) >= accuracy_threshold]
+    if not successful_runs:
+        print("⚠️ No runs met the accuracy threshold. Skipping clustering.")
+        return {}
 
-    for result in run_results:
-        run_id = result.get("run_id", "?")
-        try:
-            state_dict = result["model_state_dict"]
-            for key in state_dict:
-                if ".weight" in key and "bias" not in key:
-                    layer_name = key.replace(".weight", "")
-                    w_final = state_dict[key].cpu().numpy()
-                    b_final = state_dict.get(f"{layer_name}.bias", None)
-                    if b_final is not None:
-                        b_final = b_final.cpu().numpy()
-                    else:
-                        b_final = np.zeros(w_final.shape[0])
-                    layer_data[layer_name].append((w_final, b_final, run_id))
-        except Exception as e:
-            print(f"⚠️ Run {run_id}: Failed to extract weights: {e}")
-            continue
+    # Extract all weight data from runs
+    layer_data = extract_layer_parameters(successful_runs)
+
+    # print(f"layer_data.keys() = {layer_data.keys()}")
 
     results = {}
 
-    for layer_name, entries in layer_data.items():
+    for layer_name, layer_entries in layer_data.items():
         try:
-            weights, biases, run_ids = zip(*entries)
-            weights_array = np.array([w.flatten() for w in weights])
-            biases_array = np.array([b.flatten() for b in biases])
+            # Prepare data for clustering
+            weights_array, biases_array, run_ids = collate_hyperplanes(layer_entries)
+            # print(f"run_ids = {run_ids}")
+            # print(f"weights_array = {weights_array}")
+            # print(f"biases_array = {biases_array}")
 
-            clustering = DBSCAN(eps=eps, min_samples=min_samples).fit(weights_array)
-            labels = clustering.labels_
-            unique_labels = set(labels)
-            n_clusters = len(unique_labels) - (1 if -1 in unique_labels else 0)
-            noise_count = int(np.sum(labels == -1))
+            # Perform clustering
+            labels, n_clusters, noise_count = cluster_units(weights_array, eps, min_samples)
+            # print(f"labels = {labels}")
+            # print(f"n_clusters = {n_clusters}")
+            # print(f"noise_count = {noise_count}")
 
-            cluster_info = {}
-            for label in unique_labels:
-                if label == -1:
-                    continue
-                mask = labels == label
-                cluster_weights = weights_array[mask]
-                cluster_biases = biases_array[mask]
-                cluster_run_ids = [run_ids[i] for i in range(len(run_ids)) if mask[i]]
-                cluster_info[f"{layer_name}_cluster_{label}"] = {
-                    "size": int(np.sum(mask)),
-                    "run_ids": cluster_run_ids,
-                    "weight_centroid": cluster_weights.mean(axis=0).tolist(),
-                    "bias_centroid": cluster_biases.mean(axis=0).tolist(),
-                    "weight_std": cluster_weights.std(axis=0).tolist(),
-                    "bias_std": cluster_biases.std(axis=0).tolist()
-                }
+            # Format results
+            results[layer_name] = format_clustering_results(
+                layer_name, labels, weights_array, biases_array, run_ids, n_clusters, noise_count, eps, min_samples
+            )
 
-            results[layer_name] = {
-                "clustering_params": {"eps": eps, "min_samples": min_samples},
-                "n_clusters": n_clusters,
-                "noise_points": noise_count,
-                "cluster_info": cluster_info
-            }
         except Exception as e:
             results[layer_name] = {"error": f"Failed to cluster: {str(e)}"}
+            raise e
 
     return results
+
 
 def compute_accuracy_summary_stats(accuracies: List[float]) -> Dict[str, float]:
     """
     Compute comprehensive summary statistics for accuracy values.
-    
+
     Args:
         accuracies: List of accuracy values
-        
+
     Returns:
         Dictionary of summary statistics
     """
     if not accuracies:
         return {}
-    
+
     acc_tensor = torch.tensor(accuracies, dtype=torch.float32)
-    
+
     stats = {
-        'count': len(accuracies),
-        'mean': acc_tensor.mean().item(),
-        'std': acc_tensor.std().item() if len(accuracies) > 1 else 0.0,
-        'min': acc_tensor.min().item(),
-        'max': acc_tensor.max().item(),
-        'median': acc_tensor.median().item(),
-        'range': acc_tensor.max().item() - acc_tensor.min().item()
+        "count": len(accuracies),
+        "mean": acc_tensor.mean().item(),
+        "std": acc_tensor.std().item() if len(accuracies) > 1 else 0.0,
+        "min": acc_tensor.min().item(),
+        "max": acc_tensor.max().item(),
+        "median": acc_tensor.median().item(),
+        "range": acc_tensor.max().item() - acc_tensor.min().item(),
     }
-    
+
     # Quartiles
     if len(accuracies) > 3:
-        stats['q25'] = torch.quantile(acc_tensor, 0.25).item()
-        stats['q75'] = torch.quantile(acc_tensor, 0.75).item()
-        stats['iqr'] = stats['q75'] - stats['q25']
+        stats["q25"] = torch.quantile(acc_tensor, 0.25).item()
+        stats["q75"] = torch.quantile(acc_tensor, 0.75).item()
+        stats["iqr"] = stats["q75"] - stats["q25"]
     else:
-        stats['q25'] = stats['min']
-        stats['q75'] = stats['max']
-        stats['iqr'] = stats['range']
-    
+        stats["q25"] = stats["min"]
+        stats["q75"] = stats["max"]
+        stats["iqr"] = stats["range"]
+
     # Additional statistics
-    if stats['mean'] > 0:
-        stats['coefficient_of_variation'] = stats['std'] / stats['mean']
+    if stats["mean"] > 0:
+        stats["coefficient_of_variation"] = stats["std"] / stats["mean"]
     else:
-        stats['coefficient_of_variation'] = 0.0
-    
+        stats["coefficient_of_variation"] = 0.0
+
     # Skewness approximation (Pearson's second skewness coefficient)
-    if stats['std'] > 0:
-        stats['skewness'] = 3 * (stats['mean'] - stats['median']) / stats['std']
+    if stats["std"] > 0:
+        stats["skewness"] = 3 * (stats["mean"] - stats["median"]) / stats["std"]
     else:
-        stats['skewness'] = 0.0
-    
+        stats["skewness"] = 0.0
+
     return stats
+
 
 def analyze_xor_accuracy_distribution(accuracies: List[float]) -> Dict[str, Any]:
     """
     Analyze XOR-specific accuracy distribution (discrete levels).
-    
+
     Args:
         accuracies: List of accuracy values
-        
+
     Returns:
         Dictionary of XOR accuracy analysis
     """
     # XOR can only achieve these accuracy levels (out of 4 total points)
     xor_levels = {
-        0.0: '0/4 correct (complete failure)',
-        0.25: '1/4 correct (minimal learning)',
-        0.5: '2/4 correct (partial learning)',
-        0.75: '3/4 correct (near success)',
-        1.0: '4/4 correct (perfect solution)'
+        0.0: "0/4 correct (complete failure)",
+        0.25: "1/4 correct (minimal learning)",
+        0.5: "2/4 correct (partial learning)",
+        0.75: "3/4 correct (near success)",
+        1.0: "4/4 correct (perfect solution)",
     }
-    
+
     # Count occurrences at each level
     level_counts = {level: 0 for level in xor_levels.keys()}
     level_percentages = {}
-    
+
     for accuracy in accuracies:
         # Round to nearest XOR level
         if accuracy <= 0.125:
@@ -619,24 +753,21 @@ def analyze_xor_accuracy_distribution(accuracies: List[float]) -> Dict[str, Any]
             level_counts[0.75] += 1
         else:
             level_counts[1.0] += 1
-    
+
     # Convert to percentages
     total_runs = len(accuracies)
     for level in level_counts:
         level_percentages[level] = (level_counts[level] / total_runs) * 100
-    
+
     return {
-        'distribution_type': 'discrete_xor',
-        'level_counts': level_counts,
-        'level_percentages': level_percentages,
-        'level_descriptions': xor_levels,        
+        "distribution_type": "discrete_xor",
+        "level_counts": level_counts,
+        "level_percentages": level_percentages,
+        "level_descriptions": xor_levels,
     }
 
-def generate_experiment_visualizations(
-    run_results: List[Dict],
-    config: ExperimentConfig,
-    output_dir: Path
-) -> None:
+
+def generate_experiment_visualizations(run_results: List[Dict], config: ExperimentConfig, output_dir: Path) -> None:
     """
     Generate XOR geometric visualizations (prototype surface plots) per run.
     Loads each model from its run directory and plots learned hyperplanes.
@@ -674,9 +805,9 @@ def generate_experiment_visualizations(
                     x=x,
                     y=y,
                     title=f"{experiment_name} Run {run_id:03d} (Trained) \n Layer {name}",
-                    filename=layer_plot_path
+                    filename=layer_plot_path,
                 )
-        init_model_path = run_result['run_dir'] / "model_init.pt"
+        init_model_path = run_result["run_dir"] / "model_init.pt"
         if init_model_path.exists():
             # Reconstruct the model and load initial weights
             initial_model = config.model
@@ -693,15 +824,11 @@ def generate_experiment_visualizations(
                         x=x,
                         y=y,
                         title=f"{experiment_name} Run {run_id:03d} (Initial) — Layer {name}",
-                        filename=layer_plot_path
+                        filename=layer_plot_path,
                     )
 
 
-def export_analysis_data(
-    analysis_results: Dict,
-    output_dir: Path,
-    filename: str = "analysis_data.json"
-) -> None:
+def export_analysis_data(analysis_results: Dict, output_dir: Path, filename: str = "analysis_data.json") -> None:
     """
     Save the structured analysis results to a JSON file.
 
@@ -727,10 +854,11 @@ def export_analysis_data(
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(safe_convert(analysis_results), f, indent=2, ensure_ascii=False)
 
+
 def main() -> int:
     """
     Main entry point for analysis script.
-    
+
     Returns:
         Exit code (0 for success, non-zero for failure)
     """
@@ -763,7 +891,7 @@ def main() -> int:
         except Exception as e:
             print(f"✗ Failed to load configuration: {e}")
             return 1
-    
+
         # Display experiment info
         print(f"\nExperiment Details:")
         print(f"  Description: {config.description}")
@@ -791,7 +919,7 @@ def main() -> int:
         # Perform comprehensive analysis
         print("\nPerforming analysis...")
         print("-" * 30)
-        
+
         analysis_results = {}
 
         # Basic statistics and aggregation
@@ -805,23 +933,23 @@ def main() -> int:
             print("🎯 Analyzing accuracy patterns...")
             analysis_results["accuracy"] = analyze_accuracy_distribution(run_results, config)
             print("  ✓ Accuracy analysis completed")
-            
-        # Convergence timing analysis  
+
+        # Convergence timing analysis
         if True:  # Add this to your analysis plan
             print("⏱️ Analyzing convergence timing...")
             convergence_epochs = [run_data.get("epochs_completed", None) for run_data in run_results]
             percentiles_data = {
-                        "0th": int(np.percentile(convergence_epochs, 0)),
-                        "10th": int(np.percentile(convergence_epochs, 10)),
-                        "25th": int(np.percentile(convergence_epochs, 25)),
-                        "50th": int(np.percentile(convergence_epochs, 50)),
-                        "75th": int(np.percentile(convergence_epochs, 75)),
-                        "90th": int(np.percentile(convergence_epochs, 90)),
-                        "100th": int(np.percentile(convergence_epochs, 100))
-                    }
+                "0th": int(np.percentile(convergence_epochs, 0)),
+                "10th": int(np.percentile(convergence_epochs, 10)),
+                "25th": int(np.percentile(convergence_epochs, 25)),
+                "50th": int(np.percentile(convergence_epochs, 50)),
+                "75th": int(np.percentile(convergence_epochs, 75)),
+                "90th": int(np.percentile(convergence_epochs, 90)),
+                "100th": int(np.percentile(convergence_epochs, 100)),
+            }
             analysis_results["convergence_timing"] = {
                 "epochs_list": convergence_epochs,
-                "percentiles": percentiles_data
+                "percentiles": percentiles_data,
             }
             print("  ✓ Convergence timing analysis completed")
 
@@ -834,9 +962,8 @@ def main() -> int:
         # Hyperplane clustering analysis
         if True:
             print("🎯 Analyzing hyperplane clustering...")
-            analysis_results["hyperplane_clustering"] = analyze_hyperplane_clustering(run_results)
+            analysis_results["hyperplane_clustering"] = analyze_hyperplane_clustering(run_results, config)
             print("  ✓ Hyperplane clustering analysis completed")
-
 
         # # Geometric analysis (hyperplanes, prototype regions)
         # if "geometric_analysis" in analysis_plan:
@@ -857,9 +984,7 @@ def main() -> int:
         # Prototype surface tests
         if config.analysis.prototype_surface_analysis:
             print("🔬 Analyzing prototype surface ...")
-            analysis_results["prototype_surface"] = analyze_prototype_surface(
-                run_results, experiment_data, config
-            )
+            analysis_results["prototype_surface"] = analyze_prototype_surface(run_results, experiment_data, config)
             print("  ✓ Prototype surface analysis completed")
 
         if config.analysis.failure_angles:
@@ -871,12 +996,12 @@ def main() -> int:
             for layer_name, layer_data in analysis_results["failure_angle_analysis"].items():
                 success_angles = layer_data.get("success", [])
                 failure_angles = layer_data.get("failure", [])
-                
+
                 plot_failure_angle_histogram(
                     success_angles=success_angles,
                     failure_angles=failure_angles,
                     output_path=results_dir / "plots" / f"{experiment_name}_{layer_name}_failure_angle_histogram.png",
-                    title=f"{experiment_name} – {layer_name}"
+                    title=f"{experiment_name} – {layer_name}",
                 )
 
         # Dead data analysis
@@ -890,26 +1015,25 @@ def main() -> int:
             print("📈 Generating visualizations...")
             plots_dir = results_dir / "plots"
             plots_dir.mkdir(exist_ok=True)
-            
-            generate_experiment_visualizations(
-                run_results=run_results,
-                config=config,
-                output_dir=plots_dir
-            )
+
+            generate_experiment_visualizations(run_results=run_results, config=config, output_dir=plots_dir)
             print(f"  ✓ Visualizations plots saved to {plots_dir}")
 
         # Generate convergence plots
         if config.analysis.convergence_analysis:
             output_dir = Path("results") / config.execution.experiment_name
-            plot_epoch_distribution(run_results, plot_config={
-                'save_plots': config.analysis.save_plots,
-                'format': config.analysis.plot_format,
-                'dpi': config.analysis.plot_dpi,
-                'interactive': config.analysis.interactive_plots,
-                'style': config.analysis.plot_style
-            }, 
-            output_dir=output_dir,
-            experiment_name=config.execution.experiment_name)
+            plot_epoch_distribution(
+                run_results,
+                plot_config={
+                    "save_plots": config.analysis.save_plots,
+                    "format": config.analysis.plot_format,
+                    "dpi": config.analysis.plot_dpi,
+                    "interactive": config.analysis.interactive_plots,
+                    "style": config.analysis.plot_style,
+                },
+                output_dir=output_dir,
+                experiment_name=config.execution.experiment_name,
+            )
 
         if config.analysis.convergence_analysis:
             output_dir = Path("results") / config.execution.experiment_name
@@ -919,13 +1043,13 @@ def main() -> int:
                     run_results=run_results,
                     layer_name=layer_name,
                     output_dir=output_dir,
-                    experiment_name=config.execution.experiment_name
-            )
+                    experiment_name=config.execution.experiment_name,
+                )
 
         # Generate comprehensive report
         print("📄 Generating analysis report...")
         report = generate_analysis_report(analysis_results, config, template="comprehensive")
-        
+
         # Save report
         report_path = results_dir / f"analysis_{experiment_name}.md"
         with open(report_path, "w", encoding="utf-8") as f:
@@ -940,7 +1064,7 @@ def main() -> int:
 
         print("-" * 30)
         print("✓ Analysis completed successfully!")
-        
+
         return 0
 
     except KeyboardInterrupt:
@@ -954,6 +1078,7 @@ def main() -> int:
         print("\nFull traceback:")
         traceback.print_exc()
         return 1
+
 
 if __name__ == "__main__":
     exit_code = main()

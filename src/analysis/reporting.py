@@ -140,57 +140,59 @@ def generate_convergence_section(convergence_timing, config) -> str:
 
 def generate_geometry_section(distance_by_layer_unit):
     """Generate the prototype surface geometry section."""
-    
+
     # Calculate geometry statistics for all layers and units
     layer_stats = {}
-    
+
     for layer_name, units in distance_by_layer_unit.items():
         unit_stats = []
-        
+
         for unit_idx, class_dists in units.items():
             d0 = np.array(class_dists[0])
             d1 = np.array(class_dists[1])
-            
+
             # Skip units with missing data
             if len(d0) == 0 or len(d1) == 0:
                 continue
-            
+
             d0_mean = d0.mean()
             d0_std = d0.std()
             d1_mean = d1.mean()
             d1_std = d1.std()
             ratio = d1_mean / (d0_mean + 1e-12)
-            
-            unit_stats.append({
-                'unit_idx': unit_idx,
-                'd0_mean': d0_mean,
-                'd0_std': d0_std,
-                'd1_mean': d1_mean,
-                'd1_std': d1_std,
-                'ratio': ratio
-            })
-        
+
+            unit_stats.append(
+                {
+                    "unit_idx": unit_idx,
+                    "d0_mean": d0_mean,
+                    "d0_std": d0_std,
+                    "d1_mean": d1_mean,
+                    "d1_std": d1_std,
+                    "ratio": ratio,
+                }
+            )
+
         layer_stats[layer_name] = unit_stats
-    
+
     # Format statistics into markdown report section
     report = "## 📏 Prototype Surface Geometry\n\n"
-    
+
     for layer_name, unit_stats in layer_stats.items():
         report += f"### Layer: `{layer_name}`\n\n"
-        
+
         for stats in unit_stats:
-            unit_idx = stats['unit_idx']
-            d0_mean = stats['d0_mean']
-            d0_std = stats['d0_std']
-            d1_mean = stats['d1_mean']
-            d1_std = stats['d1_std']
-            ratio = stats['ratio']
-            
+            unit_idx = stats["unit_idx"]
+            d0_mean = stats["d0_mean"]
+            d0_std = stats["d0_std"]
+            d1_mean = stats["d1_mean"]
+            d1_std = stats["d1_std"]
+            ratio = stats["ratio"]
+
             report += f"- **Unit {unit_idx}**\n"
             report += f"  - Mean distance to class 0: `{d0_mean:.2e} ± {d0_std:.2e}`\n"
             report += f"  - Mean distance to class 1: `{d1_mean:.5f} ± {d1_std:.2e}`\n"
             report += f"  - Separation ratio (class1/class0): `{ratio:.2f}`\n\n"
-    
+
     report += "\n---\n\n"
     return report
 
@@ -241,10 +243,10 @@ def generate_weight_reorientation_section(weight_reorientation):
 
 def generate_combined_norm_ratio_section(weight_reorientation):
     """Generate the combined norm ratio analysis section."""
-    
+
     # Extract and process norm ratio data from all layers
     per_layer_analysis = weight_reorientation.get("per_layer_analysis", {})
-    
+
     all_ratios = []
     all_epochs = []
 
@@ -261,7 +263,7 @@ def generate_combined_norm_ratio_section(weight_reorientation):
 
     # Sort ratios for consistent ordering
     sorted_ratios = sorted(all_ratios, key=lambda x: x[0])
-    
+
     # Format statistics into markdown report section
     report = "### ◼ Initial / Final Norm Ratio (All Layers Combined)\n\n"
     report += "| Percentile | Ratio Range | Mean Epochs to Convergence |\n"
@@ -275,7 +277,10 @@ def generate_combined_norm_ratio_section(weight_reorientation):
         report += "| N/A        | No data available | N/A                        |\n"
 
     report += "\n---\n\n"
-    return reportdef generate_loss_distribution_section(basic_stats) -> str:
+    return report
+
+
+def generate_loss_distribution_section(basic_stats) -> str:
     """Generate the final loss distribution section."""
     report = "## 📉 Final Loss Distribution\n\n"
 
@@ -329,22 +334,38 @@ def generate_hyperplane_clustering_section(analysis_results):
             report += "\n"
 
             for cluster_name, info in cluster_info.items():
-                # Extract just the numeric cluster ID
                 cluster_id = cluster_name.rsplit("_", 1)[-1]
                 size = info["size"]
+                run_ids = info["run_ids"]
                 weight_centroid = info["weight_centroid"]
                 bias_centroid = info["bias_centroid"]
+                weight_std = info["weight_std"]
+                bias_std = info["bias_std"]
 
                 report += f"#### ◼ Cluster {cluster_id}\n"
                 report += f"* **Size**: {size} runs\n"
                 report += f"* **Weight centroid**: [{', '.join(f'{w:.6f}' for w in weight_centroid)}]\n"
-                report += f"* **Bias centroid**: [{', '.join(f'{b:.6f}' for b in bias_centroid)}]\n"
+                report += f"* **Weight std dev**: [{', '.join(f'{s:.6f}' for s in weight_std)}]\n"
+                
+                # Check if it's a list/tuple (for backward compatibility) or a float
+                if isinstance(bias_centroid, (list, tuple)):
+                    report += f"* **Bias centroid**: [{', '.join(f'{b:.6f}' for b in bias_centroid)}]\n"
+                else:
+                    # The new, correct path for scalar biases
+                    report += f"* **Bias centroid**: [{bias_centroid:.6f}]\n"
+                report += f"* **Bias std dev**: [{bias_std:.6f}]\n"
+                # -----------------------------------------------------------
 
-                # Try to generate a readable hyperplane equation if 2D
-                if len(weight_centroid) == 2 and len(bias_centroid) == 1:
-                    w0, w1 = weight_centroid
-                    b0 = bias_centroid[0]
-                    report += f"* **Hyperplane equation**: {w0:.6f}x₁ + {w1:.6f}x₂ + {b0:.6f} = 0\n"
+                # # Check if bias_centroid is a number instead of checking its length
+                # is_scalar_bias = isinstance(bias_centroid, (int, float))
+                # if len(weight_centroid) == 2 and is_scalar_bias:
+                #     w0, w1 = weight_centroid
+                #     # No longer need to index the bias, it's already a scalar
+                #     b0 = bias_centroid 
+                #     report += f"* **Hyperplane equation**: {w0:.6f}x₁ + {w1:.6f}x₂ + {b0:.6f} = 0\n"
+                # # -----------------------------------------------------
+
+                report += f"* **Contributing runs**: {', '.join(str(rid) for rid in run_ids)}\n"
 
                 report += "\n"
 
@@ -353,7 +374,6 @@ def generate_hyperplane_clustering_section(analysis_results):
         report += "---\n\n"
 
     return report
-
 
 def generate_dead_data_analysis_section(analysis_results, config):
     """Generate the dead data point analysis section."""
@@ -377,7 +397,7 @@ def generate_dead_data_analysis_section(analysis_results, config):
                 "class0_dead": 0,
                 "class1_dead": 0,
             }
-        
+
         if dead == 0:
             acc_summary[acc]["alive"] += 1
         else:
@@ -397,10 +417,10 @@ def generate_dead_data_analysis_section(analysis_results, config):
         dead_count = summary["dead"]
         class0_dead_count = summary["class0_dead"]
         class1_dead_count = summary["class1_dead"]
-        
+
         if alive_count > 0:
             report += f"* {alive_count} runs with **no dead inputs** reached {acc_percent}% accuracy\n"
-        
+
         if dead_count > 0:
             report += f"* {dead_count} runs with **dead inputs** reached {acc_percent}% accuracy\n"
             report += f"|    {class0_dead_count} runs with class-0 dead inputs reached {acc_percent}% accuracy\n"

@@ -164,6 +164,7 @@ class AnalysisConfig:
     separation_order_analysis: bool = True
     minsky_papert_metrics: bool = True
 
+    accuracy_threshold: float = 1.0
 
 @dataclass
 class ExecutionConfig:
@@ -744,6 +745,54 @@ def config_relu2_two_bce_l2reg() -> ExperimentConfig:
         logging=LoggingConfig(train_epochs=50)
     )
 
+@experiment("relu2_two_mse")
+def config_relu2_two_mse() -> ExperimentConfig:
+    model = models.Model_Xor2(middle=2, activation=nn.ReLU()).init()
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01, betas=(0.9, 0.99))
+    loss_function = nn.MSELoss()
+
+    return ExperimentConfig(
+        model=model,
+        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=5000, stop_training_loss_threshold=1e-7, loss_change_threshold=1e-24, loss_change_patience=10),
+        data=DataConfig(x=xor_data_centered(), y=xor_labels_one_hot()),
+        analysis=AnalysisConfig(accuracy_fn=accuracy_one_hot, save_plots=False),
+        execution=ExecutionConfig(num_runs=50, skip_existing=False),
+        description="Centered XOR with 2-output BCE loss using a two ReLU units.",
+        logging=LoggingConfig(train_epochs=50)
+    )
+
+@experiment("relu2_two_mse_l2reg")
+def config_relu2_two_mse_l2reg() -> ExperimentConfig:
+    model = models.Model_Xor2(middle=2, activation=nn.ReLU()).init()
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01, betas=(0.9, 0.99), weight_decay=1e-1)
+    loss_function = nn.MSELoss()
+
+    return ExperimentConfig(
+        model=model,
+        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=5000, stop_training_loss_threshold=1e-7, loss_change_threshold=1e-24, loss_change_patience=10),
+        data=DataConfig(x=xor_data_centered(), y=xor_labels_one_hot()),
+        analysis=AnalysisConfig(accuracy_fn=accuracy_one_hot, save_plots=False),
+        execution=ExecutionConfig(num_runs=50, skip_existing=False),
+        description="Centered XOR with 2-output BCE loss, L2 reg, and two ReLU units.",
+        logging=LoggingConfig(train_epochs=50)
+    )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 @experiment("relu2_one_bce_l2reg")
 def config_relu2_one_bce_l2reg() -> ExperimentConfig:
     model = models.Model_Xor2(middle=1, activation=nn.ReLU()).init()
@@ -754,7 +803,7 @@ def config_relu2_one_bce_l2reg() -> ExperimentConfig:
         model=model,
         training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=5000, stop_training_loss_threshold=1e-7, loss_change_threshold=1e-24, loss_change_patience=10),
         data=DataConfig(x=xor_data_centered(), y=xor_labels_one_hot()),
-        analysis=AnalysisConfig(accuracy_fn=accuracy_one_hot, save_plots=False),
+        analysis=AnalysisConfig(accuracy_fn=accuracy_one_hot, save_plots=False, accuracy_threshold=0.75),
         execution=ExecutionConfig(num_runs=50, skip_existing=False),
         description="Centered XOR with 2-output BCE loss, L2 reg, and one ReLU unit.",
         logging=LoggingConfig(train_epochs=50)

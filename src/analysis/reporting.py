@@ -140,27 +140,57 @@ def generate_convergence_section(convergence_timing, config) -> str:
 
 def generate_geometry_section(distance_by_layer_unit):
     """Generate the prototype surface geometry section."""
-    report = "## 📏 Prototype Surface Geometry\n\n"
-
+    
+    # Calculate geometry statistics for all layers and units
+    layer_stats = {}
+    
     for layer_name, units in distance_by_layer_unit.items():
-        report += f"### Layer: `{layer_name}`\n\n"
-
+        unit_stats = []
+        
         for unit_idx, class_dists in units.items():
             d0 = np.array(class_dists[0])
             d1 = np.array(class_dists[1])
-
+            
+            # Skip units with missing data
             if len(d0) == 0 or len(d1) == 0:
-                continue  # Skip units with missing data
-
-            d0_mean, d0_std = d0.mean(), d0.std()
-            d1_mean, d1_std = d1.mean(), d1.std()
+                continue
+            
+            d0_mean = d0.mean()
+            d0_std = d0.std()
+            d1_mean = d1.mean()
+            d1_std = d1.std()
             ratio = d1_mean / (d0_mean + 1e-12)
-
+            
+            unit_stats.append({
+                'unit_idx': unit_idx,
+                'd0_mean': d0_mean,
+                'd0_std': d0_std,
+                'd1_mean': d1_mean,
+                'd1_std': d1_std,
+                'ratio': ratio
+            })
+        
+        layer_stats[layer_name] = unit_stats
+    
+    # Format statistics into markdown report section
+    report = "## 📏 Prototype Surface Geometry\n\n"
+    
+    for layer_name, unit_stats in layer_stats.items():
+        report += f"### Layer: `{layer_name}`\n\n"
+        
+        for stats in unit_stats:
+            unit_idx = stats['unit_idx']
+            d0_mean = stats['d0_mean']
+            d0_std = stats['d0_std']
+            d1_mean = stats['d1_mean']
+            d1_std = stats['d1_std']
+            ratio = stats['ratio']
+            
             report += f"- **Unit {unit_idx}**\n"
             report += f"  - Mean distance to class 0: `{d0_mean:.2e} ± {d0_std:.2e}`\n"
             report += f"  - Mean distance to class 1: `{d1_mean:.5f} ± {d1_std:.2e}`\n"
             report += f"  - Separation ratio (class1/class0): `{ratio:.2f}`\n\n"
-
+    
     report += "\n---\n\n"
     return report
 
@@ -211,41 +241,41 @@ def generate_weight_reorientation_section(weight_reorientation):
 
 def generate_combined_norm_ratio_section(weight_reorientation):
     """Generate the combined norm ratio analysis section."""
-    report = "### ◼ Initial / Final Norm Ratio (All Layers Combined)\n\n"
-    report += "| Percentile | Ratio Range | Mean Epochs to Convergence |\n"
-    report += "| ---------- | ------------ | -------------------------- |\n"
-
-    # Pull from per_layer_analysis
+    
+    # Extract and process norm ratio data from all layers
     per_layer_analysis = weight_reorientation.get("per_layer_analysis", {})
-
-    # Collect all norm ratios and epochs from all layers
+    
     all_ratios = []
     all_epochs = []
 
     for layer_stats in per_layer_analysis.values():
         layer_ratios = layer_stats.get("norm_ratio_analysis", {})
         for bin_data in layer_ratios.values():
-            low, high = bin_data["range"]
+            low = bin_data["range"][0]
+            high = bin_data["range"][1]
             count = bin_data["count"]
             mean_epochs = bin_data["mean_epochs"]
             # Store per-bin representative values (flatten bins across layers)
             all_ratios.append((low, high, mean_epochs, count))
             all_epochs.extend([mean_epochs] * count)
 
-    if all_ratios:
-        # Re-bin across all ratios (flattened)
-        # You could re-bucket if needed, but here's a simple way to output the flattened bins:
-        for i, (low, high, mean_epochs, count) in enumerate(sorted(all_ratios, key=lambda x: x[0])):
+    # Sort ratios for consistent ordering
+    sorted_ratios = sorted(all_ratios, key=lambda x: x[0])
+    
+    # Format statistics into markdown report section
+    report = "### ◼ Initial / Final Norm Ratio (All Layers Combined)\n\n"
+    report += "| Percentile | Ratio Range | Mean Epochs to Convergence |\n"
+    report += "| ---------- | ------------ | -------------------------- |\n"
+
+    if sorted_ratios:
+        for i, (low, high, mean_epochs, count) in enumerate(sorted_ratios):
             label = f"{i+1:>2}"
             report += f"| {label:<10} | {low:.2f} – {high:.2f}  | {mean_epochs:.1f}                       |\n"
     else:
         report += "| N/A        | No data available | N/A                        |\n"
 
     report += "\n---\n\n"
-    return report
-
-
-def generate_loss_distribution_section(basic_stats) -> str:
+    return reportdef generate_loss_distribution_section(basic_stats) -> str:
     """Generate the final loss distribution section."""
     report = "## 📉 Final Loss Distribution\n\n"
 
@@ -330,15 +360,14 @@ def generate_dead_data_analysis_section(analysis_results, config):
     if not config.analysis.dead_data_analysis:
         return ""
 
-    report = "## 💀 Dead Data Point Analysis\n\n"
-
+    # Extract dead data information
     dead_data = analysis_results["dead_data"]
     dead_counts = dead_data["dead_counts"]
     dead_class0_counts = dead_data["dead_class0_counts"]
     dead_class1_counts = dead_data["dead_class1_counts"]
     accuracies = dead_data["accuracies"]
 
-    # Build mapping: accuracy → [dead_count]
+    # Calculate dead data statistics by accuracy
     acc_summary = {}
     for dead, dead0, dead1, acc in zip(dead_counts, dead_class0_counts, dead_class1_counts, accuracies):
         if acc not in acc_summary:
@@ -348,6 +377,7 @@ def generate_dead_data_analysis_section(analysis_results, config):
                 "class0_dead": 0,
                 "class1_dead": 0,
             }
+        
         if dead == 0:
             acc_summary[acc]["alive"] += 1
         else:
@@ -357,15 +387,24 @@ def generate_dead_data_analysis_section(analysis_results, config):
             if dead1 > 0:
                 acc_summary[acc]["class1_dead"] += 1
 
+    # Format statistics into markdown report section
+    report = "## 💀 Dead Data Point Analysis\n\n"
+
     for acc in sorted(acc_summary.keys(), reverse=True):
         summary = acc_summary[acc]
         acc_percent = int(acc * 100)
-        if summary["alive"] > 0:
-            report += f"* {summary['alive']} runs with **no dead inputs** reached {acc_percent}% accuracy\n"
-        if summary["dead"] > 0:
-            report += f"* {summary['dead']} runs with **dead inputs** reached {acc_percent}% accuracy\n"
-            report += f"|    {summary['class0_dead']} runs with class-0 dead inputs reached {acc_percent}% accuracy\n"
-            report += f"|    {summary['class1_dead']} runs with class-1 dead inputs reached {acc_percent}% accuracy\n"
+        alive_count = summary["alive"]
+        dead_count = summary["dead"]
+        class0_dead_count = summary["class0_dead"]
+        class1_dead_count = summary["class1_dead"]
+        
+        if alive_count > 0:
+            report += f"* {alive_count} runs with **no dead inputs** reached {acc_percent}% accuracy\n"
+        
+        if dead_count > 0:
+            report += f"* {dead_count} runs with **dead inputs** reached {acc_percent}% accuracy\n"
+            report += f"|    {class0_dead_count} runs with class-0 dead inputs reached {acc_percent}% accuracy\n"
+            report += f"|    {class1_dead_count} runs with class-1 dead inputs reached {acc_percent}% accuracy\n"
 
     report += "\n---\n\n"
     return report
@@ -376,8 +415,7 @@ def generate_mirror_analysis_section(analysis_results, config) -> str:
     if not config.analysis.mirror_pair_detection:
         return ""
 
-    report = "## 🔍 Mirror Weight Symmetry\n\n"
-
+    # Extract and calculate mirror statistics
     mirror_data = analysis_results.get("prototype_surface", {}).get("mirror_test", [])
     total_runs = len(mirror_data)
     perfect_threshold = 1e-3  # similarity diff from -1.0
@@ -395,12 +433,23 @@ def generate_mirror_analysis_section(analysis_results, config) -> str:
             if abs(sim + 1.0) < perfect_threshold:
                 perfect_mirrors += 1
 
+    # Calculate summary statistics
     if mirror_sims:
         sims_tensor = torch.tensor(mirror_sims)
         mean_sim = sims_tensor.mean().item()
         std_sim = sims_tensor.std().item()
         mean_error = abs(mean_sim + 1.0)
+        has_mirror_data = True
+    else:
+        mean_sim = 0.0
+        std_sim = 0.0
+        mean_error = 0.0
+        has_mirror_data = False
 
+    # Format statistics into markdown report section
+    report = "## 🔍 Mirror Weight Symmetry\n\n"
+
+    if has_mirror_data:
         report += f"* **Mirror pairs detected**: {detected_runs} / {total_runs} runs\n"
         report += f"* **Perfect mirror symmetry** (cosine ~ -1.0): {perfect_mirrors} runs\n"
         report += f"* **Mean mirror similarity**: {mean_sim:.5f} ± {std_sim:.5f}\n"

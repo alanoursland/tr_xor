@@ -6,7 +6,7 @@ import re
 from typing import Dict, List, Tuple, Any
 from pathlib import Path
 from configs import ExperimentConfig
-from analysis.grid import create_boundary_focused_grid, create_high_dim_sample_grid
+from analysis.geometry import create_boundary_focused_grid, create_high_dim_sample_grid
 from analysis.stats import compute_data_statistics, compute_class_centroids
 from analysis.utils import extract_activation_type, count_model_parameters, get_linear_layers, analyze_model_state_dict
 

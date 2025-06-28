@@ -19,9 +19,6 @@ def generate_analysis_report(
     Returns:
         Markdown string report.
     """
-    if template != "comprehensive":
-        raise ValueError(f"Unsupported template: {template}")
-
     ############################################################################################
 
     loss_change_threshold = 0.01 # replaced with config.training.loss_change_threshold

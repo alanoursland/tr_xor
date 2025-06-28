@@ -59,6 +59,7 @@ _experiment_state = ExperimentState()
 # Training Loop Management
 # ==============================================================================
 
+
 def execute_training_run(
     model: nn.Module,
     data: Tuple[torch.Tensor, torch.Tensor],
@@ -116,7 +117,7 @@ def execute_training_run(
         loss = loss_function(outputs, y)
 
         # # monitor diagnostics
-        # if config.training.health_monitor:    
+        # if config.training.health_monitor:
         #     config.training.health_monitor.compute_per_example_gradients(x, y, config.training.loss_function)
 
         # Backward pass
@@ -124,7 +125,7 @@ def execute_training_run(
         loss.backward()
 
         health_monitor = config.training.health_monitor
-        if health_monitor:    
+        if health_monitor:
             batch_idx = list(range(y.size(0)))
             if not health_monitor.check(x, y, batch_idx):
                 health_monitor.fix(x, y, batch_idx)
@@ -148,7 +149,9 @@ def execute_training_run(
         if config.training.stop_training_loss_threshold is not None:
             if current_loss < config.training.stop_training_loss_threshold:
                 if config.logging.train_epochs > 0:
-                    print(f"  Early stopping at epoch {epoch} (loss {current_loss:.6f} <= {config.training.stop_training_loss_threshold})")
+                    print(
+                        f"  Early stopping at epoch {epoch} (loss {current_loss:.6f} <= {config.training.stop_training_loss_threshold})"
+                    )
                 break
 
         # Early exit if model isn't improving.
@@ -162,8 +165,10 @@ def execute_training_run(
                 patience_counter += 1
 
             if patience_counter > loss_change_patience:
-                print(f"  Convergence-based early stopping at epoch {epoch} "
-                      f"(loss did not improve by {loss_change_threshold} for {loss_change_patience} steps)")
+                print(
+                    f"  Convergence-based early stopping at epoch {epoch} "
+                    f"(loss did not improve by {loss_change_threshold} for {loss_change_patience} steps)"
+                )
                 break
 
         if current_loss < best_loss:
@@ -179,7 +184,7 @@ def execute_training_run(
                 else:
                     accuracy = 0.0
                 model.train()  # Switch back to training mode
-            
+
             print(f"  Run {run_id}, Epoch {epoch:4d} | Loss: {current_loss:.6f} | Accuracy: {accuracy:.3f}")
             # print(f"    W={model.linear1.weight}, b={model.linear1.bias}")
 
@@ -257,7 +262,7 @@ def run_experiment(
         Complete experiment results and summary
     """
     experiment_name = setup_info["experiment_name"]
-    
+
     # Load configuration
     config = get_experiment_config(experiment_name)
     loss_change_threshold = config.training.loss_change_threshold
@@ -312,10 +317,10 @@ def run_experiment(
             # Save each run as it completes
             run_dir = output_dirs["experiment"] / "runs" / f"{run_id:03d}"
             run_dir.mkdir(parents=True, exist_ok=True)
-            
+
             # Save model state dict
             torch.save(model.state_dict(), run_dir / "model.pt")
-            
+
             # Save run statistics and config
             torch.save(run_result, run_dir / "stats.pt")
 
@@ -326,13 +331,13 @@ def run_experiment(
                 "model_type": type(fresh_config.model).__name__,
                 "optimizer_type": type(fresh_config.training.optimizer).__name__,
                 "loss_function_type": type(fresh_config.training.loss_function).__name__,
-                "description": fresh_config.description
+                "description": fresh_config.description,
             }
             torch.save(config_summary, run_dir / "config_summary.pt")
-            
+
             if verbose:
                 print(f"✓ Run {run_id} saved to {run_dir}")
-            
+
         except Exception as e:
             import traceback
 
@@ -344,7 +349,7 @@ def run_experiment(
                 print(f"Traceback:\n{error_details}")
         finally:
             # Always clean up, even if there was an error
-            if 'fresh_config' in locals():
+            if "fresh_config" in locals():
                 fresh_config.cleanup()
                 del fresh_config
 
@@ -366,16 +371,15 @@ def run_experiment(
     else:
         avg_epochs, q25, q50, q75 = 0, 0, 0, 0
 
-
     # Print detailed run summary
     print("\n" + "=" * 60)
     print("EXPERIMENT RUN SUMMARY")
     print("=" * 60)
-    
+
     # Accuracy distribution - XOR specific (only 0%, 25%, 50%, 75%, 100%)
     accuracies = [r.get("accuracy", 0) for r in all_results]
     acc_counts = {0.0: 0, 0.25: 0, 0.5: 0, 0.75: 0, 1.0: 0}
-    
+
     for acc in accuracies:
         if acc <= 0.125:  # Round 0% to 0.0
             acc_counts[0.0] += 1
@@ -394,28 +398,30 @@ def run_experiment(
     print(f"   50% (2/4 correct): {acc_counts[0.5]:2d} runs ({acc_counts[0.5]/len(all_results)*100:.1f}%)")
     print(f"   25% (1/4 correct): {acc_counts[0.25]:2d} runs ({acc_counts[0.25]/len(all_results)*100:.1f}%)")
     print(f"    0% (0/4 correct): {acc_counts[0.0]:2d} runs ({acc_counts[0.0]/len(all_results)*100:.1f}%)")
-    
-    # Loss distribution  
+
+    # Loss distribution
     final_losses = [r["final_loss"] for r in all_results]
     converged_runs = None
     converged_runs_percent = None
-    if (config.training.stop_training_loss_threshold):
+    if config.training.stop_training_loss_threshold:
         converged_runs = sum(1 for loss in final_losses if loss < config.training.stop_training_loss_threshold)
-        converged_runs_percent = converged_runs/len(all_results)*100
-    
+        converged_runs_percent = converged_runs / len(all_results) * 100
+
     print(f"\nEpoch Statistics:")
     print(f"  Mean epochs completed: {avg_epochs:.1f}")
     print(f"  Quantiles: {min_epochs:.0f} {q25:.0f} {q50:.0f} {q75:.0f} {max_epochs:.0f}")
 
     print(f"\nConvergence:")
-    print(f"  Converged (<{config.training.stop_training_loss_threshold}):  {converged_runs:2d} runs ({converged_runs_percent:.1f}%)")
+    print(
+        f"  Converged (<{config.training.stop_training_loss_threshold}):  {converged_runs:2d} runs ({converged_runs_percent:.1f}%)"
+    )
     print(f"  Best final loss:    {min(final_losses):.6f}")
     print(f"  Worst final loss:   {max(final_losses):.6f}")
-    
+
     print(f"\nTiming:")
     print(f"  Total time:         {summary['total_time']:.2f}s")
     print(f"  Average per run:    {summary['total_time']/len(all_results):.2f}s")
-    
+
     print("=" * 60)
 
     # Save overall experiment statistics to JSON
@@ -428,29 +434,26 @@ def run_experiment(
         "avg_accuracy": summary["avg_accuracy"],
         "total_time": summary["total_time"],
         "avg_time_per_run": summary["total_time"] / summary["total_runs"],
-        
         # Accuracy distribution
         "accuracy_distribution": {
             "100_percent": acc_counts[1.0],
-            "75_percent": acc_counts[0.75], 
+            "75_percent": acc_counts[0.75],
             "50_percent": acc_counts[0.5],
             "25_percent": acc_counts[0.25],
-            "0_percent": acc_counts[0.0]
+            "0_percent": acc_counts[0.0],
         },
-        
         # Convergence stats
         "convergence": {
             "converged_runs": converged_runs,
             "convergence_rate": converged_runs / len(all_results),
             "best_final_loss": min(final_losses),
-            "worst_final_loss": max(final_losses)
+            "worst_final_loss": max(final_losses),
         },
-        
         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-        "config_description": config.description
+        "config_description": config.description,
     }
 
-    with open(stats_file, 'w') as f:
+    with open(stats_file, "w") as f:
         json.dump(experiment_stats, f, indent=2)
 
     if verbose:
@@ -585,7 +588,6 @@ def setup_signal_handlers() -> None:
     # On Windows, also handle Ctrl+Break
     if hasattr(signal, "SIGBREAK"):
         signal.signal(signal.SIGBREAK, signal_handler)
-
 
 
 if __name__ == "__main__":

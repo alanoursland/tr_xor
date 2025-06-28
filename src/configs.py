@@ -43,6 +43,7 @@ import itertools
 # logits, probabilities, one-hot) or task types (classification, regression, multi-label).
 AccuracyFn = Callable[[torch.Tensor, torch.Tensor], float]
 
+
 def accuracy_binary_threshold(output: torch.Tensor, target: torch.Tensor) -> float:
     # Squeeze output in case shape is (N, 1)
     output = output.squeeze()
@@ -53,10 +54,12 @@ def accuracy_binary_threshold(output: torch.Tensor, target: torch.Tensor) -> flo
     # Compute accuracy
     return (preds == target).float().mean().item()
 
+
 def accuracy_one_hot(output: torch.Tensor, target: torch.Tensor) -> float:
     preds = torch.argmax(output, dim=1)
     true = torch.argmax(target, dim=1)
     return (preds == true).float().mean().item()
+
 
 @dataclass
 class TrainingConfig:
@@ -96,8 +99,9 @@ class TrainingConfig:
             del self.optimizer
             self.optimizer = None
         if self.loss_function is not None:
-            del self.loss_function  
+            del self.loss_function
             self.loss_function = None
+
 
 @dataclass
 class DataConfig:
@@ -108,6 +112,7 @@ class DataConfig:
 
     # Optional metadata
     description: str = ""
+
 
 @dataclass
 class AnalysisConfig:
@@ -166,6 +171,7 @@ class AnalysisConfig:
 
     accuracy_threshold: float = 1.0
 
+
 @dataclass
 class ExecutionConfig:
     """Configuration for experiment execution."""
@@ -199,10 +205,13 @@ class ExecutionConfig:
     deterministic: bool = True
     benchmark: bool = False  # For CUDA reproducibility vs performance
 
+
 @dataclass
 class LoggingConfig:
     """Configuration for logging information."""
-    train_epochs: int = 1000 # number of training epochs between logging
+
+    train_epochs: int = 1000  # number of training epochs between logging
+
 
 @dataclass
 class ExperimentConfig:
@@ -233,10 +242,10 @@ class ExperimentConfig:
             self.model = self.model.cpu()
             del self.model
             self.model = None
-        
+
         if self.training is not None:
             self.training.cleanup()
-        
+
         # Force GPU memory cleanup
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
@@ -245,6 +254,7 @@ class ExperimentConfig:
 # ==============================================================================
 # Main Experiments Registry
 # ==============================================================================
+
 
 def get_experiment_config(name: str) -> ExperimentConfig:
     """
@@ -317,16 +327,21 @@ def list_experiments(category: Optional[str] = None, tags: Optional[List[str]] =
 
 experiments: Dict[str, Callable[[], ExperimentConfig]] = {}
 
+
 def experiment(name: str):
     """Decorator to register and label experiment configuration functions."""
+
     def decorator(func: Callable[[], ExperimentConfig]):
         def wrapped_func():
             config = func()
             config.execution.experiment_name = name  # Inject decorator name
             return config
+
         experiments[name] = wrapped_func
         return wrapped_func
+
     return decorator
+
 
 @experiment("abs1_normal")
 def config_abs1_normal() -> ExperimentConfig:
@@ -337,13 +352,16 @@ def config_abs1_normal() -> ExperimentConfig:
 
     return ExperimentConfig(
         model=model,
-        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=400, stop_training_loss_threshold=1e-7),
+        training=TrainingConfig(
+            optimizer=optimizer, loss_function=loss_function, epochs=400, stop_training_loss_threshold=1e-7
+        ),
         data=DataConfig(x=xor_data_centered(), y=xor_labels_T1()),
         analysis=AnalysisConfig(accuracy_fn=accuracy_binary_threshold),
         execution=ExecutionConfig(num_runs=50, skip_existing=False),
         description="Centered XOR with single absolute value unit and normal init.",
-        logging=LoggingConfig(train_epochs=200)
+        logging=LoggingConfig(train_epochs=200),
     )
+
 
 @experiment("abs1_tiny")
 def config_abs1_normal() -> ExperimentConfig:
@@ -354,13 +372,16 @@ def config_abs1_normal() -> ExperimentConfig:
 
     return ExperimentConfig(
         model=model,
-        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=200, stop_training_loss_threshold=1e-7),
+        training=TrainingConfig(
+            optimizer=optimizer, loss_function=loss_function, epochs=200, stop_training_loss_threshold=1e-7
+        ),
         data=DataConfig(x=xor_data_centered(), y=xor_labels_T1()),
         analysis=AnalysisConfig(accuracy_fn=accuracy_binary_threshold),
         execution=ExecutionConfig(num_runs=50, skip_existing=False),
         description="Centered XOR with single absolute value unit and tiny normal init.",
-        logging=LoggingConfig(train_epochs=200)
+        logging=LoggingConfig(train_epochs=200),
     )
+
 
 @experiment("abs1_large")
 def config_abs1_normal() -> ExperimentConfig:
@@ -371,13 +392,16 @@ def config_abs1_normal() -> ExperimentConfig:
 
     return ExperimentConfig(
         model=model,
-        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=2000, stop_training_loss_threshold=1e-7),
+        training=TrainingConfig(
+            optimizer=optimizer, loss_function=loss_function, epochs=2000, stop_training_loss_threshold=1e-7
+        ),
         data=DataConfig(x=xor_data_centered(), y=xor_labels_T1()),
         analysis=AnalysisConfig(accuracy_fn=accuracy_binary_threshold),
         execution=ExecutionConfig(num_runs=50, skip_existing=False),
         description="Centered XOR with single absolute value unit and large normal init.",
-        logging=LoggingConfig(train_epochs=200)
+        logging=LoggingConfig(train_epochs=200),
     )
+
 
 @experiment("abs1_kaiming")
 def config_abs1_kaiming() -> ExperimentConfig:
@@ -388,13 +412,16 @@ def config_abs1_kaiming() -> ExperimentConfig:
 
     return ExperimentConfig(
         model=model,
-        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=1000, stop_training_loss_threshold=1e-7),
+        training=TrainingConfig(
+            optimizer=optimizer, loss_function=loss_function, epochs=1000, stop_training_loss_threshold=1e-7
+        ),
         data=DataConfig(x=xor_data_centered(), y=xor_labels_T1()),
         analysis=AnalysisConfig(accuracy_fn=accuracy_binary_threshold),
         execution=ExecutionConfig(num_runs=50, skip_existing=False),
         description="Centered XOR with single absolute value unit and kaiming init.",
-        logging=LoggingConfig(train_epochs=200)
+        logging=LoggingConfig(train_epochs=200),
     )
+
 
 @experiment("abs1_xavier")
 def config_abs1_xavier() -> ExperimentConfig:
@@ -405,13 +432,16 @@ def config_abs1_xavier() -> ExperimentConfig:
 
     return ExperimentConfig(
         model=model,
-        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=1000, stop_training_loss_threshold=1e-7),
+        training=TrainingConfig(
+            optimizer=optimizer, loss_function=loss_function, epochs=1000, stop_training_loss_threshold=1e-7
+        ),
         data=DataConfig(x=xor_data_centered(), y=xor_labels_T1()),
         analysis=AnalysisConfig(accuracy_fn=accuracy_binary_threshold),
         execution=ExecutionConfig(num_runs=50, skip_existing=False),
         description="Centered XOR with single absolute value unit xavier init.",
-        logging=LoggingConfig(train_epochs=200)
+        logging=LoggingConfig(train_epochs=200),
     )
+
 
 @experiment("relu1_normal")
 def config_relu1_normal() -> ExperimentConfig:
@@ -422,15 +452,27 @@ def config_relu1_normal() -> ExperimentConfig:
 
     return ExperimentConfig(
         model=model,
-        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=800, 
-                                stop_training_loss_threshold=1e-7,
-                                loss_change_threshold=1e-24, loss_change_patience=10),
+        training=TrainingConfig(
+            optimizer=optimizer,
+            loss_function=loss_function,
+            epochs=800,
+            stop_training_loss_threshold=1e-7,
+            loss_change_threshold=1e-24,
+            loss_change_patience=10,
+        ),
         data=DataConfig(x=xor_data_centered(), y=xor_labels_T1()),
-        analysis=AnalysisConfig(accuracy_fn=accuracy_binary_threshold, convergence_analysis=False, save_plots=True, dead_data_analysis=True, mirror_pair_detection=True),
+        analysis=AnalysisConfig(
+            accuracy_fn=accuracy_binary_threshold,
+            convergence_analysis=False,
+            save_plots=True,
+            dead_data_analysis=True,
+            mirror_pair_detection=True,
+        ),
         execution=ExecutionConfig(num_runs=50, skip_existing=False, random_seeds=[18]),
         description="Centered XOR with two nodes, ReLU, sum, and normal init.",
-        logging=LoggingConfig(train_epochs=50)
+        logging=LoggingConfig(train_epochs=50),
     )
+
 
 @experiment("relu1_reinit")
 def config_relu1_reinit() -> ExperimentConfig:
@@ -444,15 +486,27 @@ def config_relu1_reinit() -> ExperimentConfig:
 
     return ExperimentConfig(
         model=model,
-        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=800, 
-                                stop_training_loss_threshold=1e-7,
-                                loss_change_threshold=1e-24, loss_change_patience=10),
+        training=TrainingConfig(
+            optimizer=optimizer,
+            loss_function=loss_function,
+            epochs=800,
+            stop_training_loss_threshold=1e-7,
+            loss_change_threshold=1e-24,
+            loss_change_patience=10,
+        ),
         data=DataConfig(x=x, y=y),
-        analysis=AnalysisConfig(accuracy_fn=accuracy_binary_threshold, convergence_analysis=False, save_plots=True, dead_data_analysis=True, mirror_pair_detection=True),
+        analysis=AnalysisConfig(
+            accuracy_fn=accuracy_binary_threshold,
+            convergence_analysis=False,
+            save_plots=True,
+            dead_data_analysis=True,
+            mirror_pair_detection=True,
+        ),
         execution=ExecutionConfig(num_runs=50, skip_existing=False, random_seeds=[18]),
         description="Centered XOR with two nodes, ReLU, sum, and normal init. If dead data is detected, model is reinitialized.",
-        logging=LoggingConfig(train_epochs=50)
+        logging=LoggingConfig(train_epochs=50),
     )
+
 
 @experiment("relu1_reinit_margin")
 def config_relu1_reinit_margin() -> ExperimentConfig:
@@ -466,15 +520,27 @@ def config_relu1_reinit_margin() -> ExperimentConfig:
 
     return ExperimentConfig(
         model=model,
-        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=800, 
-                                stop_training_loss_threshold=1e-7,
-                                loss_change_threshold=1e-24, loss_change_patience=10),
+        training=TrainingConfig(
+            optimizer=optimizer,
+            loss_function=loss_function,
+            epochs=800,
+            stop_training_loss_threshold=1e-7,
+            loss_change_threshold=1e-24,
+            loss_change_patience=10,
+        ),
         data=DataConfig(x=x, y=y),
-        analysis=AnalysisConfig(accuracy_fn=accuracy_binary_threshold, convergence_analysis=False, save_plots=True, dead_data_analysis=True, mirror_pair_detection=True),
+        analysis=AnalysisConfig(
+            accuracy_fn=accuracy_binary_threshold,
+            convergence_analysis=False,
+            save_plots=True,
+            dead_data_analysis=True,
+            mirror_pair_detection=True,
+        ),
         execution=ExecutionConfig(num_runs=500, skip_existing=False, random_seeds=[18]),
         description="Centered XOR with two nodes, ReLU, sum, and normal init. If dead data is detected, model is reinitialized.",
-        logging=LoggingConfig(train_epochs=50)
+        logging=LoggingConfig(train_epochs=50),
     )
+
 
 @experiment("relu1_bhs")
 def config_relu1_bhs() -> ExperimentConfig:
@@ -485,8 +551,8 @@ def config_relu1_bhs() -> ExperimentConfig:
     # model.init_bounded_hypersphere(model.init_normal, radius=1.4)
 
     model.reinit_dead_data(
-        lambda : model.init_bounded_hypersphere(model.init_normal, radius=1.4), 
-        x, 100, min_threshold=0.3)
+        lambda: model.init_bounded_hypersphere(model.init_normal, radius=1.4), x, 100, min_threshold=0.3
+    )
 
     # print(f"x = {x}")
     # print(f"model.linear1.W = {model.linear1.weight }")
@@ -502,15 +568,27 @@ def config_relu1_bhs() -> ExperimentConfig:
 
     return ExperimentConfig(
         model=model,
-        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=2000, 
-                                stop_training_loss_threshold=1e-7,
-                                loss_change_threshold=1e-24, loss_change_patience=10),
+        training=TrainingConfig(
+            optimizer=optimizer,
+            loss_function=loss_function,
+            epochs=2000,
+            stop_training_loss_threshold=1e-7,
+            loss_change_threshold=1e-24,
+            loss_change_patience=10,
+        ),
         data=DataConfig(x=x, y=y),
-        analysis=AnalysisConfig(accuracy_fn=accuracy_binary_threshold, convergence_analysis=False, save_plots=True, dead_data_analysis=True, mirror_pair_detection=True),
+        analysis=AnalysisConfig(
+            accuracy_fn=accuracy_binary_threshold,
+            convergence_analysis=False,
+            save_plots=True,
+            dead_data_analysis=True,
+            mirror_pair_detection=True,
+        ),
         execution=ExecutionConfig(num_runs=50, skip_existing=False, random_seeds=[18]),
         description="Centered XOR with two nodes, ReLU, sum, and bounded hypersphere initialization with norm weights.",
-        logging=LoggingConfig(train_epochs=50)
+        logging=LoggingConfig(train_epochs=50),
     )
+
 
 @experiment("relu1_monitor")
 def config_relu1_monitor() -> ExperimentConfig:
@@ -520,9 +598,9 @@ def config_relu1_monitor() -> ExperimentConfig:
     # 1) Build (and immediately inspect) the tiny XOR dataset so we know
     #    how many samples the monitor has to track.
     # ------------------------------------------------------------------
-    x_data = xor_data_centered()          # shape: (4, 2)
-    y_data = xor_labels_T1()              # shape: (4,)
-    dataset_size = x_data.shape[0]        # == 4
+    x_data = xor_data_centered()  # shape: (4, 2)
+    y_data = xor_labels_T1()  # shape: (4,)
+    dataset_size = x_data.shape[0]  # == 4
 
     # ------------------------------------------------------------------
     # 2) Model, optimiser, loss are identical to before.
@@ -543,10 +621,12 @@ def config_relu1_monitor() -> ExperimentConfig:
     # )
 
     hook_manager = monitor.SharedHookManager(model)
-    health_monitor = monitor.CompositeMonitor([
-        monitor.DeadSampleMonitor(hook_manager, dataset_size=dataset_size, patience=5, classifier_threshold=0.5),
-        monitor.BoundsMonitor(hook_manager, dataset_size=dataset_size, radius=1.5),
-    ])
+    health_monitor = monitor.CompositeMonitor(
+        [
+            monitor.DeadSampleMonitor(hook_manager, dataset_size=dataset_size, patience=5, classifier_threshold=0.5),
+            monitor.BoundsMonitor(hook_manager, dataset_size=dataset_size, radius=1.5),
+        ]
+    )
 
     # health_monitor = monitor.DeadSampleMonitor(hook_manager, dataset_size=dataset_size, patience=6, classifier_threshold=0.5)
 
@@ -564,28 +644,19 @@ def config_relu1_monitor() -> ExperimentConfig:
             loss_change_patience=10,
             health_monitor=health_monitor,
         ),
-        data=DataConfig(
-            x=x_data,
-            y=y_data
-        ),
+        data=DataConfig(x=x_data, y=y_data),
         analysis=AnalysisConfig(
-            accuracy_fn=accuracy_binary_threshold, 
+            accuracy_fn=accuracy_binary_threshold,
             convergence_analysis=False,
             save_plots=True,
             dead_data_analysis=True,
-            mirror_pair_detection=True
+            mirror_pair_detection=True,
         ),
-        execution=ExecutionConfig(
-            num_runs=1000,
-            skip_existing=False,
-            random_seeds=[18]
-        ),
-        description=(
-            "Centered XOR with two nodes, ReLU, sum, normal init, "
-            "and early-failure degeneracy detection."
-        ),
+        execution=ExecutionConfig(num_runs=1000, skip_existing=False, random_seeds=[18]),
+        description=("Centered XOR with two nodes, ReLU, sum, normal init, " "and early-failure degeneracy detection."),
         logging=LoggingConfig(train_epochs=50),
     )
+
 
 @experiment("relu1_mirror")
 def config_relu1_mirror() -> ExperimentConfig:
@@ -596,15 +667,28 @@ def config_relu1_mirror() -> ExperimentConfig:
 
     return ExperimentConfig(
         model=model,
-        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=800, 
-                                stop_training_loss_threshold=1e-7,
-                                loss_change_threshold=1e-24, loss_change_patience=10),
+        training=TrainingConfig(
+            optimizer=optimizer,
+            loss_function=loss_function,
+            epochs=800,
+            stop_training_loss_threshold=1e-7,
+            loss_change_threshold=1e-24,
+            loss_change_patience=10,
+        ),
         data=DataConfig(x=xor_data_centered(), y=xor_labels_T1()),
-        analysis=AnalysisConfig(accuracy_fn=accuracy_binary_threshold, convergence_analysis=False, save_plots=False, dead_data_analysis=True, mirror_pair_detection=True, failure_angles=True),
+        analysis=AnalysisConfig(
+            accuracy_fn=accuracy_binary_threshold,
+            convergence_analysis=False,
+            save_plots=False,
+            dead_data_analysis=True,
+            mirror_pair_detection=True,
+            failure_angles=True,
+        ),
         execution=ExecutionConfig(num_runs=1000, skip_existing=False, random_seeds=[18]),
         description="Centered XOR with two nodes, ReLU, sum, and mirrored normal init.",
-        logging=LoggingConfig(train_epochs=50)
+        logging=LoggingConfig(train_epochs=50),
     )
+
 
 @experiment("abs2_single_bce")
 def config_abs2_single_bce() -> ExperimentConfig:
@@ -614,13 +698,21 @@ def config_abs2_single_bce() -> ExperimentConfig:
 
     return ExperimentConfig(
         model=model,
-        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=5000, stop_training_loss_threshold=1e-7, loss_change_threshold=1e-24, loss_change_patience=10),
+        training=TrainingConfig(
+            optimizer=optimizer,
+            loss_function=loss_function,
+            epochs=5000,
+            stop_training_loss_threshold=1e-7,
+            loss_change_threshold=1e-24,
+            loss_change_patience=10,
+        ),
         data=DataConfig(x=xor_data_centered(), y=xor_labels_one_hot()),
         analysis=AnalysisConfig(accuracy_fn=accuracy_one_hot, save_plots=True),
         execution=ExecutionConfig(num_runs=50, skip_existing=False),
         description="Centered XOR with 2-output BCE loss using a single Abs unit.",
-        logging=LoggingConfig(train_epochs=50)
+        logging=LoggingConfig(train_epochs=50),
     )
+
 
 @experiment("abs2_single_bce_l2reg")
 def abs2_single_bce_l2reg() -> ExperimentConfig:
@@ -630,13 +722,21 @@ def abs2_single_bce_l2reg() -> ExperimentConfig:
 
     return ExperimentConfig(
         model=model,
-        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=5000, stop_training_loss_threshold=1e-7, loss_change_threshold=1e-24, loss_change_patience=10),
+        training=TrainingConfig(
+            optimizer=optimizer,
+            loss_function=loss_function,
+            epochs=5000,
+            stop_training_loss_threshold=1e-7,
+            loss_change_threshold=1e-24,
+            loss_change_patience=10,
+        ),
         data=DataConfig(x=xor_data_centered(), y=xor_labels_one_hot()),
         analysis=AnalysisConfig(accuracy_fn=accuracy_one_hot, save_plots=True),
         execution=ExecutionConfig(num_runs=50, skip_existing=False),
         description="Centered XOR with 2-output BCE loss, L2 reg, using a single Abs unit.",
-        logging=LoggingConfig(train_epochs=50)
+        logging=LoggingConfig(train_epochs=50),
     )
+
 
 @experiment("abs2_single_mse")
 def config_abs2_single_mse() -> ExperimentConfig:
@@ -646,13 +746,21 @@ def config_abs2_single_mse() -> ExperimentConfig:
 
     return ExperimentConfig(
         model=model,
-        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=5000, stop_training_loss_threshold=1e-7, loss_change_threshold=1e-24, loss_change_patience=10),
+        training=TrainingConfig(
+            optimizer=optimizer,
+            loss_function=loss_function,
+            epochs=5000,
+            stop_training_loss_threshold=1e-7,
+            loss_change_threshold=1e-24,
+            loss_change_patience=10,
+        ),
         data=DataConfig(x=xor_data_centered(), y=xor_labels_one_hot()),
         analysis=AnalysisConfig(accuracy_fn=accuracy_one_hot, save_plots=True),
         execution=ExecutionConfig(num_runs=50, skip_existing=False),
         description="Centered XOR with 2-output MSE loss using a single Abs unit.",
-        logging=LoggingConfig(train_epochs=50)
+        logging=LoggingConfig(train_epochs=50),
     )
+
 
 @experiment("abs2_single_mse_l2reg")
 def config_abs2_single_mse_l2reg() -> ExperimentConfig:
@@ -662,13 +770,21 @@ def config_abs2_single_mse_l2reg() -> ExperimentConfig:
 
     return ExperimentConfig(
         model=model,
-        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=5000, stop_training_loss_threshold=1e-7, loss_change_threshold=1e-24, loss_change_patience=10),
+        training=TrainingConfig(
+            optimizer=optimizer,
+            loss_function=loss_function,
+            epochs=5000,
+            stop_training_loss_threshold=1e-7,
+            loss_change_threshold=1e-24,
+            loss_change_patience=10,
+        ),
         data=DataConfig(x=xor_data_centered(), y=xor_labels_one_hot()),
         analysis=AnalysisConfig(accuracy_fn=accuracy_one_hot, save_plots=False),
         execution=ExecutionConfig(num_runs=50, skip_existing=False),
         description="Centered XOR with 2-output MSE loss, L2 reg, using a single Abs unit.",
-        logging=LoggingConfig(train_epochs=50)
+        logging=LoggingConfig(train_epochs=50),
     )
+
 
 @experiment("abs2_single_bce_confidence")
 def config_abs2_single_bce_confidence() -> ExperimentConfig:
@@ -678,13 +794,21 @@ def config_abs2_single_bce_confidence() -> ExperimentConfig:
 
     return ExperimentConfig(
         model=model,
-        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=5000, stop_training_loss_threshold=1e-7, loss_change_threshold=1e-24, loss_change_patience=10),
+        training=TrainingConfig(
+            optimizer=optimizer,
+            loss_function=loss_function,
+            epochs=5000,
+            stop_training_loss_threshold=1e-7,
+            loss_change_threshold=1e-24,
+            loss_change_patience=10,
+        ),
         data=DataConfig(x=xor_data_centered(), y=xor_labels_one_hot()),
         analysis=AnalysisConfig(accuracy_fn=accuracy_one_hot, save_plots=True),
         execution=ExecutionConfig(num_runs=50, skip_existing=False),
         description="Centered XOR with 2-output BCE loss using a single Abs unit. Includes a confidence final layer.",
-        logging=LoggingConfig(train_epochs=50)
+        logging=LoggingConfig(train_epochs=50),
     )
+
 
 @experiment("abs2_single_bce_confidence_l2reg")
 def abs2_abs2_single_bce_confidence_l2reg() -> ExperimentConfig:
@@ -692,26 +816,31 @@ def abs2_abs2_single_bce_confidence_l2reg() -> ExperimentConfig:
 
     optimizer_grouped_parameters = [
         {
-            'params': itertools.chain(model.linear1.parameters(), model.linear2.parameters()),
-            'weight_decay': 1e-1  # Apply L2 regularization here
+            "params": itertools.chain(model.linear1.parameters(), model.linear2.parameters()),
+            "weight_decay": 1e-1,  # Apply L2 regularization here
         },
-        {
-            'params': model.confidence.parameters(),
-            'weight_decay': 0.0             # Do NOT apply L2 regularization here
-        }
+        {"params": model.confidence.parameters(), "weight_decay": 0.0},  # Do NOT apply L2 regularization here
     ]
     optimizer = torch.optim.Adam(optimizer_grouped_parameters, lr=0.01, betas=(0.9, 0.99), weight_decay=1e-1)
     loss_function = nn.BCEWithLogitsLoss()
 
     return ExperimentConfig(
         model=model,
-        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=5000, stop_training_loss_threshold=1e-7, loss_change_threshold=1e-24, loss_change_patience=10),
+        training=TrainingConfig(
+            optimizer=optimizer,
+            loss_function=loss_function,
+            epochs=5000,
+            stop_training_loss_threshold=1e-7,
+            loss_change_threshold=1e-24,
+            loss_change_patience=10,
+        ),
         data=DataConfig(x=xor_data_centered(), y=xor_labels_one_hot()),
         analysis=AnalysisConfig(accuracy_fn=accuracy_one_hot, save_plots=True),
         execution=ExecutionConfig(num_runs=50, skip_existing=False),
         description="Centered XOR with 2-output BCE loss, L2 reg, using a single Abs unit.",
-        logging=LoggingConfig(train_epochs=50)
+        logging=LoggingConfig(train_epochs=50),
     )
+
 
 @experiment("relu2_two_bce")
 def config_relu2_two_bce() -> ExperimentConfig:
@@ -721,13 +850,21 @@ def config_relu2_two_bce() -> ExperimentConfig:
 
     return ExperimentConfig(
         model=model,
-        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=5000, stop_training_loss_threshold=1e-7, loss_change_threshold=1e-24, loss_change_patience=10),
+        training=TrainingConfig(
+            optimizer=optimizer,
+            loss_function=loss_function,
+            epochs=5000,
+            stop_training_loss_threshold=1e-7,
+            loss_change_threshold=1e-24,
+            loss_change_patience=10,
+        ),
         data=DataConfig(x=xor_data_centered(), y=xor_labels_one_hot()),
         analysis=AnalysisConfig(accuracy_fn=accuracy_one_hot, save_plots=False),
         execution=ExecutionConfig(num_runs=50, skip_existing=False),
         description="Centered XOR with 2-output BCE loss using a two ReLU units.",
-        logging=LoggingConfig(train_epochs=50)
+        logging=LoggingConfig(train_epochs=50),
     )
+
 
 @experiment("relu2_two_bce_l2reg")
 def config_relu2_two_bce_l2reg() -> ExperimentConfig:
@@ -737,13 +874,21 @@ def config_relu2_two_bce_l2reg() -> ExperimentConfig:
 
     return ExperimentConfig(
         model=model,
-        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=5000, stop_training_loss_threshold=1e-7, loss_change_threshold=1e-24, loss_change_patience=10),
+        training=TrainingConfig(
+            optimizer=optimizer,
+            loss_function=loss_function,
+            epochs=5000,
+            stop_training_loss_threshold=1e-7,
+            loss_change_threshold=1e-24,
+            loss_change_patience=10,
+        ),
         data=DataConfig(x=xor_data_centered(), y=xor_labels_one_hot()),
         analysis=AnalysisConfig(accuracy_fn=accuracy_one_hot, save_plots=False),
         execution=ExecutionConfig(num_runs=50, skip_existing=False),
         description="Centered XOR with 2-output BCE loss, L2 reg, and two ReLU units.",
-        logging=LoggingConfig(train_epochs=50)
+        logging=LoggingConfig(train_epochs=50),
     )
+
 
 @experiment("relu2_two_mse")
 def config_relu2_two_mse() -> ExperimentConfig:
@@ -753,13 +898,21 @@ def config_relu2_two_mse() -> ExperimentConfig:
 
     return ExperimentConfig(
         model=model,
-        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=5000, stop_training_loss_threshold=1e-7, loss_change_threshold=1e-24, loss_change_patience=10),
+        training=TrainingConfig(
+            optimizer=optimizer,
+            loss_function=loss_function,
+            epochs=5000,
+            stop_training_loss_threshold=1e-7,
+            loss_change_threshold=1e-24,
+            loss_change_patience=10,
+        ),
         data=DataConfig(x=xor_data_centered(), y=xor_labels_one_hot()),
         analysis=AnalysisConfig(accuracy_fn=accuracy_one_hot, save_plots=False),
         execution=ExecutionConfig(num_runs=50, skip_existing=False),
         description="Centered XOR with 2-output BCE loss using a two ReLU units.",
-        logging=LoggingConfig(train_epochs=50)
+        logging=LoggingConfig(train_epochs=50),
     )
+
 
 @experiment("relu2_two_mse_l2reg")
 def config_relu2_two_mse_l2reg() -> ExperimentConfig:
@@ -769,28 +922,20 @@ def config_relu2_two_mse_l2reg() -> ExperimentConfig:
 
     return ExperimentConfig(
         model=model,
-        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=5000, stop_training_loss_threshold=1e-7, loss_change_threshold=1e-24, loss_change_patience=10),
+        training=TrainingConfig(
+            optimizer=optimizer,
+            loss_function=loss_function,
+            epochs=5000,
+            stop_training_loss_threshold=1e-7,
+            loss_change_threshold=1e-24,
+            loss_change_patience=10,
+        ),
         data=DataConfig(x=xor_data_centered(), y=xor_labels_one_hot()),
         analysis=AnalysisConfig(accuracy_fn=accuracy_one_hot, save_plots=False),
         execution=ExecutionConfig(num_runs=50, skip_existing=False),
         description="Centered XOR with 2-output BCE loss, L2 reg, and two ReLU units.",
-        logging=LoggingConfig(train_epochs=50)
+        logging=LoggingConfig(train_epochs=50),
     )
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 @experiment("relu2_one_bce_l2reg")
@@ -801,13 +946,21 @@ def config_relu2_one_bce_l2reg() -> ExperimentConfig:
 
     return ExperimentConfig(
         model=model,
-        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=5000, stop_training_loss_threshold=1e-7, loss_change_threshold=1e-24, loss_change_patience=10),
+        training=TrainingConfig(
+            optimizer=optimizer,
+            loss_function=loss_function,
+            epochs=5000,
+            stop_training_loss_threshold=1e-7,
+            loss_change_threshold=1e-24,
+            loss_change_patience=10,
+        ),
         data=DataConfig(x=xor_data_centered(), y=xor_labels_one_hot()),
         analysis=AnalysisConfig(accuracy_fn=accuracy_one_hot, save_plots=False, accuracy_threshold=0.75),
         execution=ExecutionConfig(num_runs=50, skip_existing=False),
         description="Centered XOR with 2-output BCE loss, L2 reg, and one ReLU unit.",
-        logging=LoggingConfig(train_epochs=50)
+        logging=LoggingConfig(train_epochs=50),
     )
+
 
 @experiment("relu2_three_bce_l2reg")
 def config_relu2_three_bce_l2reg() -> ExperimentConfig:
@@ -817,13 +970,21 @@ def config_relu2_three_bce_l2reg() -> ExperimentConfig:
 
     return ExperimentConfig(
         model=model,
-        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=5000, stop_training_loss_threshold=1e-7, loss_change_threshold=1e-24, loss_change_patience=10),
+        training=TrainingConfig(
+            optimizer=optimizer,
+            loss_function=loss_function,
+            epochs=5000,
+            stop_training_loss_threshold=1e-7,
+            loss_change_threshold=1e-24,
+            loss_change_patience=10,
+        ),
         data=DataConfig(x=xor_data_centered(), y=xor_labels_one_hot()),
         analysis=AnalysisConfig(accuracy_fn=accuracy_one_hot, save_plots=False),
         execution=ExecutionConfig(num_runs=50, skip_existing=False),
         description="Centered XOR with 2-output BCE loss, L2 reg, and three ReLU units.",
-        logging=LoggingConfig(train_epochs=50)
+        logging=LoggingConfig(train_epochs=50),
     )
+
 
 @experiment("relu2_four_bce_l2reg")
 def config_relu2_four_bce_l2reg() -> ExperimentConfig:
@@ -833,12 +994,19 @@ def config_relu2_four_bce_l2reg() -> ExperimentConfig:
 
     return ExperimentConfig(
         model=model,
-        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=5000, stop_training_loss_threshold=1e-7, loss_change_threshold=1e-24, loss_change_patience=10),
+        training=TrainingConfig(
+            optimizer=optimizer,
+            loss_function=loss_function,
+            epochs=5000,
+            stop_training_loss_threshold=1e-7,
+            loss_change_threshold=1e-24,
+            loss_change_patience=10,
+        ),
         data=DataConfig(x=xor_data_centered(), y=xor_labels_one_hot()),
         analysis=AnalysisConfig(accuracy_fn=accuracy_one_hot, save_plots=False),
         execution=ExecutionConfig(num_runs=50, skip_existing=False),
         description="Centered XOR with 2-output BCE loss, L2 reg, and four ReLU units.",
-        logging=LoggingConfig(train_epochs=50)
+        logging=LoggingConfig(train_epochs=50),
     )
 
 
@@ -850,11 +1018,17 @@ def config_relu2_eight_bce_l2reg() -> ExperimentConfig:
 
     return ExperimentConfig(
         model=model,
-        training=TrainingConfig(optimizer=optimizer, loss_function=loss_function, epochs=5000, stop_training_loss_threshold=1e-7, loss_change_threshold=1e-24, loss_change_patience=10),
+        training=TrainingConfig(
+            optimizer=optimizer,
+            loss_function=loss_function,
+            epochs=5000,
+            stop_training_loss_threshold=1e-7,
+            loss_change_threshold=1e-24,
+            loss_change_patience=10,
+        ),
         data=DataConfig(x=xor_data_centered(), y=xor_labels_one_hot()),
         analysis=AnalysisConfig(accuracy_fn=accuracy_one_hot, save_plots=False),
         execution=ExecutionConfig(num_runs=50, skip_existing=False),
         description="Centered XOR with 2-output BCE loss, L2 reg, and eight ReLU units.",
-        logging=LoggingConfig(train_epochs=50)
+        logging=LoggingConfig(train_epochs=50),
     )
-

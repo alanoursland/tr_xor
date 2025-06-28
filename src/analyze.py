@@ -464,7 +464,7 @@ def extract_layer_parameters(
         try:
             state_dict = result["model_state_dict"]
             layer_names = {key.replace(".weight", "") for key in state_dict if ".weight" in key}
-            
+
             for layer_name in layer_names:
                 # --- THIS IS THE FIX ---
                 # Skip any layer specified in the exclusion set.
@@ -483,6 +483,7 @@ def extract_layer_parameters(
             raise e
 
     return dict(layer_data)
+
 
 def collate_hyperplanes(layer_entries: List[Tuple[np.ndarray, np.ndarray, str]]) -> Dict[int, Dict[str, Any]]:
     """

@@ -25,25 +25,25 @@ class Model_Abs1(nn.Module):
     def __init__(self):
         super().__init__()
         self.linear1 = nn.Linear(2, 1)
-        self.activation = Abs() 
-        nn.init.kaiming_normal_(self.linear1.weight, nonlinearity='relu')
+        self.activation = Abs()
+        nn.init.kaiming_normal_(self.linear1.weight, nonlinearity="relu")
         nn.init.zeros_(self.linear1.bias)
 
     def forward(self, x):
         x = self.linear1(x)
         x = self.activation(x)
         return x.squeeze()
-    
+
     def init_normal(self):
         nn.init.normal_(self.linear1.weight, mean=0.0, std=0.5)
         nn.init.zeros_(self.linear1.bias)
         return self
-    
+
     def init_kaiming(self):
-        nn.init.kaiming_normal_(self.linear1.weight, nonlinearity='relu')
+        nn.init.kaiming_normal_(self.linear1.weight, nonlinearity="relu")
         nn.init.zeros_(self.linear1.bias)
         return self
-    
+
     def init_xavier(self):
         nn.init.xavier_normal_(self.linear1.weight)
         nn.init.zeros_(self.linear1.bias)
@@ -58,14 +58,15 @@ class Model_Abs1(nn.Module):
         nn.init.normal_(self.linear1.weight, mean=0.0, std=4.0)
         nn.init.zeros_(self.linear1.bias)
         return self
-    
+
+
 class Model_ReLU1(nn.Module):
     def __init__(self):
         super().__init__()
         self.linear1 = nn.Linear(2, 2)
         self.activation = nn.ReLU()
         self.sum_layer = Sum(dim=1, keepdim=True)
-        nn.init.kaiming_normal_(self.linear1.weight, nonlinearity='relu')
+        nn.init.kaiming_normal_(self.linear1.weight, nonlinearity="relu")
         nn.init.zeros_(self.linear1.bias)
 
     def forward(self, x):
@@ -73,7 +74,7 @@ class Model_ReLU1(nn.Module):
         x = self.activation(x)
         x = self.sum_layer(x)
         return x.squeeze()
-    
+
     def forward_components(self, x):
         """
         Returns pre-activation outputs of each linear unit before ReLU is applied.
@@ -85,7 +86,7 @@ class Model_ReLU1(nn.Module):
         nn.init.normal_(self.linear1.weight, mean=0.0, std=0.5)
         nn.init.zeros_(self.linear1.bias)
         return self
-    
+
     @torch.no_grad()
     def init_mirror(self):
         """
@@ -96,40 +97,39 @@ class Model_ReLU1(nn.Module):
         midpoint = self.linear1.weight.shape[0] // 2
         self.linear1.weight[midpoint:] = -self.linear1.weight[:midpoint].clone()
         self.linear1.bias[midpoint:] = -self.linear1.bias[:midpoint].clone()
-            
-        return self    
+
+        return self
 
     @torch.no_grad()
     def reinit_dead_data(self, init_fn, data, max_attempts=100, min_threshold=0):
         """
         Reinitialize the model until no data points are dead (produce all negative pre-activations).
-        
+
         Args:
             init_fn: Function to call for reinitialization (e.g., self.init_normal)
             data: Input data tensor to check for dead data
             max_attempts: Maximum number of reinit attempts before giving up
-        
+
         Returns:
             bool: True if successful (no dead data), False if max_attempts exceeded
         """
         for attempt in range(max_attempts):
             # Apply the initialization function
             init_fn()
-            
+
             # Get pre-activation values for all data points
             with torch.no_grad():
                 pre_activations = self.forward_components(data)  # Shape: [n_data, n_nodes]
-            
+
             # Check if any data point produces negative values across ALL nodes
             # A data point is "dead" if all its pre-activations are negative
             all_negative_per_datapoint = (pre_activations <= min_threshold).all(dim=1)  # Shape: [n_data]
-            
+
             # If no data points are dead, we're done
             if not all_negative_per_datapoint.any():
                 print(f"{attempt} reinitializations")
                 return self
-            
-        
+
         # Failed to find initialization without dead data
         raise RuntimeError(f"reinit_dead_data failed after {max_attempts} attempts")
 
@@ -138,22 +138,22 @@ class Model_ReLU1(nn.Module):
         """
         Bounded Hypersphere Initialization: Initialize weights using weight_init_fn,
         then set biases so hyperplanes are tangent to a hypersphere of given radius.
-        
+
         Args:
             weight_init_fn: Function to initialize weights (e.g., lambda: nn.init.kaiming_normal_(self.linear1.weight))
             radius: Radius of the enclosing hypersphere
             data_mean: Center of the hypersphere (defaults to zero vector)
-        
+
         Returns:
             self: Returns the model instance for method chaining
         """
         # Initialize weights using the provided function
         weight_init_fn()
-        
+
         # Set default data mean to zero vector if not provided
         if data_mean is None:
             data_mean = torch.zeros(self.linear1.in_features)
-        
+
         # Set biases for hypersphere tangency
         with torch.no_grad():
             for i in range(self.linear1.out_features):
@@ -167,8 +167,9 @@ class Model_ReLU1(nn.Module):
                 # b = ||W|| * radius for tangent hyperplane pointing inward
                 self.linear1.bias[i] = -torch.dot(w, hypersphere_point)
                 # print(f"  bias={self.linear1.bias[i]}")
-        
+
         return self
+
 
 class Model_Xor2(nn.Module):
     def __init__(self, middle, activation):
@@ -186,15 +187,16 @@ class Model_Xor2(nn.Module):
         return x
 
     def init(self):
-        nn.init.kaiming_normal_(self.linear1.weight, nonlinearity='relu')
+        nn.init.kaiming_normal_(self.linear1.weight, nonlinearity="relu")
         nn.init.zeros_(self.linear1.bias)
 
         nn.init.ones_(self.scale.weight)
 
         nn.init.xavier_normal_(self.linear2.weight)
         nn.init.zeros_(self.linear2.bias)
-        
+
         return self
+
 
 class Model_Xor2_Confidence(nn.Module):
     def __init__(self, middle, activation):
@@ -214,15 +216,16 @@ class Model_Xor2_Confidence(nn.Module):
         return x
 
     def init(self):
-        nn.init.kaiming_normal_(self.linear1.weight, nonlinearity='relu')
+        nn.init.kaiming_normal_(self.linear1.weight, nonlinearity="relu")
         nn.init.zeros_(self.linear1.bias)
 
         nn.init.ones_(self.scale.weight)
 
         nn.init.xavier_normal_(self.linear2.weight)
         nn.init.zeros_(self.linear2.bias)
-        
+
         return self
+
 
 class ParametricAbs(nn.Module):
     """
@@ -251,6 +254,7 @@ class ParametricAbs(nn.Module):
         """String representation for debugging."""
         pass
 
+
 class Abs(nn.Module):
     """
     A neural network module that applies the absolute value function element-wise.
@@ -263,6 +267,7 @@ class Abs(nn.Module):
         - Input: (N, *) where * means any number of additional dimensions.
         - Output: (N, *), with the same shape as the input.
     """
+
     def __init__(self):
         super().__init__()
 
@@ -278,6 +283,7 @@ class Abs(nn.Module):
         """
         return torch.abs(x)
 
+
 class Sum(nn.Module):
     """
     A neural network module that sums a tensor along a specified dimension.
@@ -290,6 +296,7 @@ class Sum(nn.Module):
         keepdim (bool): Whether the output tensor has `dim` retained or not.
                         Defaults to False.
     """
+
     def __init__(self, dim: int, keepdim: bool = False):
         super().__init__()
         self.dim = dim
@@ -300,23 +307,25 @@ class Sum(nn.Module):
         Applies the sum operation to the input tensor.
         """
         return torch.sum(x, dim=self.dim, keepdim=self.keepdim)
-    
+
+
 class StaticScale(nn.Module):
     def __init__(self, features, device=None):
         """
         A non-learnable scaling layer that multiplies each input feature by a fixed scale.
-        
+
         Args:
             features (int): Number of input features (dimensions).
             device (torch.device or str, optional): Device to place the scale buffer on.
         """
         super().__init__()
         weight = torch.ones(features, dtype=torch.float32, device=device)
-        self.register_buffer('weight', weight)
+        self.register_buffer("weight", weight)
 
     def forward(self, x):
         return x * self.weight
-    
+
+
 class Confidence(nn.Module):
     """
     A custom PyTorch layer that scales the input by a single learnable parameter.
@@ -332,6 +341,7 @@ class Confidence(nn.Module):
         - Input: (N, *) where * means any number of additional dimensions.
         - Output: (N, *), same shape as the input.
     """
+
     def __init__(self, initial_value: float = 1.0):
         super(Confidence, self).__init__()
         # Initialize the single learnable parameter.

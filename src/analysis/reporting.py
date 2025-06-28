@@ -346,7 +346,7 @@ def generate_hyperplane_clustering_section(analysis_results):
                 report += f"* **Size**: {size} runs\n"
                 report += f"* **Weight centroid**: [{', '.join(f'{w:.6f}' for w in weight_centroid)}]\n"
                 report += f"* **Weight std dev**: [{', '.join(f'{s:.6f}' for s in weight_std)}]\n"
-                
+
                 # Check if it's a list/tuple (for backward compatibility) or a float
                 if isinstance(bias_centroid, (list, tuple)):
                     report += f"* **Bias centroid**: [{', '.join(f'{b:.6f}' for b in bias_centroid)}]\n"
@@ -361,7 +361,7 @@ def generate_hyperplane_clustering_section(analysis_results):
                 # if len(weight_centroid) == 2 and is_scalar_bias:
                 #     w0, w1 = weight_centroid
                 #     # No longer need to index the bias, it's already a scalar
-                #     b0 = bias_centroid 
+                #     b0 = bias_centroid
                 #     report += f"* **Hyperplane equation**: {w0:.6f}x₁ + {w1:.6f}x₂ + {b0:.6f} = 0\n"
                 # # -----------------------------------------------------
 
@@ -374,6 +374,7 @@ def generate_hyperplane_clustering_section(analysis_results):
         report += "---\n\n"
 
     return report
+
 
 def generate_dead_data_analysis_section(analysis_results, config):
     """Generate the dead data point analysis section."""

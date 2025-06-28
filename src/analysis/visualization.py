@@ -7,32 +7,33 @@ from typing import Dict, List, Tuple, Any
 import numpy as np
 from analysis.geometry import compute_angles_between, compute_norm_ratios
 
+
 def plot_hyperplanes(weights, biases, x, y, title, filename=None):
     input_dim = weights.shape[-1]
     if input_dim != 2:
         # print(f"⚠️ Skipping plot: hyperplane visualization only supported for 2D inputs (got input_dim={input_dim})")
         return
 
-    mpl.rcParams['font.family'] = 'DejaVu Sans'
-    mpl.rcParams['axes.titlesize'] = 16
-    mpl.rcParams['axes.labelsize'] = 14
-    mpl.rcParams['xtick.labelsize'] = 12
-    mpl.rcParams['ytick.labelsize'] = 12
-    mpl.rcParams['legend.fontsize'] = 12
+    mpl.rcParams["font.family"] = "DejaVu Sans"
+    mpl.rcParams["axes.titlesize"] = 16
+    mpl.rcParams["axes.labelsize"] = 14
+    mpl.rcParams["xtick.labelsize"] = 12
+    mpl.rcParams["ytick.labelsize"] = 12
+    mpl.rcParams["legend.fontsize"] = 12
 
     x_cpu = x.detach().cpu()
     y_cpu = y.detach().cpu()
     weights = weights.detach().cpu()  # (n_units, 2)
-    biases = biases.detach().cpu()    # (n_units,)
+    biases = biases.detach().cpu()  # (n_units,)
     mean = torch.zeros(input_dim)
 
     plt.figure(figsize=(6, 6))
 
     # XOR input points
     y_labels = targets_to_class_labels(y_cpu.unsqueeze(1) if y_cpu.ndim == 1 else y_cpu)
-    for xi, yi_label  in zip(x_cpu, y_labels):
-        marker = 'o' if yi_label == 0 else '^'
-        plt.scatter(xi[0], xi[1], marker=marker, s=100, color='black', edgecolors='k', linewidths=1)
+    for xi, yi_label in zip(x_cpu, y_labels):
+        marker = "o" if yi_label == 0 else "^"
+        plt.scatter(xi[0], xi[1], marker=marker, s=100, color="black", edgecolors="k", linewidths=1)
 
     # Draw each hyperplane and normal
     for i, (W, b) in enumerate(zip(weights, biases)):
@@ -47,23 +48,29 @@ def plot_hyperplanes(weights, biases, x, y, title, filename=None):
         pt1 = projection_on_plane + perp * scale_factor
         pt2 = projection_on_plane - perp * scale_factor
 
-        plt.plot([pt1[0], pt2[0]], [pt1[1], pt2[1]],
-                 color='black', linewidth=1.5, linestyle='--', label=f'Neuron {i}')
+        plt.plot([pt1[0], pt2[0]], [pt1[1], pt2[1]], color="black", linewidth=1.5, linestyle="--", label=f"Neuron {i}")
 
         plt.arrow(
-            projection_on_plane[0].item(), projection_on_plane[1].item(),
-            normal[0].item() * 0.5, normal[1].item() * 0.5,
-            head_width=0.15, head_length=0.2,
-            fc='#333333', ec='#333333', alpha=1.0,
-            length_includes_head=True, width=0.03, zorder=3
+            projection_on_plane[0].item(),
+            projection_on_plane[1].item(),
+            normal[0].item() * 0.5,
+            normal[1].item() * 0.5,
+            head_width=0.15,
+            head_length=0.2,
+            fc="#333333",
+            ec="#333333",
+            alpha=1.0,
+            length_includes_head=True,
+            width=0.03,
+            zorder=3,
         )
 
     # Final plot adjustments
-    plt.title(title, fontsize=16, weight='bold', pad=12)
+    plt.title(title, fontsize=16, weight="bold", pad=12)
     plt.xlabel("x0")
     plt.ylabel("x1")
-    plt.grid(True, linestyle='--', linewidth=0.5, alpha=0.5)
-    plt.axis('equal')
+    plt.grid(True, linestyle="--", linewidth=0.5, alpha=0.5)
+    plt.axis("equal")
     plt.xlim(-2, 2)
     plt.ylim(-2, 2)
     plt.tight_layout()
@@ -76,7 +83,10 @@ def plot_hyperplanes(weights, biases, x, y, title, filename=None):
 
     plt.close()
 
-def plot_epoch_distribution(run_results: List[Dict[str, Any]], plot_config: Dict[str, Any], output_dir: Path, experiment_name: str) -> None:
+
+def plot_epoch_distribution(
+    run_results: List[Dict[str, Any]], plot_config: Dict[str, Any], output_dir: Path, experiment_name: str
+) -> None:
     """
     Plot a sorted curve of training epoch counts across all runs.
 
@@ -115,7 +125,10 @@ def plot_epoch_distribution(run_results: List[Dict[str, Any]], plot_config: Dict
 
     plt.close()
 
-def plot_weight_angle_and_magnitude_vs_epochs(run_results: List[Dict[str, Any]], layer_name: str, output_dir: Path, experiment_name: str):
+
+def plot_weight_angle_and_magnitude_vs_epochs(
+    run_results: List[Dict[str, Any]], layer_name: str, output_dir: Path, experiment_name: str
+):
     all_angles = []
     all_ratios = []
     all_epochs = []
@@ -137,7 +150,6 @@ def plot_weight_angle_and_magnitude_vs_epochs(run_results: List[Dict[str, Any]],
         if w_final.ndim == 1:
             w_final = w_final.unsqueeze(0)
             w_init = w_init.unsqueeze(0)
-
 
         angles = compute_angles_between(w_init, w_final)
         norm_ratios = compute_norm_ratios(w_init, w_final)  # w_init.norm().item() / w_final.norm().item()
@@ -180,11 +192,9 @@ def plot_weight_angle_and_magnitude_vs_epochs(run_results: List[Dict[str, Any]],
     print(f"✓ Saved angle plot to:     {angle_path}")
     print(f"✓ Saved norm ratio plot to: {ratio_path}")
 
+
 def plot_failure_angle_histogram(
-    success_angles: List[float],
-    failure_angles: List[float],
-    output_path: Path,
-    title: str
+    success_angles: List[float], failure_angles: List[float], output_path: Path, title: str
 ):
 
     plt.figure(figsize=(6, 4), dpi=300)
@@ -192,9 +202,9 @@ def plot_failure_angle_histogram(
     if success_angles:
         plt.hist(success_angles, bins=30, alpha=0.6, label="Success (100%)")
     if failure_angles:
-        plt.hist(failure_angles, bins=15, alpha=0.8, label="Failure (50%)", color='red')
+        plt.hist(failure_angles, bins=15, alpha=0.8, label="Failure (50%)", color="red")
 
-    plt.axvline(90, color='black', linestyle='--', label='90° (perpendicular)')
+    plt.axvline(90, color="black", linestyle="--", label="90° (perpendicular)")
     plt.xlabel("Initial Angle Difference to Ideal (degrees)")
     plt.ylabel("Unit Count")
     plt.title(title)
@@ -204,4 +214,3 @@ def plot_failure_angle_histogram(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(output_path)
     plt.close()
-

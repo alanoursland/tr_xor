@@ -52,7 +52,6 @@ def setup_experiment_environment(
 
     experiment_dir = base_dir / experiment_name  # results/abs1
 
-
     # Create directory structure
     output_dirs = create_experiment_directory_structure(base_dir, experiment_name)
 
@@ -75,5 +74,3 @@ def setup_experiment_environment(
         "logger": logger,
         "base_dir": base_dir,
     }
-
-

@@ -293,6 +293,7 @@ def generate_analysis_report(
     failure_angles = analysis_results.get("failure_angle_analysis", {})
 
     ############################################################################################
+    report = ""
 
     name = config.execution.experiment_name
     description = config.description or experiment_info.get("description", "No description provided.")

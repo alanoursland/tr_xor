@@ -38,7 +38,7 @@ This formulation captures proximity to the learned prototype surface without reg
 An important identity relating absolute value to ReLU is:
 
 $$
-|z| = \operatorname{ReLU}(z) + \operatorname{ReLU}(-z)
+|z| = \text{ReLU}(z) + \text{ReLU}(-z)
 $$
 
 This decomposition shows that absolute distance can be recovered by summing two one-sided activations. Each ReLU term computes distance from only one side of the surface.
@@ -48,7 +48,7 @@ This decomposition shows that absolute distance can be recovered by summing two 
 The ReLU activation function:
 
 $$
-\operatorname{ReLU}(z) = \max(0, z)
+\text{ReLU}(z) = \max(0, z)
 $$
 
 outputs positive values only when the input lies in the half-space where $Wx + b > 0$. For inputs in the region $Wx + b \leq 0$, the output is zero.

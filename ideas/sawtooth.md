@@ -3,7 +3,7 @@
 A **sawtooth-ReLU** is just a ReLU ramp with a small-amplitude, high-frequency triangular (or saw) wave super-imposed on its positive branch
 
 $$
-\operatorname{SawReLU}_{A,f}(z)\;=\;
+\text{SawReLU}_{A,f}(z)\;=\;
 \underbrace{\max(0,z)}_{\text{plain ReLU}}
 \;+\;
 A\;{\sf saw}\!\bigl(f\,z\bigr)\;\;\;\;(\;0<A\ll 1,\;f\ge 1\;),

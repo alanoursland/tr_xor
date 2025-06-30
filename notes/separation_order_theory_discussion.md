@@ -134,14 +134,14 @@ Hence an activation whose graph breaks the real line into **r monotone intervals
 Let
 
 $$
-\operatorname{pieces}(\sigma)=
+\text{pieces}(\sigma)=
 \bigl|\text{connected open intervals on which }\sigma\text{ is strictly monotone}\bigr|.
 $$
 
 Define
 
 $$
-\boxed{\; \operatorname{SepOrd}(\sigma)=\operatorname{pieces}(\sigma)\;}
+\boxed{\; \text{SepOrd}(\sigma)=\text{pieces}(\sigma)\;}
 $$
 
 * **Step / sign / Heaviside:** pieces = 1 → SepOrd = 1
@@ -159,7 +159,7 @@ Minsky-Papert’s *order* of a predicate ψ is the minimum receptive-field size 
 
 > **Proposition (one-layer trade-off).**
 > A Boolean predicate of M-P order k can be implemented by a **single** σ-unit *iff*
-> $\operatorname{SepOrd}(\sigma)\ge k$.
+> $\text{SepOrd}(\sigma)\ge k$.
 
 * **Proof sketch.**
 
@@ -266,7 +266,7 @@ Put differently:
 
 $$
 \text{Required depth} \;\ge\; 
-\Bigl\lceil \frac{\text{M-P order of predicate}}{\operatorname{SepOrd}(\sigma)} \Bigr\rceil .
+\Bigl\lceil \frac{\text{M-P order of predicate}}{\text{SepOrd}(\sigma)} \Bigr\rceil .
 $$
 
 Monotone σ gives the familiar “depth ≥ order” bound; non-monotone σ lowers the denominator.
@@ -324,7 +324,7 @@ $$
 
 ---
 
-## 2 Swish ($\displaystyle\sigma_{\text{swish}}(z)=z\,\operatorname{sigmoid}(\beta z)$)
+## 2 Swish ($\displaystyle\sigma_{\text{swish}}(z)=z\,\text{sigmoid}(\beta z)$)
 
 Take the default $\beta=1$; other positive β behave similarly.
 

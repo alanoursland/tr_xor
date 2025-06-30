@@ -97,7 +97,7 @@ $(w^*,b^*)$ is the *only* critical point of $L_{\text{abs}}$; its
 Hessian is positive-definite, hence it is a strict (and global) minimum.
 
 *Proof sketch.*  Using (1) we have
-$f_i'=\operatorname{sign}(w^{*\top}x_i)\in\{+1,-1\}$.
+$f_i'=\text{sign}(w^{*\top}x_i)\in\{+1,-1\}$.
 Write the gradient conditions
 
 $$

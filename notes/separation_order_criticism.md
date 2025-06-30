@@ -16,7 +16,7 @@
     * For a general function with SepOrd $m+1$, it creates $m+1$ disjoint intervals on the $L(x)$ axis that map above $\theta$. This implies up to $m+1$ parallel slabs or regions bounded by parallel hyperplanes. This is a specific type of geometric separation.
 
 4.  **Implications for Network Depth (Section 6 & Appendix A.2):**
-    * The formula $\text{Required depth} \ge \left\lceil \frac{\text{M-P order of predicate}}{\operatorname{SepOrd}(\sigma)} \right\rceil$ is elegant and directly useful if the "One-Layer Trade-off" proposition holds universally.
+    * The formula $\text{Required depth} \ge \left\lceil \frac{\text{M-P order of predicate}}{\text{SepOrd}(\sigma)} \right\rceil$ is elegant and directly useful if the "One-Layer Trade-off" proposition holds universally.
     * The derivation states: "Each $\sigma$-unit can fold space only SepOrd($\sigma$) times (i.e. union at most that many half-spaces with a shared normal)". And that representing a predicate needing "$k$ independent half-spaces" requires the given depth. If the predicate indeed requires $k$ half-spaces that *do not* share a common normal (which is a more general form of non-linearity), then a single layer, regardless of SepOrd, cannot implement it using the described mechanism. The power of multiple layers comes from the fact that subsequent layers operate on the *outputs* of previous layers, effectively using different normal vectors (in a transformed space). The derivation seems to implicitly assume that the M-P order $k$ can be "decomposed" layer by layer by simply dividing by SepOrd($\sigma$). This might be an oversimplification for complex predicates where the orientation of separating hyperplanes matters.
 
 5.  **Justification Sketch (Section 3):**

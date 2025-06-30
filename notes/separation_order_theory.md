@@ -32,17 +32,17 @@ Thus, we introduce a generalized notion—**Separation Order (SepOrd)**—to for
 **Definition (Separation Order)**: For an activation function $\sigma : \mathbb{R} \to \mathbb{R}$, the **Separation Order** (SepOrd) is defined as the number of distinct connected open intervals where $\sigma$ is monotonic (non-decreasing or non-increasing):
 
 $$
-\operatorname{SepOrd}(\sigma) = \bigl|\text{connected intervals where } \sigma \text{ is strictly monotonic}\bigr|
+\text{SepOrd}(\sigma) = \bigl|\text{connected intervals where } \sigma \text{ is strictly monotonic}\bigr|
 $$
 
 We will prove below that this definition aligns consistently with the original Minsky-Papert framework.
 
 **Examples:**
 
-* Step / sign / Heaviside: $\operatorname{SepOrd}(\sigma) = 1$
-* ReLU: $\operatorname{SepOrd}(\sigma) = 1$
-* Absolute value: $\operatorname{SepOrd}(\sigma) = 2$
-* Quadratic $z^2$: $\operatorname{SepOrd}(\sigma) = 2$
+* Step / sign / Heaviside: $\text{SepOrd}(\sigma) = 1$
+* ReLU: $\text{SepOrd}(\sigma) = 1$
+* Absolute value: $\text{SepOrd}(\sigma) = 2$
+* Quadratic $z^2$: $\text{SepOrd}(\sigma) = 2$
 
 **Remark 2.1** Constant plateaus are counted together with the nearest monotonic interval, so Step/Heaviside and ReLU each contribute a single interval.
 
@@ -54,8 +54,8 @@ The Separation Order of a continuous activation function $\sigma : \mathbb{R} \t
 
 Let $\sigma : \mathbb{R} \to \mathbb{R}$ be continuous.
 
-*  *i)* If $\sigma$ is monotonic, then $\operatorname{SepOrd}(\sigma)=1$.
-*  *ii)* If $\sigma$ is non-monotonic with $m$ strict local extrema, then $\operatorname{SepOrd}(\sigma)=m+1 \ge 2$.
+*  *i)* If $\sigma$ is monotonic, then $\text{SepOrd}(\sigma)=1$.
+*  *ii)* If $\sigma$ is non-monotonic with $m$ strict local extrema, then $\text{SepOrd}(\sigma)=m+1 \ge 2$.
 
 ### Intuition
 
@@ -95,7 +95,7 @@ $$
 
 This confirms precisely two monotonic intervals separated by a single point $z=0$.
 
-4. Therefore, by definition, $\operatorname{SepOrd}(\sigma)=2$. $\blacksquare$
+4. Therefore, by definition, $\text{SepOrd}(\sigma)=2$. $\blacksquare$
 
 *\[PLACEHOLDER: Visual proof illustration showing piecewise derivative of absolute value activation.]*
 
@@ -109,25 +109,25 @@ The Separation Order of an activation function connects to the Minsky-Papert ord
 
 *(See Appendix A for a proof sketch.)*
 
-A Boolean predicate of Minsky-Papert order $k$ can be implemented by a single $\sigma$-unit ($\sigma(w^Tx+b)$ followed by threshold) **if and only if** $\operatorname{SepOrd}(\sigma) \ge k$.
+A Boolean predicate of Minsky-Papert order $k$ can be implemented by a single $\sigma$-unit ($\sigma(w^Tx+b)$ followed by threshold) **if and only if** $\text{SepOrd}(\sigma) \ge k$.
 
 ## 6. Implications for Network Depth
 
 The minimum network depth required to implement a predicate with activation $\sigma$ is bounded by:
 
 $$
-\text{Required depth} \ge \left\lceil \frac{\text{M-P order of predicate}}{\operatorname{SepOrd}(\sigma)} \right\rceil
+\text{Required depth} \ge \left\lceil \frac{\text{M-P order of predicate}}{\text{SepOrd}(\sigma)} \right\rceil
 $$
 
-Non-monotonic activations with $\operatorname{SepOrd}(\sigma) > 1$ can reduce the required depth by effectively handling higher-order components of the predicate within a single unit. A complete derivation is included in Appendix A.
+Non-monotonic activations with $\text{SepOrd}(\sigma) > 1$ can reduce the required depth by effectively handling higher-order components of the predicate within a single unit. A complete derivation is included in Appendix A.
 
 ## 7. Examples and Case Studies
 
 ### 7.1 XOR with Absolute Value
 
 * The XOR predicate has a Minsky-Papert order of 2 when computed with threshold activations.
-* The absolute value function, $|z|$, has two strictly monotonic pieces ($z<0$ and $z>0$), so $\operatorname{SepOrd}(|\cdot|) = 2$.
-* Since $\operatorname{SepOrd}(|\cdot|) = 2 \ge \text{M-P order of XOR (2)}$, a single absolute value unit can implement XOR.
+* The absolute value function, $|z|$, has two strictly monotonic pieces ($z<0$ and $z>0$), so $\text{SepOrd}(|\cdot|) = 2$.
+* Since $\text{SepOrd}(|\cdot|) = 2 \ge \text{M-P order of XOR (2)}$, a single absolute value unit can implement XOR.
 * For example, $f(x_1,x_2)=\bigl[\;|\,x_1-x_2\,|>\tfrac12\bigr]$ computes XOR. The decision boundary is the union of two parallel hyperplanes ($x_1-x_2 = 0.5$ and $x_1-x_2 = -0.5$), which together carve out the XOR region.
 
 ### 7.2 GELU and Swish
@@ -140,8 +140,8 @@ Non-monotonic activations with $\operatorname{SepOrd}(\sigma) > 1$ can reduce th
 | Abs        | No        | 2      | Yes                       |
 | ReLU       | Yes       | 1      | No                        |
 
-* **GELU ($z\Phi(z)$):** Its derivative $\Phi(z)+z\phi(z)$ is always positive, so GELU is strictly monotonic. Thus, $\operatorname{SepOrd}(\text{GELU})=1$. A single GELU unit cannot solve XOR.
-* **Swish ($z \cdot \text{sigmoid}(\beta z)$ for $\beta \ge 1$):** Exhibits a region of non-monotonicity (one strict local extremum). It has two strictly monotonic pieces [Ramachandran et al., 2017]. Thus, $\operatorname{SepOrd}(\text{Swish}_{\beta\ge 1})=2$. A single Swish unit can therefore solve XOR.
+* **GELU ($z\Phi(z)$):** Its derivative $\Phi(z)+z\phi(z)$ is always positive, so GELU is strictly monotonic. Thus, $\text{SepOrd}(\text{GELU})=1$. A single GELU unit cannot solve XOR.
+* **Swish ($z \cdot \text{sigmoid}(\beta z)$ for $\beta \ge 1$):** Exhibits a region of non-monotonicity (one strict local extremum). It has two strictly monotonic pieces [Ramachandran et al., 2017]. Thus, $\text{SepOrd}(\text{Swish}_{\beta\ge 1})=2$. A single Swish unit can therefore solve XOR.
 
 ### 7.3 High-Separation-Order Activations  
 Functions such as `sin`, `cos`, and high-degree polynomials possess unbounded or arbitrarily large Separation Orders, yielding exponentially richer decision regions at a single layer.  They are omitted from most practical networks because of vanishing-gradient issues, but they usefully illustrate the upper extremes of SepOrd.

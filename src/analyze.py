@@ -141,20 +141,12 @@ def summarize_all_runs(all_results: List[Dict[str, Any]]) -> Dict[str, Any]:
     return summary
 
 
-def analyze_prototype_surface(run_results, experiment_data, config):
-    # Test 1: Distance of points to hyperplanes
-    distance_test = test_distance_to_hyperplanes(run_results, experiment_data, config)
-
-    # Test 2: Mirror weight detection
-    mirror_test = test_mirror_weights(run_results)
-
-    return {"distance_test": distance_test, "mirror_test": mirror_test}
-
-
-def test_distance_to_hyperplanes(
+def analyze_distance_to_hyperplanes (
     run_results: List[Dict[str, Any]], experiment_data: Dict[str, Any], config
 ) -> List[Dict[str, Any]]:
     """
+    Analyze if classification correlates with distance to learned hyperplanes.
+
     Test if classification correlates with distance to learned hyperplanes
     for each linear layer in the model, using correct layer-specific input data.
 
@@ -216,8 +208,9 @@ def test_distance_to_hyperplanes(
     return results
 
 
-def test_mirror_weights(run_results):
+def analyze_mirror_weights(run_results):
     """
+    Detect mirror weight pairs (w_i ≈ -w_j) in ReLU models.
     Test if ReLU models learn mirror weight pairs (w_i ≈ -w_j).
     """
     mirror_results = []
@@ -786,7 +779,7 @@ def analyze_xor_accuracy_distribution(accuracies: List[float]) -> Dict[str, Any]
     }
 
 
-def generate_experiment_visualizations(run_results: List[Dict], config: ExperimentConfig, output_dir: Path) -> None:
+def plot_run_hyperplanes(run_results: List[Dict], config: ExperimentConfig, output_dir: Path) -> None:
     """
     Generate XOR geometric visualizations (prototype surface plots) per run.
     Loads each model from its run directory and plots learned hyperplanes.
@@ -999,14 +992,20 @@ def main() -> int:
         #         run_results, config
         #     )
         #     print("  ✓ Weight analysis completed")
+       
+        # Distance to hyperplanes analysis
+        if config.analysis.distance_to_hyperplanes:
+            print("📏 Analyzing distance to hyperplanes...")
+            analysis_results["distance_to_hyperplanes"] = analyze_distance_to_hyperplanes(run_results, experiment_data, config)
+            print("  ✓ Distance to hyperplanes analysis completed")
 
-        # Prototype surface tests
-        if config.analysis.prototype_surface_analysis:
-            print("🔬 Analyzing prototype surface ...")
-            analysis_results["prototype_surface"] = analyze_prototype_surface(run_results, experiment_data, config)
-            print("  ✓ Prototype surface analysis completed")
-
-        if config.analysis.failure_angles:
+        # Mirror weight detection
+        if config.analysis.mirror_weight_detection:
+            print("🔍 Analyzing mirror weights...")
+            analysis_results["mirror_weights"] = analyze_mirror_weights(run_results)
+            print("  ✓ Mirror weight analysis completed")
+            
+        if config.analysis.failure_angle_analysis:
             print("📐 Analyzing failure angles ...")
             analysis_results["failure_angle_analysis"] = analyze_failure_angles(run_results)
             print("  ✓ Failure angle analysis completed")
@@ -1030,16 +1029,16 @@ def main() -> int:
             print("  ✓ data data in initial model analysis completed")
 
         # Generate visualizations
-        if config.analysis.save_plots:
-            print("📈 Generating visualizations...")
+        if config.analysis.plot_hyperplanes:
+            print("📈 Plotting Hyperplanes...")
             plots_dir = results_dir / "plots"
             plots_dir.mkdir(exist_ok=True)
 
-            generate_experiment_visualizations(run_results=run_results, config=config, output_dir=plots_dir)
-            print(f"  ✓ Visualizations plots saved to {plots_dir}")
+            plot_run_hyperplanes(run_results=run_results, config=config, output_dir=plots_dir)
+            print(f"  ✓ Hyperplane plots saved to {plots_dir}")
 
         # Generate convergence plots
-        if config.analysis.convergence_analysis:
+        if config.analysis.plot_epoch_distribution:
             output_dir = Path("results") / config.execution.experiment_name
             plot_epoch_distribution(
                 run_results,
@@ -1054,7 +1053,7 @@ def main() -> int:
                 experiment_name=config.execution.experiment_name,
             )
 
-        if config.analysis.convergence_analysis:
+        if config.analysis.plot_parameter_displacement:
             output_dir = Path("results") / config.execution.experiment_name
             layer_names = run_results[0].get("model_linear_layers", [])
             for layer_name in layer_names:

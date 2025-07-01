@@ -17,6 +17,144 @@ from abc import ABC, abstractmethod
 
 
 # ==============================================================================
+# Custom Activations and Layers
+# ==============================================================================
+
+class ParametricAbs(nn.Module):
+    """
+    Parametric absolute value: f(x) = α * |x + β| + γ
+
+    Learnable parameters allow the network to adapt the prototype surface location
+    """
+
+    def __init__(self, alpha: float = 1.0, beta: float = 0.0, gamma: float = 0.0, learnable: bool = False):
+        super(ParametricAbs, self).__init__()
+        if learnable:
+            self.alpha = nn.Parameter(torch.tensor(alpha))
+            self.beta = nn.Parameter(torch.tensor(beta))
+            self.gamma = nn.Parameter(torch.tensor(gamma))
+        else:
+            self.register_buffer("alpha", torch.tensor(alpha))
+            self.register_buffer("beta", torch.tensor(beta))
+            self.register_buffer("gamma", torch.tensor(gamma))
+        self.learnable = learnable
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply parametric absolute value activation."""
+        pass
+
+    def extra_repr(self) -> str:
+        """String representation for debugging."""
+        pass
+
+
+class Abs(nn.Module):
+    """
+    A neural network module that applies the absolute value function element-wise.
+
+    This class wraps the torch.abs function in an nn.Module, allowing it to be
+    seamlessly integrated into a model's architecture (e.g., within an
+    nn.Sequential container) and be discoverable by hooks.
+
+    Shape:
+        - Input: (N, *) where * means any number of additional dimensions.
+        - Output: (N, *), with the same shape as the input.
+    """
+
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Applies the absolute value function to the input tensor.
+
+        Args:
+            x (torch.Tensor): The input tensor.
+
+        Returns:
+            torch.Tensor: A new tensor with the element-wise absolute value of the input.
+        """
+        return torch.abs(x)
+
+
+class Sum(nn.Module):
+    """
+    A neural network module that sums a tensor along a specified dimension.
+
+    This class wraps the torch.sum function in an nn.Module, allowing it to be
+    integrated into a model's architecture and be discoverable by hooks.
+
+    Args:
+        dim (int): The dimension along which to sum.
+        keepdim (bool): Whether the output tensor has `dim` retained or not.
+                        Defaults to False.
+    """
+
+    def __init__(self, dim: int, keepdim: bool = False):
+        super().__init__()
+        self.dim = dim
+        self.keepdim = keepdim
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Applies the sum operation to the input tensor.
+        """
+        return torch.sum(x, dim=self.dim, keepdim=self.keepdim)
+
+
+class StaticScale(nn.Module):
+    def __init__(self, features, device=None):
+        """
+        A non-learnable scaling layer that multiplies each input feature by a fixed scale.
+
+        Args:
+            features (int): Number of input features (dimensions).
+            device (torch.device or str, optional): Device to place the scale buffer on.
+        """
+        super().__init__()
+        weight = torch.ones(features, dtype=torch.float32, device=device)
+        self.register_buffer("weight", weight)
+
+    def forward(self, x):
+        return x * self.weight
+
+
+class Confidence(nn.Module):
+    """
+    A custom PyTorch layer that scales the input by a single learnable parameter.
+
+    This layer multiplies the input tensor by a scalar 'confidence' parameter,
+    which is learned during the training process.
+
+    Args:
+        initial_value (float, optional): The initial value for the confidence
+                                         parameter. Defaults to 1.0.
+
+    Shape:
+        - Input: (N, *) where * means any number of additional dimensions.
+        - Output: (N, *), same shape as the input.
+    """
+
+    def __init__(self, initial_value: float = 1.0):
+        super(Confidence, self).__init__()
+        # Initialize the single learnable parameter.
+        # We wrap it in nn.Parameter to ensure it is registered as a model parameter
+        # and will be updated during the training process (e.g., by an optimizer).
+        self.confidence = nn.Parameter(torch.tensor(initial_value))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        The forward pass of the layer.
+
+        Args:
+            x (torch.Tensor): The input tensor.
+
+        Returns:
+            torch.Tensor: The input tensor scaled by the confidence parameter.
+        """
+        return x * torch.square(self.confidence)
+
+# ==============================================================================
 # Custom Models
 # ==============================================================================
 
@@ -176,42 +314,73 @@ class Model_Xor2(nn.Module):
         super().__init__()
         self.linear1 = nn.Linear(2, middle)
         self.activation = activation
-        self.scale = StaticScale(middle)
+        self.scale1 = StaticScale(middle)
         self.linear2 = nn.Linear(middle, 2)
+        self.scale2 = StaticScale(middle)
+        self.init()
 
     def forward(self, x):
         x = self.linear1(x)
         x = self.activation(x)
-        x = self.scale(x)
+        x = self.scale1(x)
         x = self.linear2(x)
+        x = self.scale2(x)
         return x
 
     def init(self):
         nn.init.kaiming_normal_(self.linear1.weight, nonlinearity="relu")
         nn.init.zeros_(self.linear1.bias)
 
-        nn.init.ones_(self.scale.weight)
-
+        nn.init.ones_(self.scale1.weight)
         nn.init.xavier_normal_(self.linear2.weight)
         nn.init.zeros_(self.linear2.bias)
 
+        nn.init.ones_(self.scale2.weight)
+
         return self
 
+    @torch.no_grad()
+    def decompose_weight(self, linear: nn.Linear, scale: StaticScale):
+        W = linear.weight
+        b = linear.bias
+
+        row_norms = W.norm(dim=1, keepdim=True).clamp(min=1e-8)
+        W /= row_norms
+        b /= row_norms.squeeze()
+
+        scale.weight *= row_norms.squeeze()
+
+
+    @torch.no_grad()
+    def absorb_scale(self, scale: StaticScale, linear: nn.Linear):
+        W = linear.weight
+        W *= scale.weight.unsqueeze(0)
+        scale.weight.fill_(1.0)
+        
+    @torch.no_grad()
+    def normalization_propagation(self):
+        """Apply manual weight normalization and propagate scaling factors."""
+        self.decompose_weight(self.linear1, self.scale1)
+        self.absorb_scale(self.scale1, self.linear2)
+        self.decompose_weight(self.linear2, self.scale2)
+        print("Normalization Propagation done.")
 
 class Model_Xor2_Confidence(nn.Module):
     def __init__(self, middle, activation):
         super().__init__()
         self.linear1 = nn.Linear(2, middle)
         self.activation = activation
-        self.scale = StaticScale(middle)
+        self.scale1 = StaticScale(middle)
         self.linear2 = nn.Linear(middle, 2)
+        self.scale2 = StaticScale(middle)
         self.confidence = Confidence()
 
     def forward(self, x):
         x = self.linear1(x)
         x = self.activation(x)
-        x = self.scale(x)
+        x = self.scale1(x)
         x = self.linear2(x)
+        x = self.scale2(x)
         x = self.confidence(x)
         return x
 
@@ -224,139 +393,9 @@ class Model_Xor2_Confidence(nn.Module):
         nn.init.xavier_normal_(self.linear2.weight)
         nn.init.zeros_(self.linear2.bias)
 
+        nn.init.ones_(self.scale2.weight)
+
+        nn.init.ones_(self.confidence)
+
         return self
 
-
-class ParametricAbs(nn.Module):
-    """
-    Parametric absolute value: f(x) = α * |x + β| + γ
-
-    Learnable parameters allow the network to adapt the prototype surface location
-    """
-
-    def __init__(self, alpha: float = 1.0, beta: float = 0.0, gamma: float = 0.0, learnable: bool = False):
-        super(ParametricAbs, self).__init__()
-        if learnable:
-            self.alpha = nn.Parameter(torch.tensor(alpha))
-            self.beta = nn.Parameter(torch.tensor(beta))
-            self.gamma = nn.Parameter(torch.tensor(gamma))
-        else:
-            self.register_buffer("alpha", torch.tensor(alpha))
-            self.register_buffer("beta", torch.tensor(beta))
-            self.register_buffer("gamma", torch.tensor(gamma))
-        self.learnable = learnable
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Apply parametric absolute value activation."""
-        pass
-
-    def extra_repr(self) -> str:
-        """String representation for debugging."""
-        pass
-
-
-class Abs(nn.Module):
-    """
-    A neural network module that applies the absolute value function element-wise.
-
-    This class wraps the torch.abs function in an nn.Module, allowing it to be
-    seamlessly integrated into a model's architecture (e.g., within an
-    nn.Sequential container) and be discoverable by hooks.
-
-    Shape:
-        - Input: (N, *) where * means any number of additional dimensions.
-        - Output: (N, *), with the same shape as the input.
-    """
-
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Applies the absolute value function to the input tensor.
-
-        Args:
-            x (torch.Tensor): The input tensor.
-
-        Returns:
-            torch.Tensor: A new tensor with the element-wise absolute value of the input.
-        """
-        return torch.abs(x)
-
-
-class Sum(nn.Module):
-    """
-    A neural network module that sums a tensor along a specified dimension.
-
-    This class wraps the torch.sum function in an nn.Module, allowing it to be
-    integrated into a model's architecture and be discoverable by hooks.
-
-    Args:
-        dim (int): The dimension along which to sum.
-        keepdim (bool): Whether the output tensor has `dim` retained or not.
-                        Defaults to False.
-    """
-
-    def __init__(self, dim: int, keepdim: bool = False):
-        super().__init__()
-        self.dim = dim
-        self.keepdim = keepdim
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Applies the sum operation to the input tensor.
-        """
-        return torch.sum(x, dim=self.dim, keepdim=self.keepdim)
-
-
-class StaticScale(nn.Module):
-    def __init__(self, features, device=None):
-        """
-        A non-learnable scaling layer that multiplies each input feature by a fixed scale.
-
-        Args:
-            features (int): Number of input features (dimensions).
-            device (torch.device or str, optional): Device to place the scale buffer on.
-        """
-        super().__init__()
-        weight = torch.ones(features, dtype=torch.float32, device=device)
-        self.register_buffer("weight", weight)
-
-    def forward(self, x):
-        return x * self.weight
-
-
-class Confidence(nn.Module):
-    """
-    A custom PyTorch layer that scales the input by a single learnable parameter.
-
-    This layer multiplies the input tensor by a scalar 'confidence' parameter,
-    which is learned during the training process.
-
-    Args:
-        initial_value (float, optional): The initial value for the confidence
-                                         parameter. Defaults to 1.0.
-
-    Shape:
-        - Input: (N, *) where * means any number of additional dimensions.
-        - Output: (N, *), same shape as the input.
-    """
-
-    def __init__(self, initial_value: float = 1.0):
-        super(Confidence, self).__init__()
-        # Initialize the single learnable parameter.
-        # We wrap it in nn.Parameter to ensure it is registered as a model parameter
-        # and will be updated during the training process (e.g., by an optimizer).
-        self.confidence = nn.Parameter(torch.tensor(initial_value))
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        The forward pass of the layer.
-
-        Args:
-            x (torch.Tensor): The input tensor.
-
-        Returns:
-            torch.Tensor: The input tensor scaled by the confidence parameter.
-        """
-        return x * torch.square(self.confidence)

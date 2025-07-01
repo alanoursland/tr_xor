@@ -314,7 +314,7 @@ def generate_loss_distribution_section(basic_stats) -> str:
 
 
 def generate_hyperplane_clustering_section(analysis_results):
-    """Generate the hyperplane clustering section."""
+    """Generate the hyperplane clustering section in Markdown."""
     report = "## 🎯 Hyperplane Clustering\n\n"
 
     hyperplane_clustering = analysis_results.get("hyperplane_clustering", {})
@@ -323,58 +323,49 @@ def generate_hyperplane_clustering_section(analysis_results):
         report += "* **No clustering data available**\n\n"
     else:
         for layer_name, layer_result in hyperplane_clustering.items():
-            cluster_info = layer_result.get("cluster_info", {})
-            n_clusters = layer_result.get("n_clusters", 0)
-            noise_points = layer_result.get("noise_points", 0)
-
             report += f"### 🔹 Layer `{layer_name}`\n"
-            report += f"* **Number of clusters discovered**: {n_clusters}\n"
-            if noise_points > 0:
-                report += f"* **Noise points**: {noise_points}\n"
-            report += "\n"
 
-            for cluster_name, info in cluster_info.items():
-                cluster_id = cluster_name.rsplit("_", 1)[-1]
-                size = info["size"]
-                run_ids = info["run_ids"]
-                weight_centroid = info["weight_centroid"]
-                bias_centroid = info["bias_centroid"]
-                weight_std = info["weight_std"]
-                bias_std = info["bias_std"]
+            clustering_params = layer_result.get("clustering_params", {})
+            eps = clustering_params.get("eps")
+            min_samples = clustering_params.get("min_samples")
 
-                report += f"#### ◼ Cluster {cluster_id}\n"
-                report += f"* **Size**: {size} runs\n"
-                report += f"* **Weight centroid**: [{', '.join(f'{w:.6f}' for w in weight_centroid)}]\n"
-                report += f"* **Weight std dev**: [{', '.join(f'{s:.6f}' for s in weight_std)}]\n"
+            report += f"* **DBSCAN eps**: `{eps}`\n"
+            report += f"* **DBSCAN min_samples**: `{min_samples}`\n\n"
 
-                # Check if it's a list/tuple (for backward compatibility) or a float
-                if isinstance(bias_centroid, (list, tuple)):
-                    report += f"* **Bias centroid**: [{', '.join(f'{b:.6f}' for b in bias_centroid)}]\n"
-                else:
-                    # The new, correct path for scalar biases
-                    report += f"* **Bias centroid**: [{bias_centroid:.6f}]\n"
-                report += f"* **Bias std dev**: [{bias_std:.6f}]\n"
-                # -----------------------------------------------------------
+            for param_key, param_data in layer_result.items():
+                if param_key in ("layer_name", "clustering_params"):
+                    continue  # skip meta
 
-                # # Check if bias_centroid is a number instead of checking its length
-                # is_scalar_bias = isinstance(bias_centroid, (int, float))
-                # if len(weight_centroid) == 2 and is_scalar_bias:
-                #     w0, w1 = weight_centroid
-                #     # No longer need to index the bias, it's already a scalar
-                #     b0 = bias_centroid
-                #     report += f"* **Hyperplane equation**: {w0:.6f}x₁ + {w1:.6f}x₂ + {b0:.6f} = 0\n"
-                # # -----------------------------------------------------
+                param_label = param_data.get("param_label")
+                clusters = param_data.get("param_data", [])
+                n_clusters = param_data.get("n_clusters", 0)
+                noise_points = param_data.get("noise_count", 0)
 
-                report += f"* **Contributing runs**: {', '.join(str(rid) for rid in run_ids)}\n"
-
+                report += f"**Parameter `{param_label}`**\n\n"
+                report += f"* Clusters: **{n_clusters}**\n"
+                if noise_points > 0:
+                    report += f"* Noise points: **{noise_points}**\n"
                 report += "\n"
+
+                for cluster in clusters:
+                    cid = cluster["cluster_label"]
+                    size = cluster["size"]
+                    centroid = cluster["centroid"]
+                    std = cluster["std"]
+                    run_ids = cluster["run_ids"]
+
+                    report += f"#### ◼ Cluster `{cid}`\n"
+                    report += f"* **Size**: {size}\n"
+                    report += f"* **Centroid**: [{', '.join(f'{v:.6f}' for v in centroid)}]\n"
+                    report += f"* **Std Dev**: [{', '.join(f'{s:.6f}' for s in std)}]\n"
+                    report += f"* **Runs**: {', '.join(str(r) for r in run_ids)}\n"
+                    report += "\n"
 
             report += "\n"
 
         report += "---\n\n"
 
     return report
-
 
 def generate_dead_data_analysis_section(analysis_results, config):
     """Generate the dead data point analysis section."""

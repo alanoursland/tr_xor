@@ -316,7 +316,7 @@ class Model_Xor2(nn.Module):
         self.activation = activation
         self.scale1 = StaticScale(middle)
         self.linear2 = nn.Linear(middle, 2)
-        self.scale2 = StaticScale(middle)
+        self.scale2 = StaticScale(2)
         self.init()
 
     def forward(self, x):

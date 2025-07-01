@@ -188,8 +188,10 @@ def test_distance_to_hyperplanes(
                 current = module(current)
             elif isinstance(module, (torch.nn.ReLU, torch.nn.Tanh, torch.nn.Sigmoid)):
                 current = module(current)
-            elif name == "scale":
-                current = model.scale(current)
+            elif name == "scale1":
+                current = model.scale1(current)
+            elif name == "scale2":
+                current = model.scale2(current)
             # skip other modules for now
 
         run_result = {"run_id": result["run_id"], "layer_distances": {}}
@@ -441,43 +443,38 @@ def compute_percentile_bins(values: List[float], epochs: List[int], metric: str)
     return bin_stats
 
 
-def extract_layer_parameters(
-    run_results: List[Dict[str, Any]], exclude_layers: set = ["scale"]
-) -> Dict[str, List[Tuple]]:
+def extract_layer_parameters(run_results: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
     """
-    Extract weights and biases from all runs, organized by layer.
+    Extract all layer parameters from all runs.
+    Groups by layer name, preserves all param names.
 
     Args:
-        run_results: List of results from all training runs.
-        exclude_layers: A set of layer names to ignore during extraction.
+        run_results: List of results from all runs.
 
     Returns:
-        Dict[layer_name, List[Tuple[weights, biases, run_id]]]
+        Dict[layer_name, List[Dict[param_name -> value]]]
     """
-    if exclude_layers is None:
-        exclude_layers = set()
-
     layer_data = defaultdict(list)
 
     for result in run_results:
         run_id = result.get("run_id", "?")
         try:
             state_dict = result["model_state_dict"]
-            layer_names = {key.replace(".weight", "") for key in state_dict if ".weight" in key}
+            layer_params = defaultdict(dict)
 
-            for layer_name in layer_names:
-                # --- THIS IS THE FIX ---
-                # Skip any layer specified in the exclusion set.
-                if layer_name in exclude_layers:
-                    continue
-                # ----------------------
+            for key, tensor in state_dict.items():
+                # print(f"key = {key}")
+                if '.' not in key:
+                    continue  # skip non-layer keys if any
 
-                w_key = f"{layer_name}.weight"
-                b_key = f"{layer_name}.bias"
-                w_final = state_dict[w_key].cpu().numpy()
-                b_tensor = state_dict.get(b_key)
-                b_final = b_tensor.cpu().numpy() if b_tensor is not None else np.zeros(w_final.shape[0])
-                layer_data[layer_name].append((w_final, b_final, run_id))
+                prefix, param = key.rsplit('.', 1)
+                layer_params[prefix][param] = tensor.cpu().numpy()
+
+            for layer_name, params in layer_params.items():
+                # print(f"layer_name = {layer_name}, params={params}")
+                params["run_id"] = run_id
+                layer_data[layer_name].append(params)
+
         except Exception as e:
             print(f"⚠️ Run {run_id}: Failed to extract parameters: {e}")
             raise e
@@ -485,56 +482,61 @@ def extract_layer_parameters(
     return dict(layer_data)
 
 
-def collate_hyperplanes(layer_entries: List[Tuple[np.ndarray, np.ndarray, str]]) -> Dict[int, Dict[str, Any]]:
+def collate_layer_entries(layer_entries):
     """
-    Reorganizes layer parameters from a run-centric to a unit-centric view
-    using a vectorized NumPy approach.
-
-    Args:
-        layer_entries: A list of tuples, where each tuple represents one run
-                       and contains (weights, biases, run_id).
+    Robustly collate *any* param keys in layer_entries.
+    Handles single param (like scale1) or multiple (like linear1).
 
     Returns:
-        A dictionary mapping each unit index to its collected data, identical
-        in structure to the looped version.
+        {
+            'weight': np.ndarray,
+            'bias': np.ndarray,
+            ...
+            'run_ids': list
+        }
     """
     if not layer_entries:
         return {}
 
-    # 1. Unpack the data using the efficient zip pattern.
-    weights_list, biases_list, run_ids_list = zip(*layer_entries)
-    # print(f"weights_list is {len(weights_list)}")
-    # print(f"biases_list is {len(biases_list)}")
-    # print(f"run_ids_list is {len(run_ids_list)}")
+    # Discover param keys (ignore 'run_id')
+    example_keys = list(layer_entries[0].keys())
+    param_keys = [k for k in example_keys if k != "run_id"]
+    base_run_ids = [entry['run_id'] for entry in layer_entries]
+    # print(f"layer_entries = {layer_entries}")
+    # print(f"example_keys = {param_keys}")
 
-    # 2. Step 1: Stack into large NumPy arrays.
-    # If we have R runs, and each weight matrix is (U, F) for (Units, Features),
-    # all_weights becomes a single (R, U, F) array.
-    # all_biases becomes a single (R, U) array.
-    all_weights = np.stack(weights_list)
-    all_biases = np.stack(biases_list)
-    # print(f"all_weights is {all_weights.shape}")
-    # print(f"all_biases is {all_biases.shape}")
+    result = {}
+    unit_ids = []
 
-    # Get dimensions needed for reshaping and repeating
-    num_runs, num_units, num_features = all_weights.shape
+    for key in param_keys:
+        param_list = [entry[key] for entry in layer_entries]
+        arr = np.stack(param_list)
 
-    # 3. Reshape the arrays to flatten the run and unit dimensions together.
-    # This creates a single long list of all hyperplanes.
-    # Shape becomes: (num_runs * num_units, num_features)
-    weights_array = all_weights.reshape(-1, num_features)
-    # print(f"{weights_array is {weights_array.shape}}")
-    # Shape becomes: (num_runs * num_units,)
-    biases_array = all_biases.reshape(-1)
+        if arr.ndim == 3:
+            # Linear: (runs, units, features)
+            runs, units, features = arr.shape
+            flat_arr = arr.reshape(-1, features)
+            # Expand run_id/unit_id
+            run_ids = np.repeat(base_run_ids, units)
+            unit_ids.extend(list(np.tile(np.arange(units), runs)))
 
-    # 4. Create the corresponding list of run_ids.
-    # We need to repeat each run_id `num_units` times.
-    run_ids = np.repeat(run_ids_list, num_units).tolist()
+        elif arr.ndim == 2:
+            # Scale: (runs, units)
+            runs, units = arr.shape
+            flat_arr = arr.reshape(-1, 1)
+            run_ids = np.repeat(base_run_ids, units)
+            unit_ids.extend(list(np.tile(np.arange(units), runs)))
 
-    # print(f"{biases_array is {biases_array.shape}}")
-    # print(f"{run_ids is {len(run_ids)}}")
-    return weights_array, biases_array, run_ids
+        else:
+            raise ValueError(f"Unsupported param shape: {arr.shape}")
 
+        result[key] = flat_arr
+
+    # Run IDs — always a flat list, repeat later if needed
+    result['run_ids'] = np.repeat(base_run_ids, units).tolist()
+    result['unit_ids'] = unit_ids
+
+    return result
 
 def cluster_units(
     weights_array: np.ndarray, eps: float, min_samples: int, metric: str = "euclidean"
@@ -550,6 +552,10 @@ def cluster_units(
     Returns:
         Tuple of (cluster_labels, n_clusters, noise_count)
     """
+    # print(f"eps = {eps}")
+    # print(f"min_samples = {min_samples}")
+    # print(f"metric = {metric}")
+    # print(f"weights_array = {weights_array}")
     clustering = DBSCAN(eps=eps, min_samples=min_samples, metric=metric).fit(weights_array)
     labels = clustering.labels_
     unique_labels = set(labels)
@@ -558,15 +564,10 @@ def cluster_units(
 
     return labels, n_clusters, noise_count
 
-
 def format_clustering_results(
     layer_name: str,
-    labels: np.ndarray,
-    weights_array: np.ndarray,
-    biases_array: np.ndarray,
+    layer_results: Dict,
     run_ids: List,
-    n_clusters: int,
-    noise_count: int,
     eps: float,
     min_samples: int,
 ) -> Dict[str, Any]:
@@ -587,34 +588,42 @@ def format_clustering_results(
     Returns:
         Formatted clustering results dictionary
     """
-    unique_labels = set(labels)
-    cluster_info = {}
-
-    for label in unique_labels:
-        if label == -1:  # Skip noise points
-            continue
-
-        mask = labels == label
-        cluster_weights = weights_array[mask]
-        cluster_biases = biases_array[mask]
-        cluster_run_ids = [run_ids[i] for i in range(len(run_ids)) if mask[i]]
-
-        cluster_info[f"{layer_name}_cluster_{label}"] = {
-            "size": int(np.sum(mask)),
-            "run_ids": cluster_run_ids,
-            "weight_centroid": cluster_weights.mean(axis=0).tolist(),
-            "bias_centroid": cluster_biases.mean(axis=0).tolist(),
-            "weight_std": cluster_weights.std(axis=0).tolist(),
-            "bias_std": cluster_biases.std(axis=0).tolist(),
-        }
-
-    return {
+    layer_info = {
+        "layer_name": layer_name,
         "clustering_params": {"eps": eps, "min_samples": min_samples},
-        "n_clusters": n_clusters,
-        "noise_points": noise_count,
-        "cluster_info": cluster_info,
     }
+    for param_key, param_value in layer_results.items():
+        param_cluster_labels = param_value["labels"]    # cluster ids
+        param_cluster_array = param_value["array"]      # cluster data
+        param_n_clusters = param_value["n_clusters"] # number of clusters
+        param_noise_count = param_value["noise_count"] # number of noise points
 
+        layer_info[param_key] = {
+            "param_label": param_key,
+            "param_data": [],
+            "n_clusters": param_n_clusters,
+            "noise_count": param_noise_count
+        }
+        param_list = layer_info[param_key]["param_data"]
+
+        for cluster_label in np.unique(param_cluster_labels):
+            if cluster_label == -1:  # Skip noise points
+                continue
+
+            mask = param_cluster_labels == cluster_label
+            cluster_array = param_cluster_array[mask]
+            cluster_run_ids = [run_ids[i] for i in range(len(run_ids)) if mask[i]]
+
+            param_list.append({
+                "cluster_label": cluster_label,
+                "size": int(np.sum(mask)),
+                "run_ids": cluster_run_ids,
+                "centroid": cluster_array.mean(axis=0).tolist(),
+                "std": cluster_array.std(axis=0).tolist(),
+            })
+
+    # print(f"layer_info = {layer_info}")
+    return layer_info
 
 def analyze_hyperplane_clustering(
     run_results: List[Dict[str, Any]], config: ExperimentConfig, eps: float = 0.1, min_samples: int = 2
@@ -636,37 +645,46 @@ def analyze_hyperplane_clustering(
         print("⚠️ No runs met the accuracy threshold. Skipping clustering.")
         return {}
 
-    # Extract all weight data from runs
+    # Extract all parameter data from runs
     layer_data = extract_layer_parameters(successful_runs)
 
     # print(f"layer_data.keys() = {layer_data.keys()}")
 
-    results = {}
-
+    cluster_results = {}
     for layer_name, layer_entries in layer_data.items():
         try:
             # Prepare data for clustering
-            weights_array, biases_array, run_ids = collate_hyperplanes(layer_entries)
-            # print(f"run_ids = {run_ids}")
-            # print(f"weights_array = {weights_array}")
-            # print(f"biases_array = {biases_array}")
+            collated_parameters   = collate_layer_entries(layer_entries)
+            run_ids = collated_parameters  ["run_ids"]
 
-            # Perform clustering
-            labels, n_clusters, noise_count = cluster_units(weights_array, eps, min_samples)
-            # print(f"labels = {labels}")
-            # print(f"n_clusters = {n_clusters}")
-            # print(f"noise_count = {noise_count}")
+            # print(f"collated_parameters = {collated_parameters  }")
+
+            layer_results = {}
+            for param_key, flat_array in collated_parameters.items():
+                if param_key == "run_ids":
+                    continue
+                if param_key == "unit_ids":
+                    continue
+
+                # print(f"{layer_name} {param_key}")
+                labels, n_clusters, noise_count = cluster_units(flat_array, eps, min_samples)
+
+                # 👉 Store the raw cluster output in a clean shape:
+                layer_results[param_key] = {
+                    "labels": labels,
+                    "array": flat_array,
+                    "n_clusters": n_clusters,
+                    "noise_count": noise_count
+                }
 
             # Format results
-            results[layer_name] = format_clustering_results(
-                layer_name, labels, weights_array, biases_array, run_ids, n_clusters, noise_count, eps, min_samples
-            )
+            cluster_results[layer_name] = format_clustering_results(layer_name, layer_results, run_ids, eps, min_samples)
 
         except Exception as e:
-            results[layer_name] = {"error": f"Failed to cluster: {str(e)}"}
+            cluster_results[layer_name] = {"error": f"Failed to cluster: {str(e)}"}
             raise e
 
-    return results
+    return cluster_results
 
 
 def compute_accuracy_summary_stats(accuracies: List[float]) -> Dict[str, float]:

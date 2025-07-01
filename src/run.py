@@ -318,6 +318,9 @@ def run_experiment(
             run_dir = output_dirs["experiment"] / "runs" / f"{run_id:03d}"
             run_dir.mkdir(parents=True, exist_ok=True)
 
+            if config.execution.normalize_weights:
+                model.normalization_propagation()
+
             # Save model state dict
             torch.save(model.state_dict(), run_dir / "model.pt")
 
@@ -347,6 +350,7 @@ def run_experiment(
             if verbose:
                 print(f"✗ Run {run_id} failed: {type(e).__name__}: {e}")
                 print(f"Traceback:\n{error_details}")
+            raise e
         finally:
             # Always clean up, even if there was an error
             if "fresh_config" in locals():

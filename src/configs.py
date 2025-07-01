@@ -180,6 +180,7 @@ class ExecutionConfig:
     random_seeds: Optional[List[int]] = None
     device: str = "auto"  # "auto", "cpu", "cuda", "cuda:0", etc.
     skip_existing: bool = True  # Don't rerun existing experiments
+    normalize_weights: bool = False # Normalize weights before saving
 
     # Parallel execution
     parallel_runs: bool = False
@@ -715,7 +716,7 @@ def config_abs2_single_bce() -> ExperimentConfig:
 
 
 @experiment("abs2_single_bce_l2reg")
-def abs2_single_bce_l2reg() -> ExperimentConfig:
+def config_abs2_single_bce_l2reg() -> ExperimentConfig:
     model = models.Model_Xor2(middle=1, activation=models.Abs()).init()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.01, betas=(0.9, 0.99), weight_decay=1e-1)
     loss_function = nn.BCEWithLogitsLoss()
@@ -811,7 +812,7 @@ def config_abs2_single_bce_confidence() -> ExperimentConfig:
 
 
 @experiment("abs2_single_bce_confidence_l2reg")
-def abs2_abs2_single_bce_confidence_l2reg() -> ExperimentConfig:
+def config_abs2_abs2_single_bce_confidence_l2reg() -> ExperimentConfig:
     model = models.Model_Xor2_Confidence(middle=1, activation=models.Abs()).init()
 
     optimizer_grouped_parameters = [
@@ -1030,5 +1031,28 @@ def config_relu2_eight_bce_l2reg() -> ExperimentConfig:
         analysis=AnalysisConfig(accuracy_fn=accuracy_one_hot, save_plots=False),
         execution=ExecutionConfig(num_runs=50, skip_existing=False),
         description="Centered XOR with 2-output BCE loss, L2 reg, and eight ReLU units.",
+        logging=LoggingConfig(train_epochs=50),
+    )
+
+@experiment("abs2_single_bce_norm")
+def config_abs2_single_bce_norm() -> ExperimentConfig:
+    model = models.Model_Xor2(middle=1, activation=models.Abs()).init()
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01, betas=(0.9, 0.99))
+    loss_function = nn.BCEWithLogitsLoss()
+
+    return ExperimentConfig(
+        model=model,
+        training=TrainingConfig(
+            optimizer=optimizer,
+            loss_function=loss_function,
+            epochs=5000,
+            stop_training_loss_threshold=1e-7,
+            loss_change_threshold=1e-24,
+            loss_change_patience=10,
+        ),
+        data=DataConfig(x=xor_data_centered(), y=xor_labels_one_hot()),
+        analysis=AnalysisConfig(accuracy_fn=accuracy_one_hot, save_plots=True),
+        execution=ExecutionConfig(num_runs=50, skip_existing=False, normalize_weights=True),
+        description="Centered XOR with 2-output BCE loss using a single Abs unit.",
         logging=LoggingConfig(train_epochs=50),
     )

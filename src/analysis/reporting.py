@@ -118,9 +118,6 @@ def generate_accuracy_section(distributions, total_runs) -> str:
 
 def generate_convergence_section(convergence_timing, config) -> str:
     """Generate the convergence timing section."""
-    if not config.analysis.convergence_analysis:
-        return ""
-
     report = "## ⏱️ Convergence Timing (Epochs to MSE < 1e-7)\n\n"
     report += "| Percentile | Epochs |\n| ---------- | ------ |\n"
 
@@ -424,7 +421,7 @@ def generate_dead_data_analysis_section(analysis_results, config):
 
 def generate_mirror_analysis_section(analysis_results, config) -> str:
     """Generate the mirror weight symmetry analysis section."""
-    if not config.analysis.mirror_pair_detection:
+    if not config.analysis.mirror_weight_detection:
         return ""
 
     # Extract and calculate mirror statistics
@@ -475,7 +472,7 @@ def generate_mirror_analysis_section(analysis_results, config) -> str:
 
 def generate_failure_analysis_section(analysis_results, config):
     """Generate the geometric analysis of failure modes section."""
-    if not config.analysis.failure_angles:
+    if not config.analysis.failure_angle_analysis:
         return ""
 
     failure_angles = analysis_results.get("failure_angle_analysis", {})
@@ -498,9 +495,7 @@ def generate_failure_analysis_section(analysis_results, config):
         report += (
             f"* **Failure units (n={count_f})** – mean angle diff: {stats_f['mean']:.2f}° ± {stats_f['std']:.2f}°\n"
         )
-        report += "* Failed units tend to cluster near 90°, consistent with the no-torque trap hypothesis.\n\n"
 
-    report += "See `failure_angle_histogram.png` for visual confirmation.\n\n"
     return report
 
 

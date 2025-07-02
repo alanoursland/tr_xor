@@ -38,7 +38,7 @@ def analyze_dead_data(run_results: List[Dict[str, Any]], config: ExperimentConfi
     and correlate with final accuracy.
     """
 
-    model = config.model.__class__()
+    model = config.model
     data = config.data
     x = data.x  # [num_points, input_dim]
     y = data.y.squeeze().int()  # [num_points], class labels as 0 or 1
@@ -520,6 +520,13 @@ def collate_layer_entries(layer_entries):
             run_ids = np.repeat(base_run_ids, units)
             unit_ids.extend(list(np.tile(np.arange(units), runs)))
 
+        elif arr.ndim == 1:
+            runs = arr.shape[0]
+            units = 1
+            flat_arr = arr.reshape(-1, 1)
+            run_ids = base_run_ids  # one-to-one
+            unit_ids.extend([None] * runs)  # No units to repeat
+
         else:
             raise ValueError(f"Unsupported param shape: {arr.shape}")
 
@@ -902,6 +909,7 @@ def main() -> int:
             return 1
         except Exception as e:
             print(f"✗ Failed to load configuration: {e}")
+            traceback.print_exc()
             return 1
 
         # Display experiment info
@@ -1043,11 +1051,10 @@ def main() -> int:
             plot_epoch_distribution(
                 run_results,
                 plot_config={
-                    "save_plots": config.analysis.save_plots,
+                    "save_plots": True,
                     "format": config.analysis.plot_format,
                     "dpi": config.analysis.plot_dpi,
-                    "interactive": config.analysis.interactive_plots,
-                    "style": config.analysis.plot_style,
+                    "interactive": False,
                 },
                 output_dir=output_dir,
                 experiment_name=config.execution.experiment_name,

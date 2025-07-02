@@ -224,7 +224,7 @@ class DeadSampleMonitor(BaseMonitor):
         """
         # --- 1. Retrieve captured tensors from the hook manager ---
         # (B, H) - Pre-activation values for the first hidden layer
-        pre_activations = self.activations["activation1_in"]
+        pre_activations = self.activations["activation_in"]
         # (B,)   - Final model predictions for the batch
         predictions = self.manager.model_output.squeeze(1)
 

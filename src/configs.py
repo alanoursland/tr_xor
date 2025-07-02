@@ -406,10 +406,20 @@ def config_relu1_normal() -> ExperimentConfig:
         data=DataConfig(x=xor_data_centered(), y=xor_labels_T1()),
         analysis=AnalysisConfig(
             accuracy_fn=accuracy_binary_threshold,
-            convergence_analysis=False,
-            save_plots=True,
+            # Core analyses (default enabled)
+            weight_clustering=True,
+            parameter_displacement=True,
+            distance_to_hyperplanes=True,
+            # Specialized analyses (default disabled)
+            mirror_weight_detection=True,
+            failure_angle_analysis=True,
             dead_data_analysis=True,
-            mirror_pair_detection=True,
+            # Visualizations (default disabled for speed)
+            plot_hyperplanes=False,
+            plot_epoch_distribution=True,
+            plot_parameter_displacement=True,
+            plot_failure_angles=True,
+
         ),
         execution=ExecutionConfig(num_runs=50, skip_existing=False, random_seeds=[18]),
         description="Centered XOR with two nodes, ReLU, sum, and normal init.",
@@ -448,6 +458,21 @@ def config_relu1_bhs() -> ExperimentConfig:
     config.description = "Centered XOR with two nodes, ReLU, sum, and bounded hypersphere initialization with norm weights."
     return config
 
+@experiment("relu1_monitor")
+def config_relu1_monitor() -> ExperimentConfig:
+    """Factory function for ReLU XOR experiment with early-failure monitor."""
+    config = get_experiment_config("relu1_normal")
+    dataset_size = config.data.x.shape[0]  # == 4
+    hook_manager = monitor.SharedHookManager(config.model)
+    health_monitor = monitor.CompositeMonitor(
+        [
+            monitor.DeadSampleMonitor(hook_manager, dataset_size=dataset_size, patience=5, classifier_threshold=0.5),
+            monitor.BoundsMonitor(hook_manager, dataset_size=dataset_size, radius=1.5),
+        ]
+    )
+    config.training.health_monitor = health_monitor
+    config.description=("Centered XOR with two nodes, ReLU, sum, normal init, " "and early-failure degeneracy detection."),
+    return config
 
 @experiment("relu1_mirror")
 def config_relu1_mirror() -> ExperimentConfig:
@@ -576,7 +601,7 @@ def config_relu2_two_bce() -> ExperimentConfig:
             # ReLU-specific analyses
             mirror_weight_detection=True,
             failure_angle_analysis=True,
-            dead_data_analysis=True,
+            dead_data_analysis=False,
             # Visualizations (off for these experiments)
             plot_hyperplanes=False,
             plot_epoch_distribution=False,
@@ -613,40 +638,48 @@ def config_relu2_two_mse_l2reg() -> ExperimentConfig:
     return config
 
 
-@experiment("relu2_one_bce_l2reg")
-def config_relu2_one_bce_l2reg() -> ExperimentConfig:
-    config = get_experiment_config("relu2_two_bce_l2reg")
+@experiment("relu2_one_mse_norm")
+def config_relu2_one_mse_norm() -> ExperimentConfig:
+    config = get_experiment_config("relu2_two_mse_norm")
     config.model = models.Model_Xor2(middle=1, activation=nn.ReLU()).init()
-    config.training.optimizer = torch.optim.Adam(config.model.parameters(), lr=0.01, betas=(0.9, 0.99), weight_decay=1e-1)
+    config.training.optimizer = torch.optim.Adam(config.model.parameters(), lr=0.01, betas=(0.9, 0.99))
     config.analysis.accuracy_threshold = 0.75
-    config.description = "Centered XOR with 2-output BCE loss, L2 reg, and one ReLU unit."
+    config.analysis.plot_hyperplanes = True
+    config.execution.normalize_weights = True
+    config.description = "Centered XOR with 2-output BCE loss and one ReLU unit. Weight normalization post training."
     return config
 
 
-@experiment("relu2_three_bce_l2reg")
-def config_relu2_three_bce_l2reg() -> ExperimentConfig:
-    config = get_experiment_config("relu2_two_bce_l2reg")
+@experiment("relu2_three_mse_norm")
+def config_relu2_three_bce_norm() -> ExperimentConfig:
+    config = get_experiment_config("relu2_two_mse")
     config.model = models.Model_Xor2(middle=3, activation=nn.ReLU()).init()
-    config.training.optimizer = torch.optim.Adam(config.model.parameters(), lr=0.01, betas=(0.9, 0.99), weight_decay=1e-1)
-    config.description = "Centered XOR with 2-output BCE loss, L2 reg, and three ReLU units."
+    config.training.optimizer = torch.optim.Adam(config.model.parameters(), lr=0.01, betas=(0.9, 0.99))
+    config.analysis.plot_hyperplanes = True
+    config.execution.normalize_weights = True
+    config.description = "Centered XOR with 2-output BCE loss and three ReLU units. Weight normalization post training."
     return config
 
 
-@experiment("relu2_four_bce_l2reg")
-def config_relu2_four_bce_l2reg() -> ExperimentConfig:
-    config = get_experiment_config("relu2_two_bce_l2reg")
+@experiment("relu2_four_mse_norm")
+def config_relu2_four_bce_norm() -> ExperimentConfig:
+    config = get_experiment_config("relu2_two_mse")
     config.model = models.Model_Xor2(middle=4, activation=nn.ReLU()).init()
-    config.training.optimizer = torch.optim.Adam(config.model.parameters(), lr=0.01, betas=(0.9, 0.99), weight_decay=1e-1)
-    config.description = "Centered XOR with 2-output BCE loss, L2 reg, and four ReLU units."
+    config.training.optimizer = torch.optim.Adam(config.model.parameters(), lr=0.01, betas=(0.9, 0.99))
+    config.analysis.plot_hyperplanes = True
+    config.execution.normalize_weights = True
+    config.description = "Centered XOR with 2-output BCE loss and four ReLU units. Weight normalization post training."
     return config
 
 
-@experiment("relu2_eight_bce_l2reg")
-def config_relu2_eight_bce_l2reg() -> ExperimentConfig:
-    config = get_experiment_config("relu2_two_bce_l2reg")
+@experiment("relu2_eight_mse_norm")
+def config_relu2_eight_bce_norm() -> ExperimentConfig:
+    config = get_experiment_config("relu2_two_mse")
     config.model = models.Model_Xor2(middle=8, activation=nn.ReLU()).init()
-    config.training.optimizer = torch.optim.Adam(config.model.parameters(), lr=0.01, betas=(0.9, 0.99), weight_decay=1e-1)
-    config.description = "Centered XOR with 2-output BCE loss, L2 reg, and eight ReLU units."
+    config.training.optimizer = torch.optim.Adam(config.model.parameters(), lr=0.01, betas=(0.9, 0.99))
+    config.analysis.plot_hyperplanes = True
+    config.execution.normalize_weights = True
+    config.description = "Centered XOR with 2-output BCE loss and eight ReLU units. Weight normalization post training."
     return config
 
 @experiment("abs2_single_bce_norm")
@@ -677,4 +710,48 @@ def config_relu2_two_mse_norm() -> ExperimentConfig:
     config = get_experiment_config("relu2_two_mse")
     config.execution.normalize_weights = True
     config.description = "Centered XOR with 2-output MSE loss using two ReLU units with weight normalization."
+    return config
+
+
+@experiment("abs2_single_bce_eater")
+def config_abs2_single_bce_eater() -> ExperimentConfig:
+    config = get_experiment_config("abs2_single_bce")
+    config.model = models.Model_Xor2_Eater(middle=1, activation=models.Abs(), max_points=4).init()
+    # Recreate optimizer with new model
+    config.training.optimizer = torch.optim.Adam(config.model.parameters(), lr=0.01, betas=(0.9, 0.99))
+    config.analysis.parameter_displacement = False
+    config.description = "Centered XOR with 2-output BCE loss using a single Abs unit. Includes 'eater' layers intended to regularize linear layers."
+    return config
+
+
+@experiment("abs2_single_mse_eater")
+def config_abs2_single_mse() -> ExperimentConfig:
+    config = get_experiment_config("abs2_single_bce")
+    config.model = models.Model_Xor2_Eater(middle=1, activation=models.Abs(), max_points=4).init()
+    config.training.loss_function = nn.MSELoss()
+    config.training.optimizer = torch.optim.Adam(config.model.parameters(), lr=0.01, betas=(0.9, 0.99))
+    config.analysis.parameter_displacement = False
+    config.description = "Centered XOR with 2-output MSE loss using a single Abs unit. Includes 'eater' layers intended to regularize linear layers."
+    return config
+
+
+@experiment("relu2_two_bce_eater")
+def config_relu2_two_bce_eater() -> ExperimentConfig:
+    config = get_experiment_config("relu2_two_bce")
+    config.model = models.Model_Xor2_Eater(middle=1, activation=nn.ReLU(), max_points=4).init()
+    # Recreate optimizer with new model
+    config.training.optimizer = torch.optim.Adam(config.model.parameters(), lr=0.01, betas=(0.9, 0.99))
+    config.analysis.parameter_displacement = False
+    config.description = "Centered XOR with 2-output BCE loss using two ReLU units. Includes 'eater' layers intended to regularize linear layers."
+    return config
+
+
+@experiment("relu2_two_mse_eater")
+def config_relu2_two_mse_eater() -> ExperimentConfig:
+    config = get_experiment_config("relu2_two_mse")
+    config.model = models.Model_Xor2_Eater(middle=1, activation=nn.ReLU(), max_points=4).init()
+    config.training.loss_function = nn.MSELoss()
+    config.training.optimizer = torch.optim.Adam(config.model.parameters(), lr=0.01, betas=(0.9, 0.99))
+    config.analysis.parameter_displacement = False
+    config.description = "Centered XOR with 2-output MSE loss using two ReLU units. Includes 'eater' layers intended to regularize linear layers."
     return config

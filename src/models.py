@@ -154,6 +154,73 @@ class Confidence(nn.Module):
         """
         return x * torch.square(self.confidence)
 
+
+class MagnitudeEater(nn.Module):
+    def __init__(self, max_points: int):
+        super().__init__()
+        self.max_points = max_points
+        # Store the running average and point count directly
+        self.register_buffer('running_avg', torch.tensor(1.0))
+        self.register_buffer('point_count', torch.tensor(0.0))
+
+    def forward(self, x):
+        if not self.training:
+            return x
+
+        # Amplify the input using the stored running average
+        # print(running_avg)
+        # setting x = x*running_avg is too much regularization
+        # let running_avg = gain+1
+        # and the equation above be x = x*(1+gain)
+        # x = x + x*gain
+        # now we can weaken the regularization by adding a factor
+        # x = x + k*x*gain
+        gain = self.running_avg.detach() - 1
+        amplified_x = x + (0.1 * x * gain)
+
+        # Update the sliding window average using the stable math
+        with torch.no_grad():
+            # Get stats for the new batch
+            N = x.shape[0]
+            # print(f"N = {N}")
+            A_N = torch.mean(torch.norm(x, p=2, dim=1)) # New average
+            # print(f"A_N = {A_N}")
+            
+            # Current state
+            M = self.point_count
+            # print(f"M = {M}")
+            A_M = self.running_avg
+            # print(f"A_M = {A_M}")
+            Max = self.max_points
+            # print(f"Max = {Max}")
+
+            # Number of points to discard
+            d = F.relu((M + N) - Max)
+            # print(f"d = {d}")
+
+            # New total count in the window
+            M_final = (M - d) + N
+            # print(f"M_final = {M_final}")
+
+            # Calculate the final average using the derived formula
+            # Avoid division by zero if the new count is zero
+            if M_final > 0:
+                numerator = (A_M * (M - d)) + (A_N * N)
+                A_final = numerator / M_final
+            else: # Should not happen in practice if N > 0
+                A_final = torch.tensor(1.0) 
+            # print(f"M_final = {A_final}")
+
+            # Update state for the next iteration
+            self.running_avg = A_final
+            self.point_count = M_final
+            
+        return amplified_x
+
+    def init(self):
+        self.running_avg.zero_()
+        self.point_count.zero_()
+
 # ==============================================================================
 # Custom Models
 # ==============================================================================
@@ -388,14 +455,45 @@ class Model_Xor2_Confidence(nn.Module):
         nn.init.kaiming_normal_(self.linear1.weight, nonlinearity="relu")
         nn.init.zeros_(self.linear1.bias)
 
-        nn.init.ones_(self.scale.weight)
+        nn.init.ones_(self.scale1.weight)
 
         nn.init.xavier_normal_(self.linear2.weight)
         nn.init.zeros_(self.linear2.bias)
 
         nn.init.ones_(self.scale2.weight)
 
-        nn.init.ones_(self.confidence)
+        nn.init.ones_(self.confidence.confidence)
 
         return self
 
+class Model_Xor2_Eater(nn.Module):
+    def __init__(self, middle, activation, max_points):
+        super().__init__()
+        self.linear1 = nn.Linear(2, middle)
+        self.activation = activation
+        self.eater1 = MagnitudeEater(max_points)
+        self.linear2 = nn.Linear(middle, 2)
+        self.eater2 = MagnitudeEater(max_points)
+        self.init()
+
+    def forward(self, x):
+        x = self.linear1(x)
+        x = self.activation(x)
+        x = self.eater1(x)
+        x = self.linear2(x)
+        x = self.eater2(x)
+        return x
+
+    def init(self):
+        nn.init.kaiming_normal_(self.linear1.weight, nonlinearity="relu")
+        nn.init.zeros_(self.linear1.bias)
+
+        self.eater1.init()
+        
+        nn.init.xavier_normal_(self.linear2.weight)
+        nn.init.zeros_(self.linear2.bias)
+        
+        self.eater2.init()
+
+
+        return self

@@ -12,7 +12,7 @@ def process_prototype_surface_distances(analysis_results):
         Nested structure: layer → unit → class → list of distances
     """
     # Extract prototype surface distance test results
-    distance_entries = analysis_results.get("prototype_surface", {}).get("distance_test", [])
+    distance_entries = analysis_results.get("distance_to_hyperplanes", [])
 
     # Initialize nested structure: layer → unit → class → list of distances
     distance_by_layer_unit = {}
@@ -311,6 +311,74 @@ def generate_loss_distribution_section(basic_stats) -> str:
 
 
 def generate_hyperplane_clustering_section(analysis_results):
+    """Generate the hyperplane clustering section in Markdown with improved formatting."""
+    report = "## 🎯 Hyperplane Clustering\n\n"
+
+    hyperplane_clustering = analysis_results.get("hyperplane_clustering", {})
+
+    if not hyperplane_clustering:
+        report += "* **No clustering data available**\n\n"
+        return report
+
+    for layer_name, layer_result in hyperplane_clustering.items():
+        report += f"### 🔹 Layer: `{layer_name}`\n\n"
+
+        clustering_params = layer_result.get("clustering_params", {})
+        eps = clustering_params.get("eps", "N/A")
+        min_samples = clustering_params.get("min_samples", "N/A")
+
+        report += f"**DBSCAN Parameters**: eps=`{eps}`, min_samples=`{min_samples}`\n\n"
+
+        # Process each parameter type (weight, bias, etc.)
+        for param_key, param_data in layer_result.items():
+            if param_key in ("layer_name", "clustering_params"):
+                continue  # skip metadata
+
+            param_label = param_data.get("param_label", param_key)
+            clusters = param_data.get("param_data", [])
+            n_clusters = param_data.get("n_clusters", 0)
+            noise_count = param_data.get("noise_count", 0)
+
+            report += f"#### Parameter: `{param_label}`\n\n"
+            
+            # Summary statistics
+            report += f"* **Total clusters found**: {n_clusters}\n"
+            if noise_count > 0:
+                report += f"* **Noise points**: {noise_count}\n"
+            
+            if not clusters:
+                report += "* No clusters to display\n\n"
+                continue
+                
+            report += "\n"
+
+            # Sort clusters by size (largest first)
+            sorted_clusters = sorted(clusters, key=lambda x: x["size"], reverse=True)
+
+            # Create a table for better readability
+            report += "| Cluster | Size | Centroid | Std Dev | Runs |\n"
+            report += "|---------|------|----------|---------|------|\n"
+
+            for cluster in sorted_clusters:
+                cid = cluster["cluster_label"]
+                size = cluster["size"]
+                centroid = cluster["centroid"]
+                std = cluster["std"]
+                run_ids = cluster["run_ids"]
+
+                # Format centroid and std dev nicely
+                centroid_str = "[" + ", ".join(f"{v:.3f}" for v in centroid) + "]"
+                std_str = "[" + ", ".join(f"{s:.3f}" for s in std) + "]"
+                
+                runs_str = ", ".join(str(r) for r in set(run_ids))
+
+                report += f"| {cid} | {size} | `{centroid_str}` | `{std_str}` | {runs_str} |\n"
+
+            report += "\n"
+
+        report += "---\n\n"
+
+    return report
     """Generate the hyperplane clustering section in Markdown."""
     report = "## 🎯 Hyperplane Clustering\n\n"
 
@@ -425,7 +493,7 @@ def generate_mirror_analysis_section(analysis_results, config) -> str:
         return ""
 
     # Extract and calculate mirror statistics
-    mirror_data = analysis_results.get("prototype_surface", {}).get("mirror_test", [])
+    mirror_data = analysis_results.get("mirror_weights", [])
     total_runs = len(mirror_data)
     perfect_threshold = 1e-3  # similarity diff from -1.0
 

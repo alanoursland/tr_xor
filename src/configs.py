@@ -754,6 +754,7 @@ def config_relu2_two_mse_eater() -> ExperimentConfig:
     config.model = models.Model_Xor2_Eater(middle=1, activation=nn.ReLU(), max_points=4).init()
     config.training.loss_function = nn.MSELoss()
     config.training.optimizer = torch.optim.Adam(config.model.parameters(), lr=0.01, betas=(0.9, 0.99))
+    config.analysis.accuracy_threshold = 0.75
     config.analysis.parameter_displacement = False
     config.description = "Centered XOR with 2-output MSE loss using two ReLU units. Includes 'eater' layers intended to regularize linear layers."
     return config

@@ -181,7 +181,8 @@ def analyze_hyperplane_distances_with_hooks(
     successful_runs = [r for r in run_results if r.get("accuracy", 0) >= accuracy_threshold]
     
     if not successful_runs:
-        return {"error": "No successful runs to analyze"}
+        print(f"⚠️  WARNING: No successful runs to analyze (accuracy_threshold = {accuracy_threshold}).")
+        return {}
     
     # Collect distance data per layer
     layer_results = {}

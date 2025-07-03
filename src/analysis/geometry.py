@@ -1,5 +1,7 @@
 import torch
 import math
+import numpy as np
+import torch.nn as nn
 
 from typing import Dict, List, Tuple, Any
 
@@ -155,3 +157,281 @@ def remove_duplicate_points(points: torch.Tensor, tolerance: float = 1e-3) -> to
             unique_points.append(point)
 
     return torch.stack(unique_points)
+
+
+##################################################################
+# Hyperplane Distances
+##################################################################
+
+def analyze_hyperplane_distances_with_hooks(
+    run_results: List[Dict[str, Any]], 
+    experiment_data: Dict[str, Any], 
+    config,
+    eps: float = 0.1, 
+    min_samples: int = 2
+) -> Dict[str, Any]:
+    """
+    Proper hyperplane analysis using input hooks to capture actual layer inputs.
+    """
+    x_train = experiment_data["x_train"]
+    y_train = experiment_data["y_train"]
+    
+    # Only analyze successful runs
+    accuracy_threshold = getattr(config.analysis, 'accuracy_threshold', 1.00)
+    successful_runs = [r for r in run_results if r.get("accuracy", 0) >= accuracy_threshold]
+    
+    if not successful_runs:
+        return {"error": "No successful runs to analyze"}
+    
+    # Collect distance data per layer
+    layer_results = {}
+    
+    for run_result in successful_runs:
+        # Load model
+        model = config.model
+        model.load_state_dict(run_result["model_state_dict"])
+        model.eval()
+        
+        run_id = run_result["run_id"]
+        
+        # Hook linear layers to capture inputs
+        layer_inputs = {}
+        hooks = []
+        
+        def make_hook(layer_name):
+            def hook_fn(module, input, output):
+                # input is a tuple, we want the first element
+                layer_inputs[layer_name] = input[0].detach().clone()
+            return hook_fn
+        
+        # Register hooks on all linear layers
+        for name, module in model.named_modules():
+            if isinstance(module, nn.Linear):
+                hook = module.register_forward_hook(make_hook(name))
+                hooks.append(hook)
+        
+        # Forward pass to capture inputs and get predictions
+        with torch.no_grad():
+            predictions = model(x_train)
+            predicted_classes = torch.argmax(predictions, dim=1) if predictions.dim() > 1 else (predictions > 0.5).long()
+        
+        # Remove hooks
+        for hook in hooks:
+            hook.remove()
+        
+        # Now analyze each layer with its actual inputs
+        for layer_name, layer_module in model.named_modules():
+            if not isinstance(layer_module, nn.Linear):
+                continue
+                
+            if layer_name not in layer_inputs:
+                print(f"Warning: No input captured for layer {layer_name}")
+                continue
+            
+            actual_inputs = layer_inputs[layer_name]  # [batch_size, input_dim]
+            
+            # Initialize layer results
+            if layer_name not in layer_results:
+                layer_results[layer_name] = {
+                    "distance_vectors": [],
+                    "hyperplane_metadata": []
+                }
+            
+            # Get layer parameters
+            weight = layer_module.weight  # [n_units, input_dim]
+            bias = layer_module.bias      # [n_units]
+            
+            # Compute distance vectors for each hyperplane
+            for unit_idx in range(weight.shape[0]):
+                w = weight[unit_idx]  # [input_dim]
+                b = bias[unit_idx]    # scalar
+                
+                distance_vector, metadata = compute_hyperplane_distances_proper(
+                    w, b, actual_inputs, predicted_classes, 
+                    run_id, layer_name, unit_idx
+                )
+                
+                if distance_vector is not None:
+                    layer_results[layer_name]["distance_vectors"].append(distance_vector)
+                    layer_results[layer_name]["hyperplane_metadata"].append(metadata)
+    
+    # Cluster distance vectors for each layer
+    clustering_results = {}
+    
+    for layer_name, layer_data in layer_results.items():
+        distance_vectors = np.array(layer_data["distance_vectors"])
+        metadata = layer_data["hyperplane_metadata"]
+        
+        if len(distance_vectors) == 0:
+            clustering_results[layer_name] = {"error": "No valid hyperplanes found"}
+            continue
+        
+        # Perform DBSCAN clustering
+        from sklearn.cluster import DBSCAN
+        clustering = DBSCAN(eps=eps, min_samples=min_samples).fit(distance_vectors)
+        labels = clustering.labels_
+        n_clusters = len(set(labels)) - (1 if -1 in labels else 0)
+        noise_count = int(np.sum(labels == -1))
+        
+        # Format results
+        clustering_results[layer_name] = format_distance_clustering_results(
+            layer_name, distance_vectors, metadata, labels, 
+            n_clusters, noise_count, eps, min_samples
+        )
+
+    return clustering_results
+
+
+def compute_hyperplane_distances_proper(
+    weight: torch.Tensor,
+    bias: torch.Tensor, 
+    layer_inputs: torch.Tensor,
+    predicted_classes: torch.Tensor,
+    run_id: int,
+    layer_name: str,
+    unit_idx: int
+) -> Tuple[np.ndarray, Dict]:
+    """
+    Compute L2 distances from actual layer inputs to hyperplane, grouped by predicted class.
+    
+    Args:
+        weight: Hyperplane weight vector [input_dim]
+        bias: Hyperplane bias scalar
+        layer_inputs: Actual inputs to this layer [batch_size, input_dim] 
+        predicted_classes: Model predictions [batch_size]
+        
+    Returns:
+        distance_vector: [mean_dist_class0, mean_dist_class1] or None
+        metadata: Information about this hyperplane
+    """
+    # Skip near-zero weights
+    weight_norm = torch.norm(weight)
+    if weight_norm < 1e-8:
+        return None, None
+    
+    # Compute L2 distances to hyperplane: |w^T x + b| / ||w||
+    # This is the perpendicular distance from each point to the hyperplane
+    distances = torch.abs(layer_inputs @ weight + bias) / weight_norm  # [batch_size]
+    
+    # Group by predicted class
+    class_distances = {}
+    for class_idx in torch.unique(predicted_classes):
+        mask = predicted_classes == class_idx
+        if mask.sum() > 0:
+            class_distances[int(class_idx)] = distances[mask]
+    
+    # Ensure we have both classes
+    if 0 not in class_distances or 1 not in class_distances:
+        return None, None
+    
+    # Compute mean distances per predicted class
+    mean_dist_class0 = class_distances[0].mean().item()
+    mean_dist_class1 = class_distances[1].mean().item()
+    
+    # Create distance vector
+    distance_vector = np.array([mean_dist_class0, mean_dist_class1])
+    
+    # Metadata
+    metadata = {
+        "run_id": run_id,
+        "layer_name": layer_name,
+        "unit_idx": unit_idx,
+        "weight_norm": weight_norm.item(),
+        "weight": weight.detach().cpu().numpy(),
+        "bias": bias.item(),
+        "mean_dist_class0": mean_dist_class0,
+        "mean_dist_class1": mean_dist_class1,
+        "separation_ratio": mean_dist_class1 / (mean_dist_class0 + 1e-12),
+        "input_dim": layer_inputs.shape[1],
+        "n_samples_class0": class_distances[0].numel(),
+        "n_samples_class1": class_distances[1].numel()
+    }
+    
+    return distance_vector, metadata
+
+
+def format_distance_clustering_results(
+    layer_name: str,
+    distance_vectors: np.ndarray,
+    metadata: List[Dict],
+    labels: np.ndarray,
+    n_clusters: int,
+    noise_count: int,
+    eps: float,
+    min_samples: int
+) -> Dict[str, Any]:
+    """Format clustering results for distance vectors."""
+    
+    result = {
+        "layer_name": layer_name,
+        "clustering_params": {"eps": eps, "min_samples": min_samples},
+        "analysis_method": "actual_layer_inputs_L2_distance",
+        "distance_analysis": {
+            "total_hyperplanes": len(distance_vectors),
+            "n_clusters": n_clusters,
+            "noise_count": noise_count,
+            "clusters": []
+        }
+    }
+    
+    # Process each cluster
+    for cluster_id in np.unique(labels):
+        if cluster_id == -1:  # Skip noise
+            continue
+            
+        mask = labels == cluster_id
+        cluster_vectors = distance_vectors[mask]
+        cluster_metadata = [metadata[i] for i in range(len(metadata)) if mask[i]]
+        
+        cluster_data = {
+            "cluster_id": int(cluster_id),
+            "size": int(mask.sum()),
+            "centroid": cluster_vectors.mean(axis=0).tolist(),
+            "std": cluster_vectors.std(axis=0).tolist(),
+            "distance_range": {
+                "class0_dist": [cluster_vectors[:, 0].min(), cluster_vectors[:, 0].max()],
+                "class1_dist": [cluster_vectors[:, 1].min(), cluster_vectors[:, 1].max()]
+            },
+            "hyperplanes": []
+        }
+        
+        # Add hyperplane details
+        for hp_meta in cluster_metadata:
+            cluster_data["hyperplanes"].append({
+                "run_id": hp_meta["run_id"],
+                "unit_idx": hp_meta["unit_idx"],
+                "weight_norm": hp_meta["weight_norm"],
+                "separation_ratio": hp_meta["separation_ratio"],
+                "input_dim": hp_meta["input_dim"],
+                "n_samples_class0": hp_meta["n_samples_class0"],
+                "n_samples_class1": hp_meta["n_samples_class1"]
+            })
+        
+        # Sort hyperplanes by run_id for consistency
+        cluster_data["hyperplanes"].sort(key=lambda x: (x["run_id"], x["unit_idx"]))
+        
+        result["distance_analysis"]["clusters"].append(cluster_data)
+    
+    # Sort clusters by size (largest first)
+    result["distance_analysis"]["clusters"].sort(key=lambda x: x["size"], reverse=True)
+    
+    return result
+
+
+# Integration function to replace the old analysis
+def analyze_hyperplane_metric_clustering(
+    run_results: List[Dict[str, Any]], 
+    experiment_data: Dict[str, Any], 
+    config,
+    eps: float = 0.1, 
+    min_samples: int = 2
+) -> Dict[str, Any]:
+    """
+    Wrapper function that uses the proper hook-based analysis.
+    This replaces the old analyze_hyperplane_metric_clustering function.
+    """
+    return analyze_hyperplane_distances_with_hooks(
+        run_results, experiment_data, config, eps, min_samples
+    )
+
+##################################################################

@@ -28,7 +28,7 @@ from analysis.visualization import (
     plot_epoch_distribution,
     plot_weight_angle_and_magnitude_vs_epochs,
 )
-from analysis.geometry import compute_angles_between, compute_norm_ratios
+from analysis.geometry import compute_angles_between, compute_norm_ratios, analyze_hyperplane_metric_clustering
 from analysis.reporting import generate_analysis_report
 
 
@@ -139,100 +139,6 @@ def summarize_all_runs(all_results: List[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
     return summary
-
-
-def analyze_hyperplane_metric_clustering(
-    run_results: List[Dict[str, Any]], 
-    experiment_data: Dict[str, Any], 
-    config,
-    eps: float = 0.1, 
-    min_samples: int = 2
-) -> Dict[str, Any]:
-    """
-    Cluster hyperplanes based on their class separation behavior.
-    Each hyperplane becomes a 2D metric vector: [mean_dist_class0, mean_dist_class1]
-    
-    Args:
-        run_results: List of run result dicts
-        experiment_data: Dict with 'x_train' and 'y_train'
-        config: Experiment config
-        eps: DBSCAN epsilon parameter
-        min_samples: DBSCAN minimum samples per cluster
-        
-    Returns:
-        Dictionary with clustering results per layer
-    """
-    x_train = experiment_data["x_train"]
-    y_train = experiment_data["y_train"]
-    
-    # Only analyze successful runs
-    accuracy_threshold = getattr(config.analysis, 'accuracy_threshold', 0.75)
-    successful_runs = [r for r in run_results if r.get("accuracy", 0) >= accuracy_threshold]
-    
-    if not successful_runs:
-        return {"error": "No successful runs to analyze"}
-    
-    # Collect metric vectors per layer
-    layer_results = {}
-    
-    for run_result in successful_runs:
-        # Load model
-        model = config.model
-        model.load_state_dict(run_result["model_state_dict"])
-        model.eval()
-        
-        run_id = run_result["run_id"]
-        
-        # Process each linear layer
-        for layer_name, layer_module in model.named_modules():
-            if not isinstance(layer_module, torch.nn.Linear):
-                continue
-                
-            if layer_name not in layer_results:
-                layer_results[layer_name] = {
-                    "metric_vectors": [],
-                    "hyperplane_info": []
-                }
-            
-            # Get layer parameters
-            weight = layer_module.weight  # [n_units, input_dim]
-            bias = layer_module.bias      # [n_units]
-            
-            # Process each hyperplane (unit) in this layer
-            for unit_idx in range(weight.shape[0]):
-                w = weight[unit_idx]
-                b = bias[unit_idx]
-                
-                # Compute metric vector for this hyperplane
-                metric_vector, hyperplane_info = compute_hyperplane_metric_vector(
-                    w, b, x_train, y_train, run_id, layer_name, unit_idx
-                )
-                
-                if metric_vector is not None:
-                    layer_results[layer_name]["metric_vectors"].append(metric_vector)
-                    layer_results[layer_name]["hyperplane_info"].append(hyperplane_info)
-    
-    # Cluster metric vectors for each layer
-    clustering_results = {}
-    
-    for layer_name, layer_data in layer_results.items():
-        metric_vectors = np.array(layer_data["metric_vectors"])
-        hyperplane_info = layer_data["hyperplane_info"]
-        
-        if len(metric_vectors) == 0:
-            clustering_results[layer_name] = {"error": "No valid hyperplanes found"}
-            continue
-            
-        # Perform DBSCAN clustering
-        labels, n_clusters, noise_count = cluster_units(metric_vectors, eps, min_samples)
-        
-        # Format results
-        clustering_results[layer_name] = format_hyperplane_clustering_results(
-            layer_name, metric_vectors, hyperplane_info, labels, 
-            n_clusters, noise_count, eps, min_samples
-        )
-    
-    return clustering_results
 
 
 def compute_hyperplane_metric_vector(

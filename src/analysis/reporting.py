@@ -74,9 +74,10 @@ def generate_convergence_section(convergence_timing, config) -> str:
     return report
 
 
-def generate_hyperplane_metric_geometry_section(analysis_results):
+def generate_hyperplane_distance_section(analysis_results):
     """
-    Generate a clean, readable geometry section for hyperplane metric clustering data.
+    Generate a clean, readable section for hyperplane distance clustering data.
+    Updated to work with the new hook-based analysis structure.
     """
     distance_data = analysis_results.get("distance_to_hyperplanes", {})
     
@@ -84,12 +85,14 @@ def generate_hyperplane_metric_geometry_section(analysis_results):
         return ""
     
     report = "## 📏 Hyperplane Distance Clusters\n\n"
+    report += "Analysis based on L2 distances from actual layer inputs to hyperplanes, grouped by model predictions.\n\n"
     
     for layer_name, layer_data in distance_data.items():
-        metric_analysis = layer_data.get('metric_space_analysis', {})
-        clusters = metric_analysis.get('clusters', [])
-        total_hyperplanes = metric_analysis.get('total_hyperplanes', 0)
-        noise_count = metric_analysis.get('noise_count', 0)
+        # Updated to use 'distance_analysis' instead of 'metric_space_analysis'
+        distance_analysis = layer_data.get('distance_analysis', {})
+        clusters = distance_analysis.get('clusters', [])
+        total_hyperplanes = distance_analysis.get('total_hyperplanes', 0)
+        noise_count = distance_analysis.get('noise_count', 0)
         
         # Layer header
         report += f"### Layer: `{layer_name}`\n\n"
@@ -108,8 +111,8 @@ def generate_hyperplane_metric_geometry_section(analysis_results):
             continue
         
         # Table format for better readability
-        report += "| Pattern | Size | Class 0 Distance | Class 1 Distance | Separation | Key Runs |\n"
-        report += "|---------|------|------------------|------------------|------------|----------|\n"
+        report += "| Pattern | Size | Class 0 Distance | Class 1 Distance | Separation | Runs |\n"
+        report += "|---------|------|------------------|------------------|------------|------|\n"
         
         for i, cluster in enumerate(clusters, 1):
             cluster_id = cluster['cluster_id']
@@ -134,7 +137,7 @@ def generate_hyperplane_metric_geometry_section(analysis_results):
             else:
                 sep_str = f"{separation_ratio:.2f} (Mixed)"
             
-            # Representative runs (first few)
+            # All runs (no abbreviation as requested)
             run_ids = sorted(list(set(hp['run_id'] for hp in hyperplanes)))
             runs_str = ", ".join(map(str, run_ids))
             
@@ -569,7 +572,7 @@ def generate_analysis_report(
     report += generate_overview_section(config)
     report += generate_accuracy_section(distributions, total_runs)
     report += generate_convergence_section(convergence_timing, config)
-    report += generate_hyperplane_metric_geometry_section(analysis_results)
+    report += generate_hyperplane_distance_section(analysis_results)
     report += generate_weight_reorientation_section(weight_reorientation)
     report += generate_combined_norm_ratio_section(weight_reorientation)
     report += generate_loss_distribution_section(basic_stats)

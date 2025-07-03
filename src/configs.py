@@ -123,7 +123,8 @@ class AnalysisConfig:
    # Individual analyses
    weight_clustering: bool = True           # DBSCAN clustering of final weights
    parameter_displacement: bool = False     # Initial→final weight angle/norm analysis
-   distance_to_hyperplanes: bool = True     # Test if classification correlates with distance
+   distance_to_hyperplanes: bool = True     # Clusters linear layer distances to classes
+   hyperplane_clustering: bool = False      # Clusters hyperplane positions
    mirror_weight_detection: bool = False    # Detect w_i ≈ -w_j pairs (ReLU-specific)
    failure_angle_analysis: bool = False     # Initial angle analysis for failed runs
    dead_data_analysis: bool = False         # ReLU-specific dead data detection
@@ -333,6 +334,7 @@ def config_abs1_normal() -> ExperimentConfig:
             weight_clustering=True,
             parameter_displacement=True,
             distance_to_hyperplanes=True,
+            hyperplane_clustering=True,
             # Specialized analyses (default disabled)
             mirror_weight_detection=False,
             failure_angle_analysis=False,
@@ -410,6 +412,7 @@ def config_relu1_normal() -> ExperimentConfig:
             weight_clustering=True,
             parameter_displacement=True,
             distance_to_hyperplanes=True,
+            hyperplane_clustering=True,
             # Specialized analyses (default disabled)
             mirror_weight_detection=True,
             failure_angle_analysis=True,
@@ -507,6 +510,7 @@ def config_abs2_single_bce() -> ExperimentConfig:
             weight_clustering=True,
             parameter_displacement=False,
             distance_to_hyperplanes=True,
+            hyperplane_clustering=True,
             # Specialized analyses
             mirror_weight_detection=False,
             failure_angle_analysis=False,
@@ -596,11 +600,12 @@ def config_relu2_two_bce() -> ExperimentConfig:
             accuracy_fn=accuracy_one_hot,
             # Core analyses
             weight_clustering=True,
-            parameter_displacement=True,
+            parameter_displacement=False,
             distance_to_hyperplanes=True,
+            hyperplane_clustering=True,
             # ReLU-specific analyses
             mirror_weight_detection=True,
-            failure_angle_analysis=True,
+            failure_angle_analysis=False,
             dead_data_analysis=False,
             # Visualizations (off for these experiments)
             plot_hyperplanes=False,
@@ -719,7 +724,6 @@ def config_abs2_single_bce_eater() -> ExperimentConfig:
     config.model = models.Model_Xor2_Eater(middle=1, activation=models.Abs(), max_points=4).init()
     # Recreate optimizer with new model
     config.training.optimizer = torch.optim.Adam(config.model.parameters(), lr=0.01, betas=(0.9, 0.99))
-    config.analysis.parameter_displacement = False
     config.description = "Centered XOR with 2-output BCE loss using a single Abs unit. Includes 'eater' layers intended to regularize linear layers."
     return config
 
@@ -730,7 +734,6 @@ def config_abs2_single_mse() -> ExperimentConfig:
     config.model = models.Model_Xor2_Eater(middle=1, activation=models.Abs(), max_points=4).init()
     config.training.loss_function = nn.MSELoss()
     config.training.optimizer = torch.optim.Adam(config.model.parameters(), lr=0.01, betas=(0.9, 0.99))
-    config.analysis.parameter_displacement = False
     config.description = "Centered XOR with 2-output MSE loss using a single Abs unit. Includes 'eater' layers intended to regularize linear layers."
     return config
 
@@ -741,7 +744,6 @@ def config_relu2_two_bce_eater() -> ExperimentConfig:
     config.model = models.Model_Xor2_Eater(middle=1, activation=nn.ReLU(), max_points=4).init()
     # Recreate optimizer with new model
     config.training.optimizer = torch.optim.Adam(config.model.parameters(), lr=0.01, betas=(0.9, 0.99))
-    config.analysis.parameter_displacement = False
     config.description = "Centered XOR with 2-output BCE loss using two ReLU units. Includes 'eater' layers intended to regularize linear layers."
     return config
 

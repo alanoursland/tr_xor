@@ -3,67 +3,6 @@ import torch
 import numpy as np
 
 
-def process_prototype_surface_distances(analysis_results):
-    """
-    Extract and process prototype surface distance test results.
-
-    Returns:
-        Dict[str, Dict[int, Dict[int, List[float]]]]:
-        Nested structure: layer → unit → class → list of distances
-    """
-    # Extract prototype surface distance test results
-    distance_entries = analysis_results.get("distance_to_hyperplanes", [])
-
-    # Initialize nested structure: layer → unit → class → list of distances
-    distance_by_layer_unit = {}
-
-    for entry in distance_entries:
-        layer_distances = entry.get("layer_distances", {})
-
-        for layer_name, layer_data in layer_distances.items():
-            unit_distances = layer_data.get("unit_distances")  # list of tensors/lists, one per unit
-            labels = layer_data.get("labels")
-
-            if unit_distances is None or labels is None:
-                continue
-
-            # Convert labels to numpy
-            if isinstance(labels, torch.Tensor):
-                labels = labels.detach().cpu().numpy()
-            elif not isinstance(labels, np.ndarray):
-                labels = np.array(labels)
-
-            for unit_idx, unit_dists in enumerate(unit_distances):
-                # Convert distances to numpy
-                if isinstance(unit_dists, torch.Tensor):
-                    unit_dists = unit_dists.detach().cpu().numpy()
-                elif not isinstance(unit_dists, np.ndarray):
-                    unit_dists = np.array(unit_dists)
-
-                for i in range(len(labels)):
-                    label = labels[i]
-                    dist = unit_dists[i]
-
-                    # Handle one-hot or tensor labels
-                    if isinstance(label, np.ndarray) and label.ndim == 1 and label.shape[0] > 1:
-                        label = np.argmax(label)
-                    elif isinstance(label, (torch.Tensor, np.generic)):
-                        label = int(label)
-
-                    if label not in (0, 1):
-                        continue
-
-                    # Initialize structure
-                    if layer_name not in distance_by_layer_unit:
-                        distance_by_layer_unit[layer_name] = {}
-                    if unit_idx not in distance_by_layer_unit[layer_name]:
-                        distance_by_layer_unit[layer_name][unit_idx] = {0: [], 1: []}
-
-                    distance_by_layer_unit[layer_name][unit_idx][label].append(dist)
-
-    return distance_by_layer_unit
-
-
 def generate_report_header(config) -> str:
     """Generate the report header with experiment name and description."""
     name = config.execution.experiment_name
@@ -135,62 +74,75 @@ def generate_convergence_section(convergence_timing, config) -> str:
     return report
 
 
-def generate_geometry_section(distance_by_layer_unit):
-    """Generate the prototype surface geometry section."""
-
-    # Calculate geometry statistics for all layers and units
-    layer_stats = {}
-
-    for layer_name, units in distance_by_layer_unit.items():
-        unit_stats = []
-
-        for unit_idx, class_dists in units.items():
-            d0 = np.array(class_dists[0])
-            d1 = np.array(class_dists[1])
-
-            # Skip units with missing data
-            if len(d0) == 0 or len(d1) == 0:
-                continue
-
-            d0_mean = d0.mean()
-            d0_std = d0.std()
-            d1_mean = d1.mean()
-            d1_std = d1.std()
-            ratio = d1_mean / (d0_mean + 1e-12)
-
-            unit_stats.append(
-                {
-                    "unit_idx": unit_idx,
-                    "d0_mean": d0_mean,
-                    "d0_std": d0_std,
-                    "d1_mean": d1_mean,
-                    "d1_std": d1_std,
-                    "ratio": ratio,
-                }
-            )
-
-        layer_stats[layer_name] = unit_stats
-
-    # Format statistics into markdown report section
-    report = "## 📏 Prototype Surface Geometry\n\n"
-
-    for layer_name, unit_stats in layer_stats.items():
+def generate_hyperplane_metric_geometry_section(analysis_results):
+    """
+    Generate a clean, readable geometry section for hyperplane metric clustering data.
+    """
+    distance_data = analysis_results.get("distance_to_hyperplanes", {})
+    
+    if not distance_data:
+        return ""
+    
+    report = "## 📏 Hyperplane Distance Clusters\n\n"
+    
+    for layer_name, layer_data in distance_data.items():
+        metric_analysis = layer_data.get('metric_space_analysis', {})
+        clusters = metric_analysis.get('clusters', [])
+        total_hyperplanes = metric_analysis.get('total_hyperplanes', 0)
+        noise_count = metric_analysis.get('noise_count', 0)
+        
+        # Layer header
         report += f"### Layer: `{layer_name}`\n\n"
-
-        for stats in unit_stats:
-            unit_idx = stats["unit_idx"]
-            d0_mean = stats["d0_mean"]
-            d0_std = stats["d0_std"]
-            d1_mean = stats["d1_mean"]
-            d1_std = stats["d1_std"]
-            ratio = stats["ratio"]
-
-            report += f"- **Unit {unit_idx}**\n"
-            report += f"  - Mean distance to class 0: `{d0_mean:.2e} ± {d0_std:.2e}`\n"
-            report += f"  - Mean distance to class 1: `{d1_mean:.5f} ± {d1_std:.2e}`\n"
-            report += f"  - Separation ratio (class1/class0): `{ratio:.2f}`\n\n"
-
-    report += "\n---\n\n"
+        
+        # Summary stats
+        summary_parts = [f"{total_hyperplanes} hyperplanes"]
+        if len(clusters) > 0:
+            summary_parts.append(f"{len(clusters)} behavior patterns")
+        if noise_count > 0:
+            summary_parts.append(f"{noise_count} outliers")
+        
+        report += f"**Summary**: {', '.join(summary_parts)}\n\n"
+        
+        if not clusters:
+            report += "No distinct behavior patterns found.\n\n"
+            continue
+        
+        # Table format for better readability
+        report += "| Pattern | Size | Class 0 Distance | Class 1 Distance | Separation | Key Runs |\n"
+        report += "|---------|------|------------------|------------------|------------|----------|\n"
+        
+        for i, cluster in enumerate(clusters, 1):
+            cluster_id = cluster['cluster_id']
+            size = cluster['size']
+            centroid = cluster['centroid']
+            std = cluster['std']
+            hyperplanes = cluster['hyperplanes']
+            
+            # Format distances nicely
+            mean_dist_class0, mean_dist_class1 = centroid
+            std_class0, std_class1 = std
+            
+            dist0_str = f"{mean_dist_class0:.2f} ± {std_class0:.2f}"
+            dist1_str = f"{mean_dist_class1:.2f} ± {std_class1:.2f}"
+            
+            # Separation interpretation
+            separation_ratio = mean_dist_class1 / (mean_dist_class0 + 1e-12)
+            if separation_ratio > 2.0:
+                sep_str = f"{separation_ratio:.1f}× (Class 1)"
+            elif separation_ratio < 0.5:
+                sep_str = f"{1/separation_ratio:.1f}× (Class 0)"
+            else:
+                sep_str = f"{separation_ratio:.2f} (Mixed)"
+            
+            # Representative runs (first few)
+            run_ids = sorted(list(set(hp['run_id'] for hp in hyperplanes)))
+            runs_str = ", ".join(map(str, run_ids))
+            
+            report += f"| {i} | {size} | {dist0_str} | {dist1_str} | {sep_str} | {runs_str} |\n"
+        
+        report += "\n"
+    
+    report += "---\n\n"
     return report
 
 
@@ -199,7 +151,7 @@ def generate_weight_reorientation_section(weight_reorientation):
     per_layer_analysis = weight_reorientation.get("per_layer_analysis", {})
 
     if not per_layer_analysis:
-        return "No weight reorientation data available.\n\n"
+        return ""
 
     report = ""
 
@@ -243,6 +195,8 @@ def generate_combined_norm_ratio_section(weight_reorientation):
 
     # Extract and process norm ratio data from all layers
     per_layer_analysis = weight_reorientation.get("per_layer_analysis", {})
+    if not per_layer_analysis:
+        return ""
 
     all_ratios = []
     all_epochs = []
@@ -585,6 +539,7 @@ def generate_analysis_report(
     """
     ############################################################################################
 
+
     # Extract top-level blocks from analysis_results
     # Path: basic_stats
     basic_stats = analysis_results.get("basic_stats", {})
@@ -596,12 +551,6 @@ def generate_analysis_report(
     # Metrics extraction
     # Path: basic_stats.experiment_info.total_runs
     total_runs = experiment_info.get("total_runs", "N/A")
-
-    ############################################################################################
-    # Collect distances from hyperplanes
-    ############################################################################################
-
-    distance_by_layer_unit = process_prototype_surface_distances(analysis_results)
 
     ############################################################################################
 
@@ -620,7 +569,7 @@ def generate_analysis_report(
     report += generate_overview_section(config)
     report += generate_accuracy_section(distributions, total_runs)
     report += generate_convergence_section(convergence_timing, config)
-    report += generate_geometry_section(distance_by_layer_unit)
+    report += generate_hyperplane_metric_geometry_section(analysis_results)
     report += generate_weight_reorientation_section(weight_reorientation)
     report += generate_combined_norm_ratio_section(weight_reorientation)
     report += generate_loss_distribution_section(basic_stats)

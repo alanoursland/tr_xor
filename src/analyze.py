@@ -141,71 +141,222 @@ def summarize_all_runs(all_results: List[Dict[str, Any]]) -> Dict[str, Any]:
     return summary
 
 
-def analyze_distance_to_hyperplanes (
-    run_results: List[Dict[str, Any]], experiment_data: Dict[str, Any], config
-) -> List[Dict[str, Any]]:
+def analyze_hyperplane_metric_clustering(
+    run_results: List[Dict[str, Any]], 
+    experiment_data: Dict[str, Any], 
+    config,
+    eps: float = 0.1, 
+    min_samples: int = 2
+) -> Dict[str, Any]:
     """
-    Analyze if classification correlates with distance to learned hyperplanes.
-
-    Test if classification correlates with distance to learned hyperplanes
-    for each linear layer in the model, using correct layer-specific input data.
-
+    Cluster hyperplanes based on their class separation behavior.
+    Each hyperplane becomes a 2D metric vector: [mean_dist_class0, mean_dist_class1]
+    
     Args:
-        run_results: List of run result dicts (with model_state_dict and model_linear_layers)
+        run_results: List of run result dicts
         experiment_data: Dict with 'x_train' and 'y_train'
-        config: Experiment config (used to reconstruct model)
-
+        config: Experiment config
+        eps: DBSCAN epsilon parameter
+        min_samples: DBSCAN minimum samples per cluster
+        
     Returns:
-        List of per-run results, each with layer-wise distances and labels.
+        Dictionary with clustering results per layer
     """
     x_train = experiment_data["x_train"]
     y_train = experiment_data["y_train"]
-    results = []
-
-    for result in run_results:
-        if result.get("accuracy", 0) < 0.75:
-            continue
-
+    
+    # Only analyze successful runs
+    accuracy_threshold = getattr(config.analysis, 'accuracy_threshold', 0.75)
+    successful_runs = [r for r in run_results if r.get("accuracy", 0) >= accuracy_threshold]
+    
+    if not successful_runs:
+        return {"error": "No successful runs to analyze"}
+    
+    # Collect metric vectors per layer
+    layer_results = {}
+    
+    for run_result in successful_runs:
+        # Load model
         model = config.model
-        model.load_state_dict(result["model_state_dict"])
+        model.load_state_dict(run_result["model_state_dict"])
         model.eval()
+        
+        run_id = run_result["run_id"]
+        
+        # Process each linear layer
+        for layer_name, layer_module in model.named_modules():
+            if not isinstance(layer_module, torch.nn.Linear):
+                continue
+                
+            if layer_name not in layer_results:
+                layer_results[layer_name] = {
+                    "metric_vectors": [],
+                    "hyperplane_info": []
+                }
+            
+            # Get layer parameters
+            weight = layer_module.weight  # [n_units, input_dim]
+            bias = layer_module.bias      # [n_units]
+            
+            # Process each hyperplane (unit) in this layer
+            for unit_idx in range(weight.shape[0]):
+                w = weight[unit_idx]
+                b = bias[unit_idx]
+                
+                # Compute metric vector for this hyperplane
+                metric_vector, hyperplane_info = compute_hyperplane_metric_vector(
+                    w, b, x_train, y_train, run_id, layer_name, unit_idx
+                )
+                
+                if metric_vector is not None:
+                    layer_results[layer_name]["metric_vectors"].append(metric_vector)
+                    layer_results[layer_name]["hyperplane_info"].append(hyperplane_info)
+    
+    # Cluster metric vectors for each layer
+    clustering_results = {}
+    
+    for layer_name, layer_data in layer_results.items():
+        metric_vectors = np.array(layer_data["metric_vectors"])
+        hyperplane_info = layer_data["hyperplane_info"]
+        
+        if len(metric_vectors) == 0:
+            clustering_results[layer_name] = {"error": "No valid hyperplanes found"}
+            continue
+            
+        # Perform DBSCAN clustering
+        labels, n_clusters, noise_count = cluster_units(metric_vectors, eps, min_samples)
+        
+        # Format results
+        clustering_results[layer_name] = format_hyperplane_clustering_results(
+            layer_name, metric_vectors, hyperplane_info, labels, 
+            n_clusters, noise_count, eps, min_samples
+        )
+    
+    return clustering_results
 
-        layer_inputs = {}
-        current = x_train
 
-        # Run forward pass and record inputs to each Linear layer
-        for name, module in model.named_modules():
-            if isinstance(module, torch.nn.Linear):
-                layer_inputs[name] = current  # input to this linear layer
-                current = module(current)
-            elif isinstance(module, (torch.nn.ReLU, torch.nn.Tanh, torch.nn.Sigmoid)):
-                current = module(current)
-            elif name == "scale1":
-                current = model.scale1(current)
-            elif name == "scale2":
-                current = model.scale2(current)
-            # skip other modules for now
+def compute_hyperplane_metric_vector(
+    weight: torch.Tensor, 
+    bias: torch.Tensor, 
+    x_input: torch.Tensor, 
+    y_labels: torch.Tensor,
+    run_id: int,
+    layer_name: str,
+    unit_idx: int
+) -> Tuple[np.ndarray, Dict]:
+    """
+    Compute the 2D metric vector for a single hyperplane.
+    
+    Returns:
+        metric_vector: [mean_dist_class0, mean_dist_class1] or None if invalid
+        hyperplane_info: metadata about this hyperplane
+    """
+    # Skip near-zero weights
+    weight_norm = torch.norm(weight)
+    if weight_norm < 1e-8:
+        return None, None
+    
+    # Convert labels to class indices
+    if y_labels.ndim > 1:
+        y_indices = torch.argmax(y_labels, dim=1)
+    else:
+        y_indices = y_labels.long()
+    
+    # Compute distances to hyperplane: |w^T x + b| / ||w||
+    distances = torch.abs(weight @ x_input.T + bias) / weight_norm
+    
+    # Compute mean distances per class
+    class_means = {}
+    for class_idx in torch.unique(y_indices):
+        mask = y_indices == class_idx
+        if mask.sum() > 0:  # Ensure class has samples
+            class_means[int(class_idx)] = distances[mask].mean().item()
+    
+    # Ensure we have both classes
+    if 0 not in class_means or 1 not in class_means:
+        return None, None
+    
+    # Create metric vector: [mean_dist_class0, mean_dist_class1]
+    metric_vector = np.array([class_means[0], class_means[1]])
+    
+    # Metadata about this hyperplane
+    hyperplane_info = {
+        "run_id": run_id,
+        "layer_name": layer_name,
+        "unit_idx": unit_idx,
+        "weight_norm": weight_norm.item(),
+        "weight": weight.detach().cpu().numpy(),
+        "bias": bias.item(),
+        "mean_dist_class0": class_means[0],
+        "mean_dist_class1": class_means[1],
+        "separation_ratio": class_means[1] / (class_means[0] + 1e-12)
+    }
+    
+    return metric_vector, hyperplane_info
 
-        run_result = {"run_id": result["run_id"], "layer_distances": {}}
 
-        state_dict = result["model_state_dict"]
-
-        for layer_name, x_input in layer_inputs.items():
-            W = state_dict[f"{layer_name}.weight"]
-            b = state_dict[f"{layer_name}.bias"]
-
-            distances = []
-            for i in range(W.shape[0]):
-                w = W[i]
-                bias = b[i]
-                d = torch.abs(w @ x_input.T + bias) / torch.norm(w)
-                distances.append(d)  # list of tensors, one per unit
-
-            run_result["layer_distances"][layer_name] = {"unit_distances": distances, "labels": y_train}
-
-        results.append(run_result)
-
-    return results
+def format_hyperplane_clustering_results(
+    layer_name: str,
+    metric_vectors: np.ndarray,
+    hyperplane_info: List[Dict],
+    labels: np.ndarray,
+    n_clusters: int,
+    noise_count: int,
+    eps: float,
+    min_samples: int
+) -> Dict[str, Any]:
+    """Format clustering results for hyperplane metric vectors."""
+    
+    result = {
+        "layer_name": layer_name,
+        "clustering_params": {"eps": eps, "min_samples": min_samples},
+        "metric_space_analysis": {
+            "total_hyperplanes": len(metric_vectors),
+            "n_clusters": n_clusters,
+            "noise_count": noise_count,
+            "clusters": []
+        }
+    }
+    
+    # Process each cluster
+    for cluster_id in np.unique(labels):
+        if cluster_id == -1:  # Skip noise
+            continue
+            
+        mask = labels == cluster_id
+        cluster_vectors = metric_vectors[mask]
+        cluster_hyperplanes = [hyperplane_info[i] for i in range(len(hyperplane_info)) if mask[i]]
+        
+        cluster_data = {
+            "cluster_id": int(cluster_id),
+            "size": int(mask.sum()),
+            "centroid": cluster_vectors.mean(axis=0).tolist(),
+            "std": cluster_vectors.std(axis=0).tolist(),
+            "metric_range": {
+                "class0_dist": [cluster_vectors[:, 0].min(), cluster_vectors[:, 0].max()],
+                "class1_dist": [cluster_vectors[:, 1].min(), cluster_vectors[:, 1].max()]
+            },
+            "hyperplanes": []
+        }
+        
+        # Add hyperplane details
+        for hp_info in cluster_hyperplanes:
+            cluster_data["hyperplanes"].append({
+                "run_id": hp_info["run_id"],
+                "unit_idx": hp_info["unit_idx"],
+                "weight_norm": hp_info["weight_norm"],
+                "separation_ratio": hp_info["separation_ratio"]
+            })
+        
+        # Sort hyperplanes by run_id for consistency
+        cluster_data["hyperplanes"].sort(key=lambda x: (x["run_id"], x["unit_idx"]))
+        
+        result["metric_space_analysis"]["clusters"].append(cluster_data)
+    
+    # Sort clusters by size (largest first)
+    result["metric_space_analysis"]["clusters"].sort(key=lambda x: x["size"], reverse=True)
+    
+    return result
 
 
 def analyze_mirror_weights(run_results):
@@ -974,13 +1125,13 @@ def main() -> int:
             print("  ✓ Convergence timing analysis completed")
 
         # Weight reorientation analysis
-        if True:
+        if config.analysis.parameter_displacement:
             print("🔄 Analyzing weight reorientation...")
             analysis_results["weight_reorientation"] = analyze_weight_reorientation(run_results)
             print("  ✓ Weight reorientation analysis completed")
 
         # Hyperplane clustering analysis
-        if True:
+        if config.analysis.hyperplane_clustering:
             print("🎯 Analyzing hyperplane clustering...")
             analysis_results["hyperplane_clustering"] = analyze_hyperplane_clustering(run_results, config)
             print("  ✓ Hyperplane clustering analysis completed")
@@ -1004,7 +1155,7 @@ def main() -> int:
         # Distance to hyperplanes analysis
         if config.analysis.distance_to_hyperplanes:
             print("📏 Analyzing distance to hyperplanes...")
-            analysis_results["distance_to_hyperplanes"] = analyze_distance_to_hyperplanes(run_results, experiment_data, config)
+            analysis_results["distance_to_hyperplanes"] = analyze_hyperplane_metric_clustering(run_results, experiment_data, config)
             print("  ✓ Distance to hyperplanes analysis completed")
 
         # Mirror weight detection

@@ -76,7 +76,7 @@ class TrainingConfig:
     batch_size: int = None
 
     # Training Monitor
-    health_monitor: Optional[Any] = field(default=None)
+    training_monitor: Optional[Any] = field(default=None)
 
     # Convergence Detection
     stop_training_loss_threshold: Optional[float] = None
@@ -477,13 +477,13 @@ def config_relu1_monitor() -> ExperimentConfig:
     config = get_experiment_config("relu1_normal")
     dataset_size = config.data.x.shape[0]  # == 4
     hook_manager = monitor.SharedHookManager(config.model)
-    health_monitor = monitor.CompositeMonitor(
+    training_monitor = monitor.CompositeMonitor(
         [
             monitor.DeadSampleMonitor(hook_manager, dataset_size=dataset_size, patience=5, classifier_threshold=0.5),
             monitor.BoundsMonitor(hook_manager, dataset_size=dataset_size, radius=1.5),
         ]
     )
-    config.training.health_monitor = health_monitor
+    config.training.training_monitor = training_monitor
     config.description=("Centered XOR with two nodes, ReLU, sum, normal init, " "and early-failure degeneracy detection."),
     return config
 
@@ -831,7 +831,7 @@ def config_relu1_anneal() -> ExperimentConfig:
     config = get_experiment_config("relu1_normal")
 
     hook_manager = monitor.SharedHookManager(config.model)
-    config.training.health_monitor = monitor.AnnealingMonitor(
+    config.training.training_monitor = monitor.AnnealingMonitor(
         hook_manager = hook_manager,
         dataset_size=4,
         loss_fn=config.training.loss_function,
@@ -843,7 +843,7 @@ def config_relu1_anneal() -> ExperimentConfig:
     # config.training.stop_training_loss_threshold = 1e-3
     # config.execution.num_runs = 1
     config.description = (
-        "Centered XOR with two nodes, ReLU activation, output sum, and stochastic annealing. "
+        "Centered XOR with two nodes, ReLU activation, output sum, and error driven annealing. "
     )
     return config
 

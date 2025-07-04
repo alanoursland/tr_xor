@@ -97,8 +97,8 @@ def execute_training_run(
     optimizer = training_components["optimizer"]
     loss_function = training_components["loss_function"]
 
-    if config.training.health_monitor:
-        config.training.health_monitor.to(device)
+    if config.training.training_monitor:
+        config.training.training_monitor.to(device)
 
     # Training tracking
     losses = []
@@ -124,13 +124,13 @@ def execute_training_run(
         optimizer.zero_grad()
         loss.backward()
 
-        health_monitor = config.training.health_monitor
-        if health_monitor:
+        training_monitor = config.training.training_monitor
+        if training_monitor:
             batch_idx = list(range(y.size(0)))
-            if not health_monitor.check(x, y, batch_idx):
-                health_monitor.fix(x, y, batch_idx)
+            if not training_monitor.check(x, y, batch_idx):
+                training_monitor.fix(x, y, batch_idx)
             # print(f"[epoch {epoch}] dead_data={metrics.dead_data_fraction:.2f}, torque={metrics.torque_ratio:.4f}, bias_drift={metrics.bias_drift:.2e}")
-            # config.training.health_monitor.log_registered_state()
+            # config.training.training_monitor.log_registered_state()
             # # Optional: respond to specific issues
             # if metrics.has_dead_data_issue:
             #     print(f"⚠️  Dead data detected: {metrics.dead_data_fraction:.1%}")

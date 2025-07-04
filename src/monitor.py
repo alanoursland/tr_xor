@@ -5,7 +5,7 @@ import torch.nn as nn
 from typing import Dict, List, Optional, Sequence, Tuple, Callable
 from dataclasses import dataclass, field
 from models import Abs, Sum
-
+import copy
 
 class SharedHookManager:
     """
@@ -595,8 +595,117 @@ class LoggingMonitor(BaseMonitor):
         # print("====================================\n")
         self.step_count += 1
 
+class AnnealingMonitor(BaseMonitor):
+    """
+    Monitors the training process and applies Error-Driven Annealing.
 
-# In monitor.py
+    This monitor calculates the entropy of the per-example error distribution.
+    If the entropy is low (indicating an unhealthy, "spiky" error distribution),
+    it flags the state as uncertain. The `fix` method then injects scaled,
+    random noise into the model parameters to "kick" the optimizer out of a
+    potential local minimum.
+    """
+
+    def __init__(
+        self,
+        hook_manager: SharedHookManager,
+        dataset_size: int,
+        loss_fn: nn.Module,
+        base_noise_level: float = 0.001,
+        annealing_threshold: float = 0.1,
+    ):
+        """
+        Initializes the AnnealingMonitor.
+
+        Args:
+            hook_manager: The shared manager for hooks and captured data.
+            dataset_size: The total number of samples in the dataset.
+            loss_fn: The loss function used to calculate per-example error.
+            base_noise_level: A scaling factor for the injected noise.
+            annealing_threshold: The uncertainty value above which noise is injected.
+        """
+        super().__init__(hook_manager, dataset_size)
+        self.loss_fn = loss_fn
+        self.base_noise_level = base_noise_level
+        self.annealing_threshold = annealing_threshold
+        
+        # This will store the temperature calculated in `check` for use in `fix`
+        self.error_magnitude: float = 0.0
+        self.temperature: float = 0.0
+
+        # Create a deep copy of the loss function to avoid side effects
+        self._internal_loss_fn = copy.deepcopy(loss_fn)
+        # Set its reduction to 'none' to get per-example losses
+        self._internal_loss_fn.reduction = 'none'
+
+    def _calculate_uncertainty(self, per_example_loss: torch.Tensor) -> float:
+        """Calculates the normalized uncertainty from per-example losses."""
+        losses = per_example_loss.detach()
+        if torch.sum(losses) <= 1e-9:
+            return 0.0  # No error, no uncertainty
+
+        batch_size = len(losses)
+        if batch_size <= 1:
+            return 0.0  # Entropy is not meaningful for a single item
+
+        # Normalize losses into a probability distribution
+        p = losses / torch.sum(losses)
+
+        # Calculate actual entropy, adding epsilon for numerical stability
+        h_actual = -torch.sum(p * torch.log2(p + 1e-9))
+
+        # Calculate max entropy for a uniform distribution
+        h_max = torch.log2(torch.tensor(batch_size, dtype=torch.float))
+
+        # Return normalized uncertainty (0 to 1)
+        uncertainty = (h_max - h_actual) / h_max
+        return uncertainty.item()
+
+    @torch.no_grad()
+    def check(self, x: torch.Tensor, y: torch.Tensor, batch_idx: Sequence[int]) -> bool:
+        """
+        Calculates the error entropy uncertainty. Returns False if it exceeds the
+        threshold, signaling that a `fix` is required.
+        """
+        # The hook manager has already captured the model's output from the forward pass
+        predictions = self.manager.model_output
+        # print(f"y = {y}")
+        # print(f"predictions = {predictions}")
+        
+        # Calculate per-example loss to get the error distribution
+        per_example_loss = self._internal_loss_fn(predictions, y.unsqueeze(1))
+        # print(f"per_example_loss = {per_example_loss}")
+        
+        # Calculate the "temperature" and store it for the `fix` method
+        self.error_magnitude = torch.linalg.norm(per_example_loss, ord=2)
+        self.temperature = self._calculate_uncertainty(per_example_loss)
+        
+        self.step_count += 1
+        
+        # If temperature is above threshold, return False to trigger an intervention
+        return self.temperature <= self.annealing_threshold
+
+    @torch.no_grad()
+    def fix(self, x: torch.Tensor, y: torch.Tensor, batch_idx: Sequence[int]) -> None:
+        """
+        Injects scaled multiplicative random noise into all model parameters based on the
+        temperature calculated during the `check` phase.
+        """
+        if self.temperature <= self.annealing_threshold:
+            return  # Nothing to fix
+
+        # msg = f"🔥 {self.step_count} Annealing temp {self.temperature:.4f} mag {self.error_magnitude:.4f}"
+        # print(msg)
+
+        for param in self.model.parameters():
+            # 1. Generate standard Gaussian noise (mean=0, var=1)
+            noise = torch.randn_like(param)
+            
+            # 2. Scale the noise by the base level and current temperature
+            scaled_noise = noise * self.base_noise_level * self.error_magnitude * self.temperature * self.temperature
+            
+            # 3. Apply the additive noise to the parameter in-place
+            param.add_(scaled_noise)
 
 
 class CompositeMonitor(BaseMonitor):

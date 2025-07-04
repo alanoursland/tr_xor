@@ -116,9 +116,9 @@ def execute_training_run(
         outputs = model(x)
         loss = loss_function(outputs, y)
 
-        # # monitor diagnostics
-        # if config.training.health_monitor:
-        #     config.training.health_monitor.compute_per_example_gradients(x, y, config.training.loss_function)
+        if config.training.regularizer_function:
+            regularizer_loss = config.training.regularizer_function()
+            loss += regularizer_loss
 
         # Backward pass
         optimizer.zero_grad()

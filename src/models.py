@@ -76,6 +76,14 @@ class Abs(nn.Module):
         """
         return torch.abs(x)
 
+class LeakyAbs(nn.Module):
+    def __init__(self, negative_slope=0.01):
+        super().__init__()
+        self.leaky_relu = nn.LeakyReLU(negative_slope)
+
+    def forward(self, x):
+        return torch.abs(self.leaky_relu(x))
+
 
 class Sum(nn.Module):
     """
@@ -266,10 +274,10 @@ class Model_Abs1(nn.Module):
 
 
 class Model_ReLU1(nn.Module):
-    def __init__(self):
+    def __init__(self, activation=nn.ReLU()):
         super().__init__()
         self.linear1 = nn.Linear(2, 2)
-        self.activation = nn.ReLU()
+        self.activation = activation
         self.sum_layer = Sum(dim=1, keepdim=True)
         nn.init.kaiming_normal_(self.linear1.weight, nonlinearity="relu")
         nn.init.zeros_(self.linear1.bias)
@@ -289,6 +297,11 @@ class Model_ReLU1(nn.Module):
     @torch.no_grad()
     def init_normal(self):
         nn.init.normal_(self.linear1.weight, mean=0.0, std=0.5)
+        nn.init.zeros_(self.linear1.bias)
+        return self
+
+    def init_kaiming(self):
+        nn.init.kaiming_normal_(self.linear1.weight, nonlinearity="relu")
         nn.init.zeros_(self.linear1.bias)
         return self
 

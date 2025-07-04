@@ -16,6 +16,7 @@ import torch.nn as nn
 import models
 import monitor
 import itertools
+import torch.nn.functional as F
 
 # ==============================================================================
 # Configuration Schema and Types
@@ -69,6 +70,7 @@ class TrainingConfig:
     eps: float = 1e-8
 
     loss_function: torch.nn.Module = None
+    regularizer_function: Optional[Callable] = None
 
     epochs: int = None
     batch_size: int = None
@@ -429,6 +431,14 @@ def config_relu1_normal() -> ExperimentConfig:
         logging=LoggingConfig(train_epochs=50),
     )
 
+@experiment("relu1_kaiming")
+def config_relu1_kaiming() -> ExperimentConfig:
+    """Kaiming initialization variant of relu1."""
+    config = get_experiment_config("relu1_normal")
+    config.model.init_kaiming()
+    config.description = "Centered XOR with single absolute value unit and kaiming init."
+    return config
+
 
 @experiment("relu1_reinit")
 def config_relu1_reinit() -> ExperimentConfig:
@@ -758,3 +768,82 @@ def config_relu2_two_mse_eater() -> ExperimentConfig:
     config.analysis.parameter_displacement = False
     config.description = "Centered XOR with 2-output MSE loss using two ReLU units. Includes 'eater' layers intended to regularize linear layers."
     return config
+
+@experiment("relu1_leaky")
+def config_relu1_leaky() -> ExperimentConfig:
+    """Factory function for ReLU XOR experiment."""
+    config = get_experiment_config("relu1_normal")
+
+    config.model = models.Model_ReLU1(activation=nn.LeakyReLU()).init_normal()
+    config.training.optimizer = torch.optim.Adam(config.model.parameters(), lr=0.01, betas=(0.9, 0.99))
+    config.analysis.plot_hyperplanes = True
+    config.description = "Centered XOR with two nodes, Leaky ReLU, sum, and normal init."
+    return config
+
+@experiment("abs1_leaky")
+def config_abs1_leaky() -> ExperimentConfig:
+    """Factory function for ReLU XOR experiment."""
+    config = get_experiment_config("relu1_normal")
+
+    config.model = models.Model_ReLU1(activation=models.LeakyAbs()).init_normal()
+    config.training.optimizer = torch.optim.Adam(config.model.parameters(), lr=0.01, betas=(0.9, 0.99))
+    config.training.epochs = 5000
+    config.analysis.plot_hyperplanes = True
+    config.description = "Centered XOR with two nodes, Leaky Abs, sum, and normal init."
+    return config
+
+@experiment("relu1_biased")
+def config_relu1_biased() -> ExperimentConfig:
+    """Factory function for ReLU XOR experiment."""
+    config = get_experiment_config("relu1_normal")
+    nn.init.normal_(config.model.linear1.bias, mean=0.1, std=0.01)
+    config.description = (
+        "Centered XOR with two nodes, ReLU activation, output sum, and normal weight/bias init. "
+    )
+    return config
+
+@experiment("relu1_elu")
+def config_relu1_elu() -> ExperimentConfig:
+    """Factory function for ELU XOR experiment."""
+    config = get_experiment_config("relu1_normal")
+
+    config.model = models.Model_ReLU1(activation=torch.nn.ELU())
+    config.training.optimizer = torch.optim.Adam(config.model.parameters(), lr=0.01, betas=(0.9, 0.99))
+    config.training.epochs = 5000
+    config.analysis.plot_hyperplanes = True
+    config.description = "Centered XOR with two nodes, ELU, sum, and normal init."
+    return config
+
+@experiment("relu1_prelu")
+def config_relu1_prelu() -> ExperimentConfig:
+    """Factory function for PReLU XOR experiment."""
+    config = get_experiment_config("relu1_normal")
+
+    config.model = models.Model_ReLU1(activation=torch.nn.PReLU())
+    config.training.optimizer = torch.optim.Adam(config.model.parameters(), lr=0.01, betas=(0.9, 0.99))
+    config.training.epochs = 5000
+    config.analysis.plot_hyperplanes = True
+    config.description = "Centered XOR with two nodes, PReLU, sum, and normal init."
+    return config
+
+@experiment("relu1_anneal")
+def config_relu1_anneal() -> ExperimentConfig:
+    config = get_experiment_config("relu1_normal")
+
+    hook_manager = monitor.SharedHookManager(config.model)
+    config.training.health_monitor = monitor.AnnealingMonitor(
+        hook_manager = hook_manager,
+        dataset_size=4,
+        loss_fn=config.training.loss_function,
+        base_noise_level=0.1,
+        annealing_threshold=0.1
+    )
+    config.training.loss_change_patience = None
+    config.training.epochs = 5000
+    # config.training.stop_training_loss_threshold = 1e-3
+    # config.execution.num_runs = 1
+    config.description = (
+        "Centered XOR with two nodes, ReLU activation, output sum, and stochastic annealing. "
+    )
+    return config
+

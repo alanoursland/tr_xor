@@ -1,15 +1,14 @@
+import glob
+import json
+import numpy as np
+import os
 import torch
 import torch.nn as nn
-import numpy as np
-from typing import Dict, List, Tuple
-import json
-from typing import Dict, List, Tuple, Optional, Union, Callable, Any
-from dataclasses import dataclass
-import torch
-from enum import Enum
 import torch.nn.functional as F
-import glob
-import os
+
+from dataclasses import dataclass
+from enum import Enum
+from typing import Dict, List, Tuple, Optional, Union, Callable, Any
 
 """
 Convergence Prediction Framework

@@ -112,6 +112,7 @@ def execute_training_run(
     loss_change_patience = config.training.loss_change_patience
 
     # Training loop
+    epoch = -1
     for epoch in range(config.training.epochs):
         model.train()
         

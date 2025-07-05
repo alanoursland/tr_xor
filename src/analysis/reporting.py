@@ -252,13 +252,20 @@ def generate_loss_distribution_section(basic_stats) -> str:
 
         if final_loss_values:
             variance = np.var(final_loss_values)
+            p25 = np.percentile(final_loss_values, 25)
+            p50 = np.percentile(final_loss_values, 50)
+            p75 = np.percentile(final_loss_values, 75)
         else:
             variance = 0.0
+            p25 = p50 = p75 = 0.0
 
         report += f"* **Mean final loss**: {mean_loss:.2e}\n\n"
         report += f"* **Variance**: {variance:.2e}\n\n"
         report += f"* **Range**:\n\n"
         report += f"  * 0th percentile: {min_loss:.2e}\n"
+        report += f"  * 25th percentile: {p25:.2e}\n"
+        report += f"  * 50th percentile (median): {p50:.2e}\n"
+        report += f"  * 75th percentile: {p75:.2e}\n"
         report += f"  * 100th percentile: {max_loss:.2e}\n\n"
     else:
         report += "* **No final loss data available**\n\n"

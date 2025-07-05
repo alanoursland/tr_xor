@@ -13,6 +13,7 @@ import numpy as np
 import sys
 import torch
 import traceback
+import experiments as _
 
 from collections import defaultdict
 from configs import ExperimentConfig, get_experiment_config, list_experiments

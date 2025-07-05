@@ -2,10 +2,14 @@
 
 import torch
 import torch.nn as nn
-from typing import Dict, List, Optional, Sequence, Tuple, Callable
+from typing import Dict, List, Optional, Sequence, Tuple, Callable, Any
 from dataclasses import dataclass, field
 from models import Abs, Sum
 import copy
+import json
+from pathlib import Path
+from configs import ExperimentConfig
+
 
 class SharedHookManager:
     """
@@ -125,7 +129,7 @@ class BaseMonitor:
 
     def __init__(
         self,
-        hook_manager: SharedHookManager,
+        hook_manager: Optional[SharedHookManager],
         dataset_size: int,
         classifier_threshold: float = 0.5,
     ):
@@ -137,17 +141,23 @@ class BaseMonitor:
     @property
     def activations(self) -> Dict[str, torch.Tensor]:
         """Provides direct access to the shared activations dictionary."""
-        return self.manager.activations
+        if self.manager:
+            return self.manager.activations
+        return {}
 
     @property
     def forward_outputs(self) -> Dict[str, torch.Tensor]:
         """Provides direct access to the shared forward_outputs dictionary."""
-        return self.manager.forward_outputs
+        if self.manager:
+            return self.manager.forward_outputs
+        return {}
 
     @property
     def gradients(self) -> Dict[str, torch.Tensor]:
         """Provides direct access to the shared gradients dictionary."""
-        return self.manager.gradients
+        if self.manager:
+            return self.manager.gradients
+        return {}
 
     @property
     def model(self) -> nn.Module:
@@ -155,21 +165,107 @@ class BaseMonitor:
         return self.manager.model
 
     def to(self, device: torch.device) -> None:
-        self.manager.to(device)
+        if self.manager:
+            self.manager.to(device)
 
+    # === TRAINING LIFECYCLE HOOKS ===
+
+    def start_run(self, run_id: int) -> None:
+        pass
+
+    def end_run(self, run_id: int, final_stats: Dict[str, Any]) -> None:
+        pass
+
+    def start_epoch(self, epoch: int) -> None:
+        pass
+
+    def end_epoch(self, epoch: int, epoch_loss: float) -> None:
+        pass
+
+    # === OPTIMIZATION STEP HOOKS ===
+
+    def before_forward(self, x: torch.Tensor, y: torch.Tensor, batch_idx: Sequence[int]) -> None:
+        pass
+
+    def after_forward(
+        self, x: torch.Tensor, y: torch.Tensor, batch_idx: Sequence[int], outputs: torch.Tensor, loss: torch.Tensor
+    ) -> None:
+        pass
+
+    def before_backward(self, loss: torch.Tensor) -> None:
+        pass
+
+    def after_backward(self, x: torch.Tensor, y: torch.Tensor, batch_idx: Sequence[int]) -> None:
+        pass
+
+    # === EXISTING CORE METHODS ===
     def check(self, x: torch.Tensor, y: torch.Tensor, batch_idx: Sequence[int]) -> bool:
         """
-        Subclasses should override this method to implement custom monitoring logic.
-        Returns True if training should continue normally, or False to trigger intervention.
+        Main monitoring check - called after backward pass.
+
+        This is the primary monitoring method where most detection logic should go.
+        Called after gradients are computed but before parameter updates.
+
+        Args:
+            x: Input batch
+            y: Target batch
+            batch_idx: Indices of samples in this batch
+
+        Returns:
+            True if training should continue normally, False if intervention needed
         """
-        raise NotImplementedError("Subclasses must implement the check() method.")
+        return True
 
     def fix(self, x: torch.Tensor, y: torch.Tensor, batch_idx: Sequence[int]) -> None:
         """
-        Subclasses should override this method to implement corrective intervention
-        when a monitored condition is violated.
+        Apply corrective intervention when check() returns False.
+
+        Args:
+            x: Input batch
+            y: Target batch
+            batch_idx: Indices of samples in this batch
         """
-        raise NotImplementedError("Subclasses must implement the fix() method.")
+        pass
+
+    def after_optimizer_step(self, x: torch.Tensor, y: torch.Tensor, batch_idx: Sequence[int]) -> None:
+        """
+        Called after the optimizer step (parameters have been updated).
+
+        Args:
+            x: Input batch
+            y: Target batch
+            batch_idx: Indices of samples in this batch
+        """
+        pass
+
+    # === EARLY STOPPING HOOKS ===
+
+    def should_stop_early(
+        self, epoch: int, current_loss: float, best_loss: float, epochs_without_improvement: int
+    ) -> bool:
+        """
+        Allow monitor to request early stopping based on custom criteria.
+
+        Args:
+            epoch: Current epoch number
+            current_loss: Loss for current epoch
+            best_loss: Best loss seen so far
+            epochs_without_improvement: Number of epochs without improvement
+
+        Returns:
+            True if training should stop early, False otherwise
+        """
+        return False
+
+    def on_early_stop(self, reason: str, epoch: int) -> None:
+        """
+        Called when early stopping is triggered (by any mechanism).
+
+        Args:
+            reason: Reason for early stopping (e.g., "loss_threshold", "convergence", "monitor_request")
+            epoch: Epoch at which stopping occurred
+        """
+        pass
 
 
 class DeadSampleMonitor(BaseMonitor):
@@ -595,6 +691,7 @@ class LoggingMonitor(BaseMonitor):
         # print("====================================\n")
         self.step_count += 1
 
+
 class AnnealingMonitor(BaseMonitor):
     """
     Monitors the training process and applies Error-Driven Annealing.
@@ -628,7 +725,7 @@ class AnnealingMonitor(BaseMonitor):
         self.loss_fn = loss_fn
         self.base_noise_level = base_noise_level
         self.annealing_threshold = annealing_threshold
-        
+
         # This will store the temperature calculated in `check` for use in `fix`
         self.error_magnitude: float = 0.0
         self.temperature: float = 0.0
@@ -636,7 +733,7 @@ class AnnealingMonitor(BaseMonitor):
         # Create a deep copy of the loss function to avoid side effects
         self._internal_loss_fn = copy.deepcopy(loss_fn)
         # Set its reduction to 'none' to get per-example losses
-        self._internal_loss_fn.reduction = 'none'
+        self._internal_loss_fn.reduction = "none"
 
     def _calculate_uncertainty(self, per_example_loss: torch.Tensor) -> float:
         """Calculates the normalized uncertainty from per-example losses."""
@@ -671,17 +768,17 @@ class AnnealingMonitor(BaseMonitor):
         predictions = self.manager.model_output
         # print(f"y = {y}")
         # print(f"predictions = {predictions}")
-        
+
         # Calculate per-example loss to get the error distribution
         per_example_loss = self._internal_loss_fn(predictions, y.unsqueeze(1))
         # print(f"per_example_loss = {per_example_loss}")
-        
+
         # Calculate the "temperature" and store it for the `fix` method
         self.error_magnitude = torch.linalg.norm(per_example_loss, ord=2)
         self.temperature = self._calculate_uncertainty(per_example_loss)
-        
+
         self.step_count += 1
-        
+
         # If temperature is above threshold, return False to trigger an intervention
         return self.temperature <= self.annealing_threshold
 
@@ -700,10 +797,10 @@ class AnnealingMonitor(BaseMonitor):
         for param in self.model.parameters():
             # 1. Generate standard Gaussian noise (mean=0, var=1)
             noise = torch.randn_like(param)
-            
+
             # 2. Scale the noise by the base level and current temperature
             scaled_noise = noise * self.base_noise_level * self.error_magnitude * self.temperature * self.temperature
-            
+
             # 3. Apply the additive noise to the parameter in-place
             param.add_(scaled_noise)
 
@@ -743,3 +840,203 @@ class CompositeMonitor(BaseMonitor):
         # so we don't need to do anything extra here. The shared state
         # is handled correctly.
         super().to(device)
+
+
+class ParameterTraceMonitor(BaseMonitor):
+    """
+    Monitor that captures model parameters at each epoch and saves detailed
+    training traces to JSON files.
+
+    This monitor creates a comprehensive record of parameter evolution during
+    training, useful for analyzing convergence dynamics, parameter trajectories,
+    and training stability.
+    """
+
+    def __init__(
+        self,
+        config: ExperimentConfig,
+        dataset_size: int,
+        trace_subdir: str = "parameter_traces",
+        save_frequency: int = 1,  # Save every N epochs
+    ):
+        """
+        Initialize the parameter trace monitor.
+
+        Args:
+            hook_manager: Shared hook manager for model access
+            dataset_size: Size of the training dataset
+            output_dir: Base output directory for experiments
+            experiment_name: Name of the current experiment
+            trace_subdir: Subdirectory name for trace files
+            save_frequency: Save parameters every N epochs (1 = every epoch)
+        """
+        super().__init__(hook_manager=None, dataset_size=dataset_size)
+
+        self.config = config
+        self.trace_subdir = trace_subdir
+        self.save_frequency = save_frequency
+        self.current_run_id = -1
+
+        # Training data storage
+        self.trace_data = {"metadata": {}, "epochs": []}
+
+        # Track when we've captured initial state
+        self.initial_state_captured = False
+
+    def start_run(self, run_id: int) -> None:
+        """Initialize trace data for a new run and capture initial model state."""
+        super().start_run(run_id)
+        self.current_run_id = run_id
+
+        print("start_run")
+
+        experiment_name = self.config.execution.experiment_name
+        output_dir = self.config.execution.output_dir
+
+        # Reset trace data for new run
+        self.trace_data = {
+            "metadata": {
+                "run_id": run_id,
+                "experiment_name": experiment_name,
+                "model_architecture": self.config.model.__class__.__name__,
+                "parameter_count": sum(p.numel() for p in self.config.model.parameters()),
+                "trainable_parameters": sum(p.numel() for p in self.config.model.parameters() if p.requires_grad),
+            },
+            "epochs": [],
+        }
+
+        self.initial_state_captured = False
+
+        # Create output directory if it doesn't exist
+        self.trace_dir = Path(output_dir) / experiment_name / self.trace_subdir
+        self.trace_dir.mkdir(parents=True, exist_ok=True)
+
+        # Capture and save initial model state
+        self._capture_initial_state()
+
+    def _capture_initial_state(self) -> None:
+        """Capture the initial state of the model at the start of training."""
+        
+        # Extract all parameters using the same logic as _capture_epoch_data
+        initial_parameters = {}
+        for name, param in self.config.model.named_parameters():
+            # Convert to CPU and detach to avoid GPU memory issues
+            param_cpu = param.detach().cpu()
+
+            # Convert to nested lists for JSON serialization
+            if param_cpu.dim() == 0:  # Scalar parameter
+                initial_parameters[name] = param_cpu.item()
+            elif param_cpu.dim() == 1:  # 1D parameter (bias)
+                initial_parameters[name] = param_cpu.tolist()
+            elif param_cpu.dim() == 2:  # 2D parameter (weight matrix)
+                initial_parameters[name] = param_cpu.tolist()
+            else:  # Higher dimensional parameters
+                initial_parameters[name] = param_cpu.tolist()
+        
+        # Add initial state to trace data (JSON serializable)
+        self.trace_data["initial_state"] = {
+            "epoch": -1,  # Use -1 to indicate this is pre-training
+            "parameters": initial_parameters
+        }
+        
+        # Update metadata
+        self.trace_data["metadata"]["initial_state_captured"] = True
+        
+        print(f"Initial state captured with {len(initial_parameters)} parameter groups")
+
+    def end_epoch(self, epoch: int, epoch_loss: float) -> None:
+        """Capture parameters at the end of each epoch."""
+        # Save parameters at specified frequency
+        if epoch % self.save_frequency == 0:
+            self._capture_epoch_data(epoch, epoch_loss)
+
+    def end_run(self, run_id: int, final_stats: Dict[str, Any]) -> None:
+        """Finalize and save the trace data for this run."""
+        # Update metadata with final statistics
+        self.trace_data["metadata"].update(
+            {
+                "total_epochs": len(self.trace_data["epochs"]),
+                "final_accuracy": final_stats.get("accuracy", 0.0),
+                "final_loss": final_stats.get("final_loss", float("inf")),
+                "best_loss": final_stats.get("best_loss", float("inf")),
+                "training_time": final_stats.get("training_time", 0.0),
+                "epochs_completed": final_stats.get("epochs_completed", 0),
+            }
+        )
+
+        # Save to file
+        self._save_trace_file(run_id)
+
+    def _capture_epoch_data(self, epoch: int, loss: float) -> None:
+        """Capture current model state."""
+        # Extract all parameters
+        parameters = {}
+        for name, param in self.config.model.named_parameters():
+            # Convert to CPU and detach to avoid GPU memory issues
+            param_cpu = param.detach().cpu()
+
+            # Convert to nested lists for JSON serialization
+            if param_cpu.dim() == 0:  # Scalar parameter
+                parameters[name] = param_cpu.item()
+            elif param_cpu.dim() == 1:  # 1D parameter (bias)
+                parameters[name] = param_cpu.tolist()
+            elif param_cpu.dim() == 2:  # 2D parameter (weight matrix)
+                parameters[name] = param_cpu.tolist()
+            else:  # Higher dimensional parameters
+                parameters[name] = param_cpu.tolist()
+
+        # Create epoch record
+        epoch_data = {"epoch": epoch, "loss": float(loss), "parameters": parameters}
+
+        self.trace_data["epochs"].append(epoch_data)
+
+    def _save_trace_file(self, run_id: int) -> None:
+        """Save trace data to JSON file."""
+        filename = f"run_{run_id:03d}_trace.json"
+        filepath = self.trace_dir / filename
+
+        try:
+            with open(filepath, "w") as f:
+                json.dump(self.trace_data, f, indent=2)
+
+            print(f"📊 Saved parameter trace: {filepath}")
+
+        except Exception as e:
+            print(f"❌ Failed to save parameter trace {filepath}: {e}")
+
+    @staticmethod
+    def load_trace_file(filepath: str) -> Dict[str, Any]:
+        """Load a parameter trace file."""
+        with open(filepath, 'r') as f:
+            return json.load(f)
+
+    @staticmethod
+    def load_experiment_traces(experiment_dir: str, trace_subdir: str = "parameter_traces") -> List[Dict[str, Any]]:
+        """Load all trace files from an experiment directory."""
+        trace_dir = Path(experiment_dir) / trace_subdir
+        
+        if not trace_dir.exists():
+            return []
+        
+        traces = []
+        for trace_file in sorted(trace_dir.glob("run_*_trace.json")):
+            try:
+                traces.append(ParameterTraceMonitor.load_trace_file(trace_file))
+            except Exception as e:
+                print(f"Warning: Failed to load {trace_file}: {e}")
+        
+        return traces
+
+    @staticmethod
+    def extract_parameter_trajectory(trace_data: Dict[str, Any], param_name: str) -> List[Any]:
+        """Extract the trajectory of a specific parameter across epochs."""
+        trajectory = []
+        for epoch_data in trace_data["epochs"]:
+            if param_name in epoch_data["parameters"]:
+                trajectory.append(epoch_data["parameters"][param_name])
+        return trajectory
+
+    @staticmethod
+    def extract_loss_trajectory(trace_data: Dict[str, Any]) -> List[float]:
+        """Extract the loss trajectory across epochs."""
+        return [epoch_data["loss"] for epoch_data in trace_data["epochs"]]

@@ -18,6 +18,7 @@ import torch.nn as nn
 from lib import setup_experiment_environment
 import numpy as np
 import traceback
+import experiments as _
 
 # Import project modules
 from configs import ExperimentConfig, get_experiment_config, list_experiments
@@ -97,8 +98,10 @@ def execute_training_run(
     optimizer = training_components["optimizer"]
     loss_function = training_components["loss_function"]
 
-    if config.training.training_monitor:
-        config.training.training_monitor.to(device)
+    training_monitor = config.training.training_monitor
+    if training_monitor:
+        training_monitor.to(device)
+        training_monitor.start_run(run_id)
 
     # Training tracking
     losses = []
@@ -111,22 +114,43 @@ def execute_training_run(
     # Training loop
     for epoch in range(config.training.epochs):
         model.train()
+        
+        # === MONITOR HOOK: Start of epoch ===
+        if training_monitor:
+            training_monitor.start_epoch(epoch)
+
+        batch_idx = list(range(y.size(0)))
+        
+        # === MONITOR HOOK: Before forward pass ===
+        if training_monitor:
+            training_monitor.before_forward(x, y, batch_idx)
 
         # Forward pass
         outputs = model(x)
         loss = loss_function(outputs, y)
 
+        # === MONITOR HOOK: After forward pass ===
+        if training_monitor:
+            training_monitor.after_forward(x, y, batch_idx, outputs, loss)
+
         if config.training.regularizer_function:
             regularizer_loss = config.training.regularizer_function()
             loss += regularizer_loss
+
+        # === MONITOR HOOK: Before backward pass ===
+        if training_monitor:
+            training_monitor.before_backward(loss)
 
         # Backward pass
         optimizer.zero_grad()
         loss.backward()
 
-        training_monitor = config.training.training_monitor
+        # === MONITOR HOOK: After backward pass ===
         if training_monitor:
-            batch_idx = list(range(y.size(0)))
+            training_monitor.after_backward(x, y, batch_idx)
+
+        # === EXISTING MONITOR INTEGRATION: Check and fix ===
+        if training_monitor:
             if not training_monitor.check(x, y, batch_idx):
                 training_monitor.fix(x, y, batch_idx)
             # print(f"[epoch {epoch}] dead_data={metrics.dead_data_fraction:.2f}, torque={metrics.torque_ratio:.4f}, bias_drift={metrics.bias_drift:.2e}")
@@ -141,9 +165,17 @@ def execute_training_run(
 
         optimizer.step()
 
+        # === MONITOR HOOK: After optimizer step ===
+        if training_monitor:
+            training_monitor.after_optimizer_step(x, y, batch_idx)
+
         # Track loss
         current_loss = loss.item()
         losses.append(current_loss)
+
+        # === MONITOR HOOK: End of epoch ===
+        if training_monitor:
+            training_monitor.end_epoch(epoch, current_loss)
 
         # Early exit if loss is low enough
         if config.training.stop_training_loss_threshold is not None:
@@ -152,6 +184,9 @@ def execute_training_run(
                     print(
                         f"  Early stopping at epoch {epoch} (loss {current_loss:.6f} <= {config.training.stop_training_loss_threshold})"
                     )
+                # === MONITOR HOOK: Early stop notification ===
+                if training_monitor:
+                    training_monitor.on_early_stop("loss_threshold", epoch)
                 break
 
         # Early exit if model isn't improving.
@@ -169,10 +204,20 @@ def execute_training_run(
                     f"  Convergence-based early stopping at epoch {epoch} "
                     f"(loss did not improve by {loss_change_threshold} for {loss_change_patience} steps)"
                 )
+                # === MONITOR HOOK: Early stop notification ===
+                if training_monitor:
+                    training_monitor.on_early_stop("convergence", epoch)
                 break
 
         if current_loss < best_loss:
             best_loss = current_loss
+
+        # === MONITOR HOOK: Check for monitor-requested early stopping ===
+        if training_monitor:
+            if training_monitor.should_stop_early(epoch, current_loss, best_loss, patience_counter):
+                print(f"  Monitor-requested early stopping at epoch {epoch}")
+                training_monitor.on_early_stop("monitor_request", epoch)
+                break
 
         # Log progress occasionally
         if epoch % config.logging.train_epochs == 0 or epoch == config.training.epochs - 1:
@@ -213,8 +258,11 @@ def execute_training_run(
         "loss_history": losses,
     }
 
-    return model, stats
+    # === MONITOR HOOK: End of run ===
+    if training_monitor:
+        training_monitor.end_run(run_id, stats)
 
+    return model, stats
 
 # ==============================================================================
 # Error Handling and Recovery

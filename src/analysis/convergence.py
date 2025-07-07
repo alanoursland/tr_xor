@@ -7,6 +7,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import shap
 import matplotlib.pyplot as plt
+import argparse
+import sys
 
 from dataclasses import dataclass
 from enum import Enum
@@ -14,6 +16,7 @@ from typing import Dict, List, Tuple, Optional, Union, Callable, Any
 from sklearn.tree import DecisionTreeRegressor, export_text
 from sklearn.inspection import PartialDependenceDisplay
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
+from pathlib import Path
 
 """
 Convergence Prediction Framework
@@ -51,6 +54,9 @@ KEY FEATURES:
 This framework helps answer: "How much longer will this model take to converge?"
 """
 
+# ============================================================================
+# DATA STRUCTURES (Keep existing dataclasses and enums)
+# ============================================================================
 
 class DistanceMetric(Enum):
     L1 = "l1"
@@ -66,6 +72,32 @@ class RegressionType(Enum):
     LOG_LINEAR = "log_linear"
     EXPONENTIAL = "exponential"
     KERNEL = "kernel"
+
+@dataclass(frozen=True)
+class PathRegistry:
+    """
+    Canonical place for all on-disk locations that belong to one experiment.
+    Keeps path logic in one place so the rest of the code can stay clean.
+    """
+    experiment: str                              # e.g. "my_run_2025_07_04"
+    root: Path = Path("results")                 # default root matches current layout
+
+    # -------- frequently-used subfolders --------
+    @property
+    def traces(self) -> Path:                    # .../results/<experiment>/parameter_traces
+        return self.root / self.experiment / "parameter_traces"
+
+    @property
+    def analysis(self) -> Path:                  # .../results/<experiment>/convergence_analysis
+        return self.root / self.experiment / "convergence_analysis"
+
+    # -------- helpers --------
+    def ensure_dirs(self) -> None:
+        """
+        Create the writable sub-directories (currently just analysis/)
+        so later code can fail fast if the disk is missing / read-only.
+        """
+        self.analysis.mkdir(parents=True, exist_ok=True)
 
 
 @dataclass
@@ -92,6 +124,9 @@ class PredictionResults:
     feature_importance: Optional[torch.Tensor] = None
     model_params: Optional[Dict] = None
 
+# ============================================================================
+# MAIN CONVERGENCE PREDICTOR CLASS
+# ============================================================================
 
 class ConvergencePredictor:
     """Main API for convergence prediction analysis"""
@@ -134,7 +169,10 @@ class ConvergencePredictor:
         include_interactions: bool = True,
         custom_features: Optional[List[Callable]] = None,
     ) -> torch.Tensor:
-        """Compute feature matrix from parameter differences"""
+        """
+        Delegate to FeatureEngineering so all distances, logs, ratios, interactions
+        stay in one place.
++        """
         if self.data is None:
             raise ValueError("No data loaded. Call load_data first.")
 
@@ -387,64 +425,6 @@ class ConvergencePredictor:
             mae=mae,
             feature_importance=feature_importance,
             model_params={"n_estimators": n_estimators, "max_depth": max_depth},
-        )
-
-        self.results[model_name] = result
-        return result
-
-    def _fit_kernel_regression(
-        self, X: torch.Tensor, y: torch.Tensor, kernel: str, regularization: float, cv_folds: int
-    ) -> PredictionResults:
-        """Kernel regression implementation"""
-        n_samples = X.shape[0]
-
-        # Compute kernel matrix
-        if kernel == "rbf":
-            # RBF kernel: exp(-gamma * ||x - y||^2)
-            # Use median heuristic for gamma
-            dists = torch.cdist(X, X, p=2)
-            gamma = 1.0 / (2.0 * torch.median(dists[dists > 0]) ** 2)
-            K = torch.exp(-gamma * dists**2)
-        elif kernel == "linear":
-            K = torch.mm(X, X.t())
-        elif kernel == "polynomial":
-            K = (1 + torch.mm(X, X.t())) ** 3
-        else:
-            raise ValueError(f"Unknown kernel: {kernel}")
-
-        # Add regularization to diagonal
-        K = K + regularization * torch.eye(n_samples, device=self.device)
-
-        # Solve K * alpha = y for alpha
-        alpha = torch.linalg.solve(K, y.unsqueeze(1)).squeeze()
-
-        # Predictions are K * alpha
-        predictions = torch.mv(K, alpha)
-
-        # Calculate metrics
-        mse = F.mse_loss(predictions, y).item()
-        mae = F.l1_loss(predictions, y).item()
-        r2 = 1 - (torch.sum((y - predictions) ** 2) / torch.sum((y - y.mean()) ** 2)).item()
-
-        # Store kernel info for future predictions
-        kernel_info = {
-            "X_train": X,
-            "alpha": alpha,
-            "kernel": kernel,
-            "gamma": gamma.item() if kernel == "rbf" else None,
-        }
-
-        model_name = f"kernel_{kernel}"
-        self.models[model_name] = kernel_info
-
-        result = PredictionResults(
-            model_type=model_name,
-            predictions=predictions,
-            actual=y,
-            r2_score=r2,
-            mse=mse,
-            mae=mae,
-            model_params={"kernel": kernel, "regularization": regularization},
         )
 
         self.results[model_name] = result
@@ -792,39 +772,33 @@ class ConvergencePredictor:
                     # Add regularization
                     K_boot_reg = K_boot + regularization * torch.eye(X_boot.shape[0], device=self.device)
 
-                    try:
-                        # GPU solve
-                        alpha_boot = torch.linalg.solve(K_boot_reg, y_boot.unsqueeze(1)).squeeze()
+                    # GPU solve
+                    alpha_boot = torch.linalg.solve(K_boot_reg, y_boot.unsqueeze(1)).squeeze()
 
-                        # Predict on full dataset (GPU)
-                        if kernel_type == "rbf":
-                            K_full = torch.exp(-gamma * torch.cdist(X, X_boot, p=2) ** 2)
-                        elif kernel_type == "linear":
-                            K_full = torch.mm(X, X_boot.t())
-                        elif kernel_type == "polynomial":
-                            K_full = (1 + torch.mm(X, X_boot.t())) ** 3
+                    # Predict on full dataset (GPU)
+                    if kernel_type == "rbf":
+                        K_full = torch.exp(-gamma * torch.cdist(X, X_boot, p=2) ** 2)
+                    elif kernel_type == "linear":
+                        K_full = torch.mm(X, X_boot.t())
+                    elif kernel_type == "polynomial":
+                        K_full = (1 + torch.mm(X, X_boot.t())) ** 3
 
-                        boot_pred = torch.mv(K_full, alpha_boot)
-                        bootstrap_predictions.append(boot_pred)
-                    except:
-                        continue
+                    boot_pred = torch.mv(K_full, alpha_boot)
+                    bootstrap_predictions.append(boot_pred)
 
             else:
                 # Sklearn models - must use CPU
-                try:
-                    from sklearn.base import clone
+                from sklearn.base import clone
 
-                    boot_model = clone(fitted_model)
-                    X_boot_cpu = X_boot.cpu().numpy()
-                    y_boot_cpu = y_boot.cpu().numpy()
-                    X_cpu = X.cpu().numpy()
+                boot_model = clone(fitted_model)
+                X_boot_cpu = X_boot.cpu().numpy()
+                y_boot_cpu = y_boot.cpu().numpy()
+                X_cpu = X.cpu().numpy()
 
-                    boot_model.fit(X_boot_cpu, y_boot_cpu)
-                    boot_pred = boot_model.predict(X_cpu)
-                    boot_pred_tensor = torch.tensor(boot_pred, device=self.device, dtype=torch.float32)
-                    bootstrap_predictions.append(boot_pred_tensor)
-                except:
-                    continue
+                boot_model.fit(X_boot_cpu, y_boot_cpu)
+                boot_pred = boot_model.predict(X_cpu)
+                boot_pred_tensor = torch.tensor(boot_pred, device=self.device, dtype=torch.float32)
+                bootstrap_predictions.append(boot_pred_tensor)
 
         if len(bootstrap_predictions) == 0:
             raise ValueError(f"Could not perform bootstrap for model type: {type(fitted_model)}")
@@ -1043,10 +1017,11 @@ class ConvergencePredictor:
                 )
                 plt.suptitle(f"Partial Dependence Plots for {model_name}")
                 plt.tight_layout(rect=[0, 0, 1, 0.96])
-                pdp_path = os.path.join(trace_dir, "partial_dependence_plots.png")
-                plt.savefig(pdp_path)
+                # Create interpretation output directory
+                fig_path = registry.analysis / "partial_dependence_plots.png"
+                plt.savefig(fig_path)
                 plt.close()
-                print(f"  Plots saved to {pdp_path}")
+                print(f"  Plots saved to {fig_path}")
 
 
             # 3. SHAP Analysis (for tree models)
@@ -1063,11 +1038,11 @@ class ConvergencePredictor:
 
                 # Generate and save SHAP summary plot
                 shap.summary_plot(shap_values, X_sample, feature_names=[feature_names.get(i, f"f_{i}") for i in range(X_cpu.shape[1])], show=False)
-                shap_plot_path = os.path.join(trace_dir, "shap_summary_plot.png")
+                fig_path = registry.analysis / "shap_summary_plot.png"
                 plt.title(f"SHAP Feature Impact for {model_name}")
-                plt.savefig(shap_plot_path, bbox_inches='tight')
+                plt.savefig(fig_path, bbox_inches='tight')
                 plt.close()
-                print(f"  SHAP summary plot saved to {shap_plot_path}")
+                print(f"  SHAP summary plot saved to {fig_path}")
 
             # 4. Surrogate Decision Tree Model
             # ... (This section is unchanged) ...
@@ -1088,6 +1063,9 @@ class ConvergencePredictor:
             else:
                 print("The surrogate model is not a close enough approximation to display simple rules.")
 
+# ============================================================================
+# FEATURE ENGINEERING UTILITIES
+# ============================================================================
 class FeatureEngineering:
     """GPU-accelerated feature engineering utilities"""
 
@@ -1166,6 +1144,9 @@ class FeatureEngineering:
         return transformed
 
 
+# ============================================================================
+# MODEL FACTORY
+# ============================================================================
 class ModelFactory:
     """Factory for creating GPU-accelerated models"""
 
@@ -1280,7 +1261,10 @@ predictor.statistical_tests('linear', 'polynomial')
 important_features = predictor.feature_selection(method='lasso', n_features=5)
 """
 
-def analyze_multiple_traces(trace_files: List[str], trace_dir: str) -> Dict:
+# ============================================================================
+# ANALYSIS FUNCTIONS
+# ============================================================================
+def analyze_multiple_traces(registry: PathRegistry) -> Dict:
     """
     Analyze multiple training traces to build robust convergence predictors.
     
@@ -1293,6 +1277,15 @@ def analyze_multiple_traces(trace_files: List[str], trace_dir: str) -> Dict:
     Returns:
         Dictionary with analysis results
     """
+
+    trace_dir = registry.traces
+    output_dir = registry.analysis
+
+    # Find all trace files
+    trace_files = sorted(registry.traces.glob('*.json'))
+
+    print(f"Found {len(trace_files)} trace files")
+
 
     print(f"=== Analyzing {len(trace_files)} training traces ===")
     
@@ -1316,39 +1309,29 @@ def analyze_multiple_traces(trace_files: List[str], trace_dir: str) -> Dict:
     for i, trace_file in enumerate(trace_files):
         print(f"\nProcessing trace {i+1}/{len(trace_files)}: {os.path.basename(trace_file)}")
         
-        try:
-            # Load trace data
-            with open(trace_file, 'r') as f:
-                trace_data = json.load(f)
+        # Load trace data
+        with open(trace_file, 'r') as f:
+            trace_data = json.load(f)
 
-            accuracy = 0.0
-            # Prioritize checking the metadata object for final accuracy
-            if 'metadata' in trace_data and 'final_accuracy' in trace_data['metadata']:
-                accuracy = trace_data['metadata']['final_accuracy']
-            # Fallback to checking the final epoch if not in metadata
-            elif trace_data.get("epochs"):
-                 final_epoch = trace_data["epochs"][-1]
-                 if 'accuracy' in final_epoch:
-                     accuracy = final_epoch['accuracy']
-                 elif 'metrics' in final_epoch and 'accuracy' in final_epoch['metrics']:
-                     accuracy = final_epoch['metrics']['accuracy']
+        accuracy = 0.0
+        # Prioritize checking the metadata object for final accuracy
+        if 'metadata' in trace_data and 'final_accuracy' in trace_data['metadata']:
+            accuracy = trace_data['metadata']['final_accuracy']
+        # Fallback to checking the final epoch if not in metadata
+        elif trace_data.get("epochs"):
+                final_epoch = trace_data["epochs"][-1]
+                if 'accuracy' in final_epoch:
+                    accuracy = final_epoch['accuracy']
+                elif 'metrics' in final_epoch and 'accuracy' in final_epoch['metrics']:
+                    accuracy = final_epoch['metrics']['accuracy']
 
-            # Skip the trace if final accuracy is not 100%
-            if accuracy < 1.0:
-                print(f"  Skipping trace: Final accuracy is {accuracy:.2%}, not 100%.")
-                skipped_files += 1
-                continue
-            
-            print(f"  Trace passed: Final accuracy is {accuracy}. Proceeding with analysis.")
-
-        except (FileNotFoundError, json.JSONDecodeError) as e:
-            print(f"  Error loading or parsing {trace_file}: {e}")
+        # Skip the trace if final accuracy is not 100%
+        if accuracy < 1.0:
+            print(f"  Skipping trace: Final accuracy is {accuracy:.2%}, not 100%.")
             skipped_files += 1
             continue
-        except (IndexError, KeyError) as e:
-            print(f"  Skipping trace: Could not find epoch data or required keys. Error: {e}")
-            skipped_files += 1
-            continue
+        
+        print(f"  Trace passed: Final accuracy is {accuracy}. Proceeding with analysis.")
         
         # Extract data from this trace
         epochs = trace_data["epochs"]
@@ -1616,16 +1599,16 @@ def analyze_multiple_traces(trace_files: List[str], trace_dir: str) -> Dict:
     print("Generating visualization plots...")
     # Generate plots
 
-    multi_trace_convergence_path = os.path.join(trace_dir, "multi_trace_convergence_analysis.png")
-    predictor.visualize_results(plot_type="all", save_path=multi_trace_convergence_path)
-    print(f"  Plots saved to: {multi_trace_convergence_path}")
+    os.makedirs(output_dir, exist_ok=True)
+    fig_path = registry.analysis / "multi_trace_convergence_analysis.png"
+    predictor.visualize_results(plot_type="all", save_path=fig_path)
+    print(f"  Plots saved to: {fig_path}")
 
     print("\n=== Multi-trace analysis complete ===")
     print(f"Processed {len(trace_metadata)} traces with {len(all_initial_params)} total data points")
     print(f"Best model: {best_model_name} (R² = {results[results_key].r2_score:.4f})")
     
     return summary
-
 
 
 def analyze_convergence_pattern(epochs: List[Dict]) -> Dict:
@@ -1655,6 +1638,7 @@ def analyze_convergence_pattern(epochs: List[Dict]) -> Dict:
         "log_linear_correlation": correlation,
         "is_exponential": abs(correlation) > 0.95,
     }
+
 
 def document_feature_equations(predictor: ConvergencePredictor) -> Dict[str, List[str]]:
     """
@@ -1707,6 +1691,7 @@ def document_feature_equations(predictor: ConvergencePredictor) -> Dict[str, Lis
     
     return feature_equations
 
+
 def map_features_to_indices(predictor: ConvergencePredictor) -> Dict[int, str]:
     """
     Map feature indices to their mathematical definitions.
@@ -1753,6 +1738,7 @@ def map_features_to_indices(predictor: ConvergencePredictor) -> Dict[int, str]:
     
     return feature_index_map
 
+
 def extract_detailed_linear_equation(predictor: ConvergencePredictor, results: Dict) -> str:
     """
     Extract the full linear equation with proper feature names.
@@ -1778,27 +1764,34 @@ def extract_detailed_linear_equation(predictor: ConvergencePredictor, results: D
     
     return "epochs_remaining = " + "".join(equation_parts)
 
+# ============================================================================
+# OUTPUT GENERATION
+# ============================================================================
+
+# ============================================================================
+# INTERPRETATION AND FEATURE MAPPING
+# ============================================================================
+
+
+# ============================================================================
+# MAIN ENTRY POINT
+# ============================================================================
 
 # Example usage:
 if __name__ == "__main__":
-    import sys
+    parser = argparse.ArgumentParser()
+    parser.add_argument("experiment_name")
+    args = parser.parse_args()
 
-    # Get directory from command line argument
-    if len(sys.argv) != 2:
-        print("Usage: python convergence_analysis.py <directory_with_traces>")
-        sys.exit(1)
+    registry = PathRegistry(args.experiment_name)
+    # fail-fast if someone mis-specifies or the directory isn’t there
+    if not registry.traces.exists() or not registry.traces.is_dir():
+        raise FileNotFoundError(f"Trace directory {registry.traces!r} not found or not a directory")
 
-    trace_dir = sys.argv[1]
+    registry.ensure_dirs()          # make sure analysis/ exists
 
-    # Find all trace files
-    trace_files = glob.glob(os.path.join(trace_dir, "*_trace.json"))
-    if not trace_files:
-        print(f"No trace files found in {trace_dir}")
-        sys.exit(1)
+    analysis_results = analyze_multiple_traces(registry)
 
-    print(f"Found {len(trace_files)} trace files")
-
-    analysis_results = analyze_multiple_traces(trace_files, trace_dir)
 
     # Print summary
     print("Convergence Analysis Results")

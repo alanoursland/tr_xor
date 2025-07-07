@@ -208,119 +208,90 @@ class ConvergencePredictor:
         self,
         regression_type: RegressionType,
         degree: int = 2,
-        kernel: str = "rbf",
-        regularization: float = 1e-4,  # Changed default from 0.0 to 1e-4
+        regularization: float = 1e-4,
         cv_folds: int = 5,
     ) -> PredictionResults:
-        """Fit a regression model with cross-validation - completing missing types"""
+        """Fit a regression model with cross-validation."""
         if self.features is None:
             raise ValueError("No features computed. Call compute_features first.")
 
         X = self.features
         y = self.data.epochs_to_converge
+        model_name = regression_type.value
+        y_transformed = y
 
+        # --- Model and Data Preparation ---
         if regression_type == RegressionType.LINEAR:
             model = nn.Linear(X.shape[1], 1).to(self.device)
-            model_name = "linear"
         elif regression_type == RegressionType.POLYNOMIAL:
             X = self._polynomial_features(X, degree)
             model = nn.Linear(X.shape[1], 1).to(self.device)
             model_name = f"poly_{degree}"
         elif regression_type == RegressionType.LOG_LINEAR:
-            y = torch.log(y + 1)
+            y_transformed = torch.log(y + 1)
             model = nn.Linear(X.shape[1], 1).to(self.device)
-            model_name = "log_linear"
         elif regression_type == RegressionType.EXPONENTIAL:
-            # For exponential: log(y) = a + bx, so y = exp(a + bx)
             y_transformed = torch.log(y + 1e-8)
             model = nn.Linear(X.shape[1], 1).to(self.device)
-            model_name = "exponential"
-        elif regression_type == RegressionType.KERNEL:
-            # Implement RBF kernel regression
-            model_name = f"kernel_{kernel}"
-            return self._fit_kernel_regression(X, y, kernel, regularization, cv_folds)
         else:
             raise NotImplementedError(f"Regression type {regression_type} not implemented")
 
-        # Training loop
-        optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=regularization)
-        criterion = nn.MSELoss()
-
-        # Cross-validation
+        # --- Cross-Validation ---
+        cv_scores = []
         if cv_folds > 1:
             from sklearn.model_selection import KFold
-
             kf = KFold(n_splits=cv_folds, shuffle=True, random_state=42)
-            cv_scores = []
 
             for train_idx, val_idx in kf.split(X.cpu().numpy()):
-                # Clone model for CV
-                cv_model = type(model)(model.in_features, model.out_features).to(self.device)
-                cv_optimizer = torch.optim.Adam(cv_model.parameters(), lr=0.01, weight_decay=regularization)
-
                 train_idx = torch.tensor(train_idx, device=self.device)
                 val_idx = torch.tensor(val_idx, device=self.device)
-
-                X_train, X_val = X[train_idx], X[val_idx]
-                y_train, y_val = y[train_idx], y[val_idx]
-
-                # Train CV model
-                for epoch in range(500):
-                    cv_optimizer.zero_grad()
-                    if regression_type == RegressionType.EXPONENTIAL:
-                        predictions = cv_model(X_train).squeeze()
-                        loss = criterion(predictions, y_transformed[train_idx])
-                    else:
-                        predictions = cv_model(X_train).squeeze()
-                        loss = criterion(predictions, y_train)
-                    loss.backward()
-                    cv_optimizer.step()
+                
+                # Create a fresh model for each fold
+                cv_model = type(model)(X.shape[1], 1).to(self.device)
+                
+                # Delegate training to the new helper method
+                cv_model = self._train_pytorch_model(
+                    model=cv_model,
+                    X_train=X[train_idx],
+                    y_train=y_transformed[train_idx],
+                    epochs=500, # Fewer epochs for CV folds
+                    weight_decay=regularization,
+                    early_stopping=True
+                )
 
                 # Validate
-                cv_model.eval()
                 with torch.no_grad():
-                    val_pred = cv_model(X_val).squeeze()
-                    if regression_type == RegressionType.EXPONENTIAL:
-                        val_pred = torch.exp(val_pred) - 1e-8
-                        val_true = torch.exp(y_transformed[val_idx]) - 1e-8
-                    else:
-                        val_true = y_val
+                    val_pred = cv_model(X[val_idx]).squeeze()
+                    y_val = y[val_idx] # Always validate against original y
+                    if regression_type in [RegressionType.LOG_LINEAR, RegressionType.EXPONENTIAL]:
+                        val_pred = torch.exp(val_pred)
 
-                    val_r2 = (
-                        1
-                        - (torch.sum((val_true - val_pred) ** 2) / torch.sum((val_true - val_true.mean()) ** 2)).item()
-                    )
+                    val_r2 = 1 - (torch.sum((y_val - val_pred) ** 2) / torch.sum((y_val - y_val.mean()) ** 2)).item()
                     cv_scores.append(val_r2)
+        
+        # --- Final Model Training ---
+        final_model = type(model)(X.shape[1], 1).to(self.device)
+        # Delegate final training to the new helper method
+        final_model = self._train_pytorch_model(
+            model=final_model,
+            X_train=X,
+            y_train=y_transformed,
+            epochs=1000,
+            weight_decay=regularization,
+            early_stopping=True
+        )
 
-        # Train final model on all data
-        for epoch in range(1000):
-            optimizer.zero_grad()
-            if regression_type == RegressionType.EXPONENTIAL:
-                predictions = model(X).squeeze()
-                loss = criterion(predictions, y_transformed)
-            else:
-                predictions = model(X).squeeze()
-                loss = criterion(predictions, y)
-            loss.backward()
-            optimizer.step()
-
-        # Get final predictions
-        model.eval()
+        # --- Evaluation ---
         with torch.no_grad():
-            final_predictions = model(X).squeeze()
-
-            if regression_type == RegressionType.LOG_LINEAR:
-                final_predictions = torch.exp(final_predictions) - 1
-                y = torch.exp(y) - 1
-            elif regression_type == RegressionType.EXPONENTIAL:
-                final_predictions = torch.exp(final_predictions) - 1e-8
-                y = self.data.epochs_to_converge  # Original y
+            final_predictions = final_model(X).squeeze()
+            if regression_type in [RegressionType.LOG_LINEAR, RegressionType.EXPONENTIAL]:
+                final_predictions = torch.exp(final_predictions)
 
             mse = F.mse_loss(final_predictions, y).item()
             mae = F.l1_loss(final_predictions, y).item()
             r2 = 1 - (torch.sum((y - final_predictions) ** 2) / torch.sum((y - y.mean()) ** 2)).item()
 
-        self.models[model_name] = model
+        self.models[model_name] = final_model
         result = PredictionResults(
             model_type=model_name,
             predictions=final_predictions,
@@ -330,6 +301,99 @@ class ConvergencePredictor:
             mae=mae,
             cross_val_scores=torch.tensor(cv_scores) if cv_folds > 1 else None,
             model_params={"regularization": regularization},
+        )
+        self.results[model_name] = result
+        return result
+
+    def fit_kernel_regression(
+        self, X: torch.Tensor, y: torch.Tensor, kernel: str, regularization: float, cv_folds: int
+    ) -> PredictionResults:
+        """Kernel regression implementation with improved numerical stability"""
+        n_samples = X.shape[0]
+
+        # Add minimum regularization to ensure numerical stability
+        min_regularization = 1e-6
+        regularization = max(regularization, min_regularization)
+
+        # Compute kernel matrix
+        if kernel == "rbf":
+            # RBF kernel: exp(-gamma * ||x - y||^2)
+            # Use median heuristic for gamma
+            dists = torch.cdist(X, X, p=2)
+
+            # Avoid division by zero in gamma calculation
+            non_zero_dists = dists[dists > 0]
+            if len(non_zero_dists) > 0:
+                median_dist = torch.median(non_zero_dists)
+                gamma = 1.0 / (2.0 * median_dist**2)
+            else:
+                # Fallback gamma if all distances are zero
+                gamma = 1.0
+
+            K = torch.exp(-gamma * dists**2)
+        elif kernel == "linear":
+            K = torch.mm(X, X.t())
+        elif kernel == "polynomial":
+            K = (1 + torch.mm(X, X.t())) ** 3
+        else:
+            raise ValueError(f"Unknown kernel: {kernel}")
+
+        # Add regularization to diagonal (ridge regression in kernel space)
+        K_reg = K + regularization * torch.eye(n_samples, device=self.device)
+
+        # Try to solve the system K * alpha = y
+        try:
+            # First try direct solve
+            alpha = torch.linalg.solve(K_reg, y.unsqueeze(1)).squeeze()
+        except torch._C._LinAlgError:
+            # If direct solve fails, try with increased regularization
+            print(f"Kernel matrix singular with regularization={regularization}, increasing to {regularization * 100}")
+            K_reg = K + (regularization * 100) * torch.eye(n_samples, device=self.device)
+
+            try:
+                alpha = torch.linalg.solve(K_reg, y.unsqueeze(1)).squeeze()
+            except torch._C._LinAlgError:
+                # If still failing, use pseudoinverse as last resort
+                print("Using pseudoinverse for kernel regression")
+                alpha = torch.linalg.pinv(K_reg) @ y.unsqueeze(1)
+                alpha = alpha.squeeze()
+
+        # Predictions are K * alpha
+        predictions = torch.mv(K, alpha)
+
+        # Calculate metrics
+        mse = F.mse_loss(predictions, y).item()
+        mae = F.l1_loss(predictions, y).item()
+
+        # Handle potential numerical issues in R2 calculation
+        ss_res = torch.sum((y - predictions) ** 2)
+        ss_tot = torch.sum((y - y.mean()) ** 2)
+
+        if ss_tot > 0:
+            r2 = 1 - (ss_res / ss_tot).item()
+        else:
+            r2 = 0.0  # If no variance in y, R2 is undefined
+
+        # Store kernel info for future predictions
+        kernel_info = {
+            "X_train": X,
+            "alpha": alpha,
+            "kernel": kernel,
+            "gamma": gamma if kernel == "rbf" else None,
+            "regularization_used": regularization,
+        }
+
+        model_name = f"kernel_{kernel}"
+        self.models[model_name] = kernel_info
+
+        result = PredictionResults(
+            model_type=model_name,
+            predictions=predictions,
+            actual=y,
+            r2_score=r2,
+            mse=mse,
+            mae=mae,
+            model_params={"kernel": kernel, "regularization": regularization},
         )
 
         self.results[model_name] = result
@@ -389,87 +453,65 @@ class ConvergencePredictor:
         return result
 
     def fit_neural_network(
-        self,
-        hidden_layers: List[int],
-        activation: str = "relu",
-        epochs: int = 1000,
-        learning_rate: float = 0.001,
-        early_stopping: bool = True,
-    ) -> PredictionResults:
-        """Fit a neural network predictor"""
-        if self.features is None:
-            raise ValueError("No features computed. Call compute_features first.")
+            self,
+            hidden_layers: List[int],
+            activation: str = "relu",
+            epochs: int = 1000,
+            learning_rate: float = 0.001,
+            early_stopping: bool = True,
+        ) -> PredictionResults:
+            """Fit a neural network predictor by delegating to the unified trainer."""
+            if self.features is None:
+                raise ValueError("No features computed. Call compute_features first.")
 
-        X = self.features
-        y = self.data.epochs_to_converge
+            X = self.features
+            y = self.data.epochs_to_converge
 
-        # Build neural network
-        layers = []
-        input_dim = X.shape[1]
+            # --- Model Definition ---
+            layers = []
+            input_dim = X.shape[1]
+            activations = {"relu": nn.ReLU, "tanh": nn.Tanh, "sigmoid": nn.Sigmoid}
+            
+            for hidden_dim in hidden_layers:
+                layers.append(nn.Linear(input_dim, hidden_dim))
+                layers.append(activations[activation]())
+                input_dim = hidden_dim
+            layers.append(nn.Linear(input_dim, 1))
+            model = nn.Sequential(*layers).to(self.device)
 
-        for hidden_dim in hidden_layers:
-            layers.append(nn.Linear(input_dim, hidden_dim))
-            if activation == "relu":
-                layers.append(nn.ReLU())
-            elif activation == "tanh":
-                layers.append(nn.Tanh())
-            elif activation == "sigmoid":
-                layers.append(nn.Sigmoid())
-            input_dim = hidden_dim
+            # --- Model Training ---
+            # Delegate all training logic to the helper method
+            model = self._train_pytorch_model(
+                model=model,
+                X_train=X,
+                y_train=y,
+                epochs=epochs,
+                learning_rate=learning_rate,
+                early_stopping=early_stopping
+            )
+            
+            # --- Evaluation ---
+            with torch.no_grad():
+                final_predictions = model(X).squeeze()
+                mse = F.mse_loss(final_predictions, y).item()
+                mae = F.l1_loss(final_predictions, y).item()
+                r2 = 1 - (torch.sum((y - final_predictions) ** 2) / torch.sum((y - y.mean()) ** 2)).item()
 
-        layers.append(nn.Linear(input_dim, 1))
+            model_name = f"nn_{len(hidden_layers)}layer"
+            self.models[model_name] = model
 
-        model = nn.Sequential(*layers).to(self.device)
-        optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-        criterion = nn.MSELoss()
+            result = PredictionResults(
+                model_type=model_name,
+                predictions=final_predictions,
+                actual=y,
+                r2_score=r2,
+                mse=mse,
+                mae=mae,
+                model_params={"hidden_layers": hidden_layers, "activation": activation},
+            )
+            self.results[model_name] = result
+            return result
 
-        # Training with early stopping
-        best_loss = float("inf")
-        patience = 50
-        patience_counter = 0
-
-        for epoch in range(epochs):
-            model.train()
-            optimizer.zero_grad()
-            predictions = model(X).squeeze()
-            loss = criterion(predictions, y)
-            loss.backward()
-            optimizer.step()
-
-            if early_stopping:
-                if loss.item() < best_loss:
-                    best_loss = loss.item()
-                    patience_counter = 0
-                    best_state = model.state_dict().copy()
-                else:
-                    patience_counter += 1
-                    if patience_counter >= patience:
-                        model.load_state_dict(best_state)
-                        break
-
-        # Evaluate
-        model.eval()
-        with torch.no_grad():
-            final_predictions = model(X).squeeze()
-            mse = F.mse_loss(final_predictions, y).item()
-            mae = F.l1_loss(final_predictions, y).item()
-            r2 = 1 - (torch.sum((y - final_predictions) ** 2) / torch.sum((y - y.mean()) ** 2)).item()
-
-        model_name = f"nn_{len(hidden_layers)}layer"
-        self.models[model_name] = model
-
-        result = PredictionResults(
-            model_type=model_name,
-            predictions=final_predictions,
-            actual=y,
-            r2_score=r2,
-            mse=mse,
-            mae=mae,
-            model_params={"hidden_layers": hidden_layers, "activation": activation, "epochs_trained": epoch + 1},
-        )
-
-        self.results[model_name] = result
-        return result
 
     def compare_models(self, models: Optional[List[str]] = None, metric: str = "r2") -> Dict[str, float]:
         """Compare all fitted models by specified metric"""
@@ -1021,6 +1063,69 @@ class ConvergencePredictor:
             else:
                 print("The surrogate model is not a close enough approximation to display simple rules.")
 
+    def _train_pytorch_model(
+            self,
+            model: nn.Module,
+            X_train: torch.Tensor,
+            y_train: torch.Tensor,
+            epochs: int = 1000,
+            learning_rate: float = 0.01,
+            weight_decay: float = 0.0,
+            early_stopping: bool = True,
+        ) -> nn.Module:
+            """
+            A centralized training loop for any PyTorch nn.Module.
+
+            Args:
+                model: The PyTorch model to be trained.
+                X_train: Training features.
+                y_train: Training targets.
+                epochs: Maximum number of training epochs.
+                learning_rate: The learning rate for the Adam optimizer.
+                weight_decay: L2 regularization term for the optimizer.
+                early_stopping: Flag to enable early stopping based on training loss.
+
+            Returns:
+                The trained PyTorch model.
+            """
+            optimizer = torch.optim.Adam(
+                model.parameters(), lr=learning_rate, weight_decay=weight_decay
+            )
+            criterion = nn.MSELoss()
+
+            best_loss = float("inf")
+            patience = 50
+            patience_counter = 0
+            best_state = None
+
+            for epoch in range(epochs):
+                model.train()
+                optimizer.zero_grad()
+                predictions = model(X_train).squeeze()
+                loss = criterion(predictions, y_train)
+                loss.backward()
+                optimizer.step()
+
+                if early_stopping:
+                    if loss.item() < best_loss:
+                        best_loss = loss.item()
+                        patience_counter = 0
+                        # Store the state of the best model found so far
+                        best_state = model.state_dict().copy()
+                    else:
+                        patience_counter += 1
+                        if patience_counter >= patience:
+                            # Restore the best model state if early stopping is triggered
+                            if best_state:
+                                model.load_state_dict(best_state)
+                            # print(f"  Early stopping at epoch {epoch+1}") # Optional: for debugging
+                            break
+            
+            # Ensure the model is in evaluation mode after training
+            model.eval()
+            return model
+    
+
 # ============================================================================
 # FEATURE ENGINEERING UTILITIES
 # ============================================================================
@@ -1530,11 +1635,11 @@ def analyze_multiple_traces(registry: PathRegistry) -> Dict:
 
     # 6. Kernel regression
     print("6. Training RBF kernel regression...")
-    results["kernel_rbf"] = predictor.fit_regression(RegressionType.KERNEL, kernel="rbf", cv_folds=min(5, cv_folds))
+    results["kernel_rbf"] = predictor.fit_kernel_regression(predictor.features, predictor.data.epochs_to_converge, kernel="rbf", regularization=1e-4, cv_folds=min(5, cv_folds))
     print(f"   Kernel RBF R²: {results['kernel_rbf'].r2_score:.4f}")
 
     print("7. Training linear kernel regression...")
-    results["kernel_linear"] = predictor.fit_regression(RegressionType.KERNEL, kernel="linear", cv_folds=min(5, cv_folds))
+    results["kernel_linear"] = predictor.fit_kernel_regression(predictor.features, predictor.data.epochs_to_converge, kernel="linear", regularization=1e-4, cv_folds=min(5, cv_folds))
     print(f"   Kernel Linear R²: {results['kernel_linear'].r2_score:.4f}")
 
     # 8. Neural networks (with more data, we can try bigger networks)

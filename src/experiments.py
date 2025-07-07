@@ -770,7 +770,6 @@ def config_relu2_two_mse_sgd() -> ExperimentConfig:
     config.description = "relu2_two_mse with SGD optimizer."
     return config
 
-
 @experiment("relu2_reinit_0th")
 def config_relu1_reinit_0th() -> ExperimentConfig:
     """Factory function for ReLU XOR experiment."""
@@ -806,3 +805,45 @@ def config_relu1_reinit_0th() -> ExperimentConfig:
     config.descrption = f"Centered XOR with 2-output MSE loss using two ReLU units. Initial loss < {loss_threshold}"
     return config
 
+@experiment("relu1_convergence")
+def config_relu1_convergence() -> ExperimentConfig:
+    config = get_experiment_config("relu1_normal")
+    config.training.optimizer = torch.optim.SGD(config.model.parameters(), lr=0.1)
+    config.training.loss_change_patience = 20
+
+    # Add parameter trace monitor
+    trace_monitor = monitor.ParameterTraceMonitor(
+        config=config,
+        dataset_size=config.data.x.shape[0],  # Should be 4 for XOR data
+        save_frequency=1,  # Save every epoch for detailed convergence analysis
+    )
+    config.execution.random_seeds = [501]
+    config.training.training_monitor = trace_monitor
+    config.training.epochs = 600
+    config.execution.num_runs = 500 # 54% get 100% and we want at least 100 good runs
+    config.description = (
+        "Relu1 experiment tailored to study convergence speed between init and final with parameter tracing."
+    )
+    config.logging.train_epochs = 10
+    return config
+
+@experiment("relu2_convergence")
+def config_relu2_convergence() -> ExperimentConfig:
+    config = get_experiment_config("relu2_two_mse_sgd")
+    config.training.optimizer = torch.optim.SGD(config.model.parameters(), lr=0.1)
+    config.training.loss_change_patience = 20
+
+    # Add parameter trace monitor
+    trace_monitor = monitor.ParameterTraceMonitor(
+        config=config,
+        dataset_size=config.data.x.shape[0],  # Should be 4 for XOR data
+        save_frequency=1,  # Save every epoch for detailed convergence analysis
+    )
+    config.training.training_monitor = trace_monitor
+    config.training.epochs = 600
+    config.execution.num_runs = 500 # 26.8% get 100% and we want at least 100 good runs
+    config.description = (
+        "Relu2 experiment tailored to study convergence speed between init and final with parameter tracing."
+    )
+    config.logging.train_epochs = 10
+    return config

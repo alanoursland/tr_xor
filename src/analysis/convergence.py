@@ -5,10 +5,15 @@ import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import shap
+import matplotlib.pyplot as plt
 
 from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, List, Tuple, Optional, Union, Callable, Any
+from sklearn.tree import DecisionTreeRegressor, export_text
+from sklearn.inspection import PartialDependenceDisplay
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 
 """
 Convergence Prediction Framework
@@ -346,12 +351,8 @@ class ConvergencePredictor:
         y_cpu = self.data.epochs_to_converge.cpu().numpy()
 
         if method == "random_forest":
-            from sklearn.ensemble import RandomForestRegressor
-
             model = RandomForestRegressor(n_estimators=n_estimators, max_depth=max_depth, random_state=42, n_jobs=-1)
         elif method == "gradient_boosting":
-            from sklearn.ensemble import GradientBoostingRegressor
-
             model = GradientBoostingRegressor(
                 n_estimators=n_estimators, max_depth=max_depth if max_depth else 3, random_state=42
             )
@@ -848,7 +849,6 @@ class ConvergencePredictor:
 
     def visualize_results(self, plot_type: str = "all", save_path: Optional[str] = None) -> None:
         """Generate diagnostic plots - simplified for research"""
-        import matplotlib.pyplot as plt
 
         if not self.results:
             print("No results to visualize")
@@ -1000,6 +1000,93 @@ class ConvergencePredictor:
         self.results[model_name] = result
         return result
 
+    def interpret_best_model(self, model_name: str, feature_names: Dict[int, str], trace_dir: str) -> None:
+            """
+            Provides interpretability for the best performing model using SHAP,
+            feature importances, and a surrogate decision tree.
+            """
+            if model_name not in self.models:
+                print(f"Model '{model_name}' not found. Cannot perform interpretation.")
+                return
+
+            print("\n" + "="*80)
+            print(f"INTERPRETATION FOR BEST MODEL: {model_name}")
+            print("="*80)
+
+            model = self.models[model_name]
+            X_cpu = self.features.cpu().numpy()
+            y_cpu = self.data.epochs_to_converge.cpu().numpy()
+
+            # 1. Ranked Feature Importance
+            # ... (This section is unchanged) ...
+            if hasattr(model, "feature_importances_"):
+                importances = model.feature_importances_
+                sorted_indices = np.argsort(importances)[::-1]
+
+                print("\n--- Top 10 Most Important Features ---")
+                for i in range(min(10, len(importances))):
+                    idx = sorted_indices[i]
+                    feature_name = feature_names.get(idx, f"feature_{idx}")
+                    print(f"{i+1}. {feature_name}: {importances[idx]:.4f}")
+
+                # 2. Partial Dependence Plots for top features
+                # ... (This section is unchanged) ...
+                print("\nGenerating Partial Dependence Plots for top 2 features...")
+                fig, ax = plt.subplots(figsize=(12, 6))
+                top_two_indices = sorted_indices[:2]
+                display = PartialDependenceDisplay.from_estimator(
+                    model,
+                    X_cpu,
+                    features=top_two_indices,
+                    feature_names=[feature_names.get(i, f"f_{i}") for i in range(X_cpu.shape[1])],
+                    ax=ax
+                )
+                plt.suptitle(f"Partial Dependence Plots for {model_name}")
+                plt.tight_layout(rect=[0, 0, 1, 0.96])
+                pdp_path = os.path.join(trace_dir, "partial_dependence_plots.png")
+                plt.savefig(pdp_path)
+                plt.close()
+                print(f"  Plots saved to {pdp_path}")
+
+
+            # 3. SHAP Analysis (for tree models)
+            if isinstance(model, (RandomForestRegressor, GradientBoostingRegressor)):
+                print("\nCalculating SHAP values for model interpretation...")
+                
+                # ================== NEW: SAMPLING CODE ==================
+                # To prevent long runtimes, we'll use a random sample for SHAP analysis.
+                X_sample = shap.sample(X_cpu, 2000)
+                # ========================================================
+                
+                explainer = shap.TreeExplainer(model)
+                shap_values = explainer.shap_values(X_sample) # Use the sample here
+
+                # Generate and save SHAP summary plot
+                shap.summary_plot(shap_values, X_sample, feature_names=[feature_names.get(i, f"f_{i}") for i in range(X_cpu.shape[1])], show=False)
+                shap_plot_path = os.path.join(trace_dir, "shap_summary_plot.png")
+                plt.title(f"SHAP Feature Impact for {model_name}")
+                plt.savefig(shap_plot_path, bbox_inches='tight')
+                plt.close()
+                print(f"  SHAP summary plot saved to {shap_plot_path}")
+
+            # 4. Surrogate Decision Tree Model
+            # ... (This section is unchanged) ...
+            print("\n--- Approximating with a Simple Decision Tree (Surrogate Model) ---")
+            surrogate_model = DecisionTreeRegressor(max_depth=4, random_state=42)
+            
+            black_box_predictions = model.predict(X_cpu)
+            surrogate_model.fit(X_cpu, black_box_predictions)
+            
+            surrogate_r2 = surrogate_model.score(X_cpu, black_box_predictions)
+            print(f"Simple tree R² (approximating Random Forest): {surrogate_r2:.4f}")
+
+            if surrogate_r2 > 0.75:
+                print("The simple tree is a good approximation. Here are its rules:")
+                feature_name_list = [feature_names.get(i, f"feature_{i}") for i in range(X_cpu.shape[1])]
+                tree_rules = export_text(surrogate_model, feature_names=feature_name_list, max_depth=3)
+                print(tree_rules)
+            else:
+                print("The surrogate model is not a close enough approximation to display simple rules.")
 
 class FeatureEngineering:
     """GPU-accelerated feature engineering utilities"""
@@ -1193,7 +1280,7 @@ predictor.statistical_tests('linear', 'polynomial')
 important_features = predictor.feature_selection(method='lasso', n_features=5)
 """
 
-def analyze_multiple_traces(trace_files: List[str]) -> Dict:
+def analyze_multiple_traces(trace_files: List[str], trace_dir: str) -> Dict:
     """
     Analyze multiple training traces to build robust convergence predictors.
     
@@ -1220,6 +1307,9 @@ def analyze_multiple_traces(trace_files: List[str]) -> Dict:
     trace_metadata = []
     total_epochs_processed = 0
 
+    # Keep track of skipped files
+    skipped_files = 0
+
     print("Processing trace files...")
     
     # Process each trace file
@@ -1230,8 +1320,34 @@ def analyze_multiple_traces(trace_files: List[str]) -> Dict:
             # Load trace data
             with open(trace_file, 'r') as f:
                 trace_data = json.load(f)
+
+            accuracy = 0.0
+            # Prioritize checking the metadata object for final accuracy
+            if 'metadata' in trace_data and 'final_accuracy' in trace_data['metadata']:
+                accuracy = trace_data['metadata']['final_accuracy']
+            # Fallback to checking the final epoch if not in metadata
+            elif trace_data.get("epochs"):
+                 final_epoch = trace_data["epochs"][-1]
+                 if 'accuracy' in final_epoch:
+                     accuracy = final_epoch['accuracy']
+                 elif 'metrics' in final_epoch and 'accuracy' in final_epoch['metrics']:
+                     accuracy = final_epoch['metrics']['accuracy']
+
+            # Skip the trace if final accuracy is not 100%
+            if accuracy < 1.0:
+                print(f"  Skipping trace: Final accuracy is {accuracy:.2%}, not 100%.")
+                skipped_files += 1
+                continue
+            
+            print(f"  Trace passed: Final accuracy is {accuracy}. Proceeding with analysis.")
+
         except (FileNotFoundError, json.JSONDecodeError) as e:
-            print(f"  Error loading {trace_file}: {e}")
+            print(f"  Error loading or parsing {trace_file}: {e}")
+            skipped_files += 1
+            continue
+        except (IndexError, KeyError) as e:
+            print(f"  Skipping trace: Could not find epoch data or required keys. Error: {e}")
+            skipped_files += 1
             continue
         
         # Extract data from this trace
@@ -1409,6 +1525,11 @@ def analyze_multiple_traces(trace_files: List[str]) -> Dict:
     confidence_intervals = predictor.bootstrap_confidence(model=best_model_name, n_bootstrap=200, confidence=0.95)
     print(f"  Bootstrap completed with {confidence_intervals.get('n_successful_bootstraps', 'unknown')} successful samples")
     
+    # Generate human-readable feature names for interpretation
+    feature_map = map_features_to_indices(predictor) 
+    # Call the new interpretation function for the best model
+    predictor.interpret_best_model(best_model_name, feature_map, trace_dir)
+
     # Map internal model names back to results keys
     model_name_mapping = {
         "gradient_boosting_100": "gradient_boosting",
@@ -1433,6 +1554,10 @@ def analyze_multiple_traces(trace_files: List[str]) -> Dict:
     print(f"  Average L2 distance (current→final): {avg_distance_l2:.4f}")
     print(f"  Average L1 distance (current→final): {avg_distance_l1:.4f}")
     print(f"  Parameter count: {initial_params_tensor.shape[1]}")
+
+    print("\n=== Multi-trace analysis complete ===")
+    print(f"Processed {len(trace_metadata)} traces with {len(all_initial_params)} total data points")
+    print(f"Best model: {best_model_name} (R² = {results[results_key].r2_score:.4f})")
 
     print("\nPreparing summary...")
     # Prepare comprehensive summary
@@ -1490,8 +1615,10 @@ def analyze_multiple_traces(trace_files: List[str]) -> Dict:
 
     print("Generating visualization plots...")
     # Generate plots
-    predictor.visualize_results(plot_type="all", save_path="multi_trace_convergence_analysis.png")
-    print("  Plots saved to: multi_trace_convergence_analysis.png")
+
+    multi_trace_convergence_path = os.path.join(trace_dir, "multi_trace_convergence_analysis.png")
+    predictor.visualize_results(plot_type="all", save_path=multi_trace_convergence_path)
+    print(f"  Plots saved to: {multi_trace_convergence_path}")
 
     print("\n=== Multi-trace analysis complete ===")
     print(f"Processed {len(trace_metadata)} traces with {len(all_initial_params)} total data points")
@@ -1671,7 +1798,7 @@ if __name__ == "__main__":
 
     print(f"Found {len(trace_files)} trace files")
 
-    analysis_results = analyze_multiple_traces(trace_files)
+    analysis_results = analyze_multiple_traces(trace_files, trace_dir)
 
     # Print summary
     print("Convergence Analysis Results")
@@ -1698,8 +1825,6 @@ if __name__ == "__main__":
     sorted_models = sorted(model_comp.items(), key=lambda x: x[1], reverse=True)
     for i, (model, r2) in enumerate(sorted_models[:5]):
         print(f"  {i+1}. {model}: R² = {r2:.4f}")
-
-    print(f"\nAnalysis complete! Results saved to multi_trace_convergence_analysis.png")
 
     print("\n" + "="*80)
     print("MATHEMATICAL EQUATIONS FOR CONVERGENCE PREDICTION")
@@ -1733,75 +1858,69 @@ if __name__ == "__main__":
     print("  interaction_p0_p2 = diff_p0 × diff_p2")
     print("  interaction_p1_p2 = diff_p1 × diff_p2")
 
-print("\n=== CONVERGENCE PREDICTION EQUATIONS ===")
+    print("\n=== CONVERGENCE PREDICTION EQUATIONS ===")
 
-# Print all model equations with their accuracy
-model_comparison = analysis_results['model_comparison']
-sorted_models = sorted(model_comparison.items(), key=lambda x: x[1], reverse=True)
+    # Print all model equations with their accuracy
+    model_comparison = analysis_results['model_comparison']
+    sorted_models = sorted(model_comparison.items(), key=lambda x: x[1], reverse=True)
 
-print("\nAll Trained Models (ranked by accuracy):")
-for i, (model_name, r2_score) in enumerate(sorted_models):
-    print(f"\n{i+1}. {model_name.upper()} (R² = {r2_score:.4f}):")
-    
-    if "linear" in model_name and "log" not in model_name and "kernel" not in model_name:
-        print("   epochs_remaining = β₀ + β₁×L1_distance + β₂×L2_distance + β₃×cosine_distance + ...")
-        print("   [Linear combination of all 18 features]")
+    print("\nAll Trained Models (ranked by accuracy):")
+    for i, (model_name, r2_score) in enumerate(sorted_models):
+        print(f"\n{i+1}. {model_name.upper()} (R² = {r2_score:.4f}):")
         
-    elif "poly" in model_name:
-        degree = "2" if "poly_2" in model_name else "3"
-        print(f"   epochs_remaining = polynomial expansion of degree {degree}")
-        print("   [Includes squared terms, cubic terms, and cross-products of features]")
-        
-    elif "log_linear" in model_name:
-        print("   log(epochs_remaining) = β₀ + β₁×L1_distance + β₂×L2_distance + ...")
-        print("   epochs_remaining = exp(β₀ + β₁×L1_distance + β₂×L2_distance + ...)")
-        
-    elif "exponential" in model_name:
-        print("   epochs_remaining = exp(β₀ + β₁×L1_distance + β₂×L2_distance + ...)")
-        
-    elif "kernel_rbf" in model_name:
-        print("   epochs_remaining = Σᵢ αᵢ × exp(-γ||x - xᵢ||²)")
-        print("   [Radial Basis Function kernel with Gaussian similarity]")
-        
-    elif "kernel_linear" in model_name:
-        print("   epochs_remaining = Σᵢ αᵢ × (x · xᵢ)")
-        print("   [Linear kernel regression]")
-        
-    elif "neural_net" in model_name or "nn_" in model_name:
-        if "small" in model_name or "2layer" in model_name:
-            print("   epochs_remaining = NN([32, 16] hidden units)")
+        if "linear" in model_name and "log" not in model_name and "kernel" not in model_name:
+            print("   epochs_remaining = β₀ + β₁×L1_distance + β₂×L2_distance + β₃×cosine_distance + ...")
+            print("   [Linear combination of all 18 features]")
+            
+        elif "poly" in model_name:
+            degree = "2" if "poly_2" in model_name else "3"
+            print(f"   epochs_remaining = polynomial expansion of degree {degree}")
+            print("   [Includes squared terms, cubic terms, and cross-products of features]")
+            
+        elif "log_linear" in model_name:
+            print("   log(epochs_remaining) = β₀ + β₁×L1_distance + β₂×L2_distance + ...")
+            print("   epochs_remaining = exp(β₀ + β₁×L1_distance + β₂×L2_distance + ...)")
+            
+        elif "exponential" in model_name:
+            print("   epochs_remaining = exp(β₀ + β₁×L1_distance + β₂×L2_distance + ...)")
+            
+        elif "kernel_rbf" in model_name:
+            print("   epochs_remaining = Σᵢ αᵢ × exp(-γ||x - xᵢ||²)")
+            print("   [Radial Basis Function kernel with Gaussian similarity]")
+            
+        elif "kernel_linear" in model_name:
+            print("   epochs_remaining = Σᵢ αᵢ × (x · xᵢ)")
+            print("   [Linear kernel regression]")
+            
+        elif "neural_net" in model_name or "nn_" in model_name:
+            if "small" in model_name or "2layer" in model_name:
+                print("   epochs_remaining = NN([32, 16] hidden units)")
+            else:
+                print("   epochs_remaining = NN([64, 32, 16] hidden units)")
+            print("   [Multi-layer neural network with ReLU activations]")
+            
+        elif "random_forest" in model_name:
+            print("   epochs_remaining = average of 100 decision trees")
+            print("   [Ensemble of decision trees with feature bagging]")
+            
+        elif "gradient_boosting" in model_name:
+            print("   epochs_remaining = Σₜ learning_rate × tree_t(features)")
+            print("   [Sequential ensemble of 100 boosted decision trees]")
+            
         else:
-            print("   epochs_remaining = NN([64, 32, 16] hidden units)")
-        print("   [Multi-layer neural network with ReLU activations]")
-        
-    elif "random_forest" in model_name:
-        print("   epochs_remaining = average of 100 decision trees")
-        print("   [Ensemble of decision trees with feature bagging]")
-        
-    elif "gradient_boosting" in model_name:
-        print("   epochs_remaining = Σₜ learning_rate × tree_t(features)")
-        print("   [Sequential ensemble of 100 boosted decision trees]")
-        
-    else:
-        print("   [Complex non-linear model]")
+            print("   [Complex non-linear model]")
 
-# Show the best performing models summary
-best_model_name = sorted_models[0][0]
-print(f"\n🏆 BEST MODEL: {best_model_name} (R² = {sorted_models[0][1]:.4f})")
-if sorted_models[0][1] >= 0.99:
-    print("   This model achieves near-perfect prediction accuracy!")
-    print("   The relationship between parameter state and convergence time is highly predictable.")
+    # Show the best performing models summary
+    best_model_name = sorted_models[0][0]
+    print(f"\n🏆 BEST MODEL: {best_model_name} (R² = {sorted_models[0][1]:.4f})")
+    if sorted_models[0][1] >= 0.99:
+        print("   This model achieves near-perfect prediction accuracy!")
+        print("   The relationship between parameter state and convergence time is highly predictable.")
 
-# Show simple interpretable alternatives
-print(f"\n📊 SIMPLE INTERPRETABLE MODELS:")
-for model_name, r2_score in sorted_models:
-    if "linear" in model_name and "log" not in model_name and "kernel" not in model_name and r2_score > 0.95:
-        print(f"   Linear model: R² = {r2_score:.4f} (highly interpretable)")
-        break
+    # Show simple interpretable alternatives
+    # print(f"\n📊 SIMPLE INTERPRETABLE MODELS:")
+    # for model_name, r2_score in sorted_models:
+    #     if "linear" in model_name and "log" not in model_name and "kernel" not in model_name and r2_score > 0.95:
+    #         print(f"   Linear model: R² = {r2_score:.4f} (highly interpretable)")
+    #         break
 
-# Single feature relationships
-print(f"\n🔍 SINGLE FEATURE RELATIONSHIPS:")
-print(f"   Based on the feature analysis, the strongest single predictors are:")
-print(f"   • L2_distance: epochs ≈ α × L2_distance + β")
-print(f"   • L1_distance: epochs ≈ α × L1_distance + β") 
-print(f"   [Exact coefficients available in detailed analysis]")

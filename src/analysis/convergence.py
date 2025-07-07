@@ -160,84 +160,42 @@ class ConvergencePredictor:
             epochs_to_converge=epochs.to(self.device),
         )
 
+
     def compute_features(
-        self,
-        distance_metrics: List[DistanceMetric] = None,
-        include_raw: bool = True,
-        include_ratios: bool = True,
-        include_log: bool = True,
-        include_interactions: bool = True,
-        custom_features: Optional[List[Callable]] = None,
-    ) -> torch.Tensor:
-        """
-        Delegate to FeatureEngineering so all distances, logs, ratios, interactions
-        stay in one place.
-+        """
-        if self.data is None:
-            raise ValueError("No data loaded. Call load_data first.")
+            self,
+            distance_metrics: List[DistanceMetric] = None,
+            include_raw: bool = True,
+            include_ratios: bool = True,
+            include_log: bool = True,
+            include_interactions: bool = True,
+        ) -> Tuple[torch.Tensor, List[str]]:
+            """
+            Computes predictive features by delegating to the FeatureEngineering class.
+            This method now also populates self.feature_names.
+            """
+            if self.data is None:
+                raise ValueError("No data loaded. Call load_data first.")
 
-        if distance_metrics is None:
-            distance_metrics = [DistanceMetric.L1, DistanceMetric.L2]
+            if distance_metrics is None:
+                distance_metrics = [
+                    DistanceMetric.L1,
+                    DistanceMetric.L2,
+                    DistanceMetric.PARAMETER_WISE,
+                ]
+            
+            # Delegate the complex work to the new, centralized method
+            self.features, self.feature_names = FeatureEngineering.create_all_features(
+                initial_params=self.data.initial_params,
+                final_params=self.data.final_params,
+                distance_metrics=distance_metrics,
+                include_raw=include_raw,
+                include_ratios=include_ratios,
+                include_log=include_log,
+                include_interactions=include_interactions,
+            )
 
-        features = []
+            return self.features, self.feature_names
 
-        # Raw parameter differences
-        if include_raw:
-            diff = self.data.initial_params - self.data.final_params
-            features.append(diff)
-
-        # Distance metrics
-        for metric in distance_metrics:
-            if metric == DistanceMetric.L1:
-                dist = torch.abs(self.data.initial_params - self.data.final_params).sum(dim=1, keepdim=True)
-                features.append(dist)
-            elif metric == DistanceMetric.L2:
-                dist = torch.norm(self.data.initial_params - self.data.final_params, p=2, dim=1, keepdim=True)
-                features.append(dist)
-            elif metric == DistanceMetric.COSINE:
-                cos_sim = F.cosine_similarity(
-                    self.data.initial_params, self.data.final_params, dim=1, eps=1e-8
-                ).unsqueeze(1)
-                features.append(1 - cos_sim)  # Convert to distance
-            elif metric == DistanceMetric.CHEBYSHEV:
-                dist = torch.abs(self.data.initial_params - self.data.final_params).max(dim=1, keepdim=True)[0]
-                features.append(dist)
-            elif metric == DistanceMetric.PARAMETER_WISE:
-                dist = torch.abs(self.data.initial_params - self.data.final_params)
-                features.append(dist)
-
-        # Ratios
-        if include_ratios:
-            ratios = self.data.initial_params / (self.data.final_params + 1e-8)
-            features.append(ratios)
-
-        # Log features
-        if include_log:
-            log_diff = torch.log(torch.abs(self.data.initial_params - self.data.final_params) + 1e-8)
-            features.append(log_diff)
-
-        # Interaction terms (pairwise products)
-        if include_interactions and self.data.initial_params.shape[1] > 1:
-            diff = self.data.initial_params - self.data.final_params
-            n_params = diff.shape[1]
-            interactions = []
-            for i in range(n_params):
-                for j in range(i + 1, n_params):
-                    interactions.append((diff[:, i] * diff[:, j]).unsqueeze(1))
-            if interactions:
-                features.append(torch.cat(interactions, dim=1))
-
-        # Custom features
-        if custom_features:
-            for func in custom_features:
-                custom_feat = func(self.data.initial_params, self.data.final_params)
-                if custom_feat.dim() == 1:
-                    custom_feat = custom_feat.unsqueeze(1)
-                features.append(custom_feat)
-
-        # Concatenate all features
-        self.features = torch.cat(features, dim=1)
-        return self.features
 
     def _polynomial_features(self, X: torch.Tensor, degree: int) -> torch.Tensor:
         """Generate polynomial features"""
@@ -1025,24 +983,24 @@ class ConvergencePredictor:
 
 
             # 3. SHAP Analysis (for tree models)
-            if isinstance(model, (RandomForestRegressor, GradientBoostingRegressor)):
-                print("\nCalculating SHAP values for model interpretation...")
+            # if isinstance(model, (RandomForestRegressor, GradientBoostingRegressor)):
+            #     print("\nCalculating SHAP values for model interpretation...")
                 
-                # ================== NEW: SAMPLING CODE ==================
-                # To prevent long runtimes, we'll use a random sample for SHAP analysis.
-                X_sample = shap.sample(X_cpu, 2000)
-                # ========================================================
+            #     # ================== NEW: SAMPLING CODE ==================
+            #     # To prevent long runtimes, we'll use a random sample for SHAP analysis.
+            #     X_sample = shap.sample(X_cpu, 2000)
+            #     # ========================================================
                 
-                explainer = shap.TreeExplainer(model)
-                shap_values = explainer.shap_values(X_sample) # Use the sample here
+            #     explainer = shap.TreeExplainer(model)
+            #     shap_values = explainer.shap_values(X_sample) # Use the sample here
 
-                # Generate and save SHAP summary plot
-                shap.summary_plot(shap_values, X_sample, feature_names=[feature_names.get(i, f"f_{i}") for i in range(X_cpu.shape[1])], show=False)
-                fig_path = registry.analysis / "shap_summary_plot.png"
-                plt.title(f"SHAP Feature Impact for {model_name}")
-                plt.savefig(fig_path, bbox_inches='tight')
-                plt.close()
-                print(f"  SHAP summary plot saved to {fig_path}")
+            #     # Generate and save SHAP summary plot
+            #     shap.summary_plot(shap_values, X_sample, feature_names=[feature_names.get(i, f"f_{i}") for i in range(X_cpu.shape[1])], show=False)
+            #     fig_path = registry.analysis / "shap_summary_plot.png"
+            #     plt.title(f"SHAP Feature Impact for {model_name}")
+            #     plt.savefig(fig_path, bbox_inches='tight')
+            #     plt.close()
+            #     print(f"  SHAP summary plot saved to {fig_path}")
 
             # 4. Surrogate Decision Tree Model
             # ... (This section is unchanged) ...
@@ -1067,7 +1025,136 @@ class ConvergencePredictor:
 # FEATURE ENGINEERING UTILITIES
 # ============================================================================
 class FeatureEngineering:
-    """GPU-accelerated feature engineering utilities"""
+    """
+    GPU-accelerated feature engineering utilities.
+
+    This class centralizes all logic for creating predictive features from
+    raw model parameters. The main entry point `create_all_features` returns
+    both the feature tensor and a list of human-readable names, ensuring
+    that data and its description are always synchronized.
+    """
+
+    @staticmethod
+    def create_all_features(
+        initial_params: torch.Tensor,
+        final_params: torch.Tensor,
+        distance_metrics: List[DistanceMetric],
+        include_raw: bool,
+        include_ratios: bool,
+        include_log: bool,
+        include_interactions: bool,
+    ) -> Tuple[torch.Tensor, List[str]]:
+        """
+        Generates a comprehensive feature set and their corresponding names.
+
+        Args:
+            initial_params: Tensor of current model parameters.
+            final_params: Tensor of final (converged) model parameters.
+            distance_metrics: A list of distance metrics to compute.
+            include_raw: Flag to include raw parameter differences.
+            include_ratios: Flag to include parameter ratios.
+            include_log: Flag to include log-transformed differences.
+            include_interactions: Flag to include pairwise interaction terms.
+
+        Returns:
+            A tuple containing:
+            - The concatenated feature tensor.
+            - A list of strings with the name for each feature column.
+        """
+        all_features: List[torch.Tensor] = []
+        all_feature_names: List[str] = []
+        n_params = initial_params.shape[1]
+
+        # --- Distance Metrics ---
+        if distance_metrics:
+            dist_tensor, dist_names = FeatureEngineering._compute_aggregate_distances(
+                initial_params, final_params, distance_metrics
+            )
+            all_features.append(dist_tensor)
+            all_feature_names.extend(dist_names)
+
+        # --- Raw Parameter Differences ---
+        if include_raw:
+            diff = initial_params - final_params
+            all_features.append(diff)
+            all_feature_names.extend([f"raw_diff_p{i}" for i in range(n_params)])
+
+        # --- Parameter-wise Absolute Differences ---
+        if DistanceMetric.PARAMETER_WISE in distance_metrics:
+            abs_diff = torch.abs(initial_params - final_params)
+            all_features.append(abs_diff)
+            all_feature_names.extend([f"abs_diff_p{i}" for i in range(n_params)])
+
+        # --- Ratios ---
+        if include_ratios:
+            # Add a small epsilon to avoid division by zero
+            ratios = initial_params / (final_params + 1e-8)
+            all_features.append(ratios)
+            all_feature_names.extend([f"ratio_p{i}" for i in range(n_params)])
+
+        # --- Log Transforms ---
+        if include_log:
+            # Use absolute difference for log transform to avoid log(negative)
+            log_diff = torch.log(torch.abs(initial_params - final_params) + 1e-8)
+            all_features.append(log_diff)
+            all_feature_names.extend([f"log_abs_diff_p{i}" for i in range(n_params)])
+
+        # --- Interaction Terms (Pairwise Products of Differences) ---
+        if include_interactions and n_params > 1:
+            diff = initial_params - final_params
+            interactions = []
+            for i in range(n_params):
+                for j in range(i + 1, n_params):
+                    interactions.append((diff[:, i] * diff[:, j]).unsqueeze(1))
+                    all_feature_names.append(f"interaction_p{i}_p{j}")
+            if interactions:
+                all_features.append(torch.cat(interactions, dim=1))
+
+        if not all_features:
+            raise ValueError("No features were selected for computation.")
+
+        # Concatenate all features into a single tensor
+        final_feature_tensor = torch.cat(all_features, dim=1)
+
+        return final_feature_tensor, all_feature_names
+
+    @staticmethod
+    def _compute_aggregate_distances(
+        initial: torch.Tensor, final: torch.Tensor, metrics: List[DistanceMetric]
+    ) -> Tuple[torch.Tensor, List[str]]:
+        """
+        Helper to compute distance metrics that result in a single value per sample.
+        Excludes PARAMETER_WISE as it's not an aggregate metric.
+        """
+        distances: List[torch.Tensor] = []
+        names: List[str] = []
+
+        for metric in metrics:
+            if metric == DistanceMetric.L1:
+                dist = torch.sum(torch.abs(initial - final), dim=1, keepdim=True)
+                distances.append(dist)
+                names.append("L1_distance")
+            elif metric == DistanceMetric.L2:
+                dist = torch.norm(initial - final, p=2, dim=1, keepdim=True)
+                distances.append(dist)
+                names.append("L2_distance")
+            elif metric == DistanceMetric.COSINE:
+                cos_sim = F.cosine_similarity(initial, final, dim=1, eps=1e-8)
+                dist = (1 - cos_sim).unsqueeze(1) # Convert similarity to distance
+                distances.append(dist)
+                names.append("cosine_distance")
+            elif metric == DistanceMetric.CHEBYSHEV:
+                dist = torch.max(torch.abs(initial - final), dim=1, keepdim=True)[0]
+                distances.append(dist)
+                names.append("chebyshev_distance")
+            elif metric == DistanceMetric.PARAMETER_WISE:
+                # This is handled separately as it doesn't aggregate
+                continue
+
+        if not distances:
+            return torch.empty(initial.shape[0], 0, device=initial.device), []
+
+        return torch.cat(distances, dim=1), names
 
     @staticmethod
     def compute_distances(initial: torch.Tensor, final: torch.Tensor, metrics: List[DistanceMetric]) -> torch.Tensor:
@@ -1407,7 +1494,7 @@ def analyze_multiple_traces(registry: PathRegistry) -> Dict:
         include_interactions=True,
     )
 
-    print(f"Features computed: {features.shape}")
+    print(f"Features computed: {len(features)}")
     print(f"  Feature types: L1, L2, Cosine, Parameter-wise distances + raw diffs + ratios + log + interactions")
 
     # Fit various models
@@ -1484,11 +1571,11 @@ def analyze_multiple_traces(registry: PathRegistry) -> Dict:
 
     print("\nPerforming feature selection...")
     # Feature selection - find most important features
-    important_features = predictor.feature_selection(method="lasso", n_features=min(10, features.shape[1]), alpha=0.1)
+    important_features = predictor.feature_selection(method="lasso", n_features=min(10, len(features)), alpha=0.1)
     print(f"  Selected {len(important_features)} most important features")
 
     # Also try correlation-based feature selection
-    corr_features = predictor.feature_selection(method="correlation", n_features=min(10, features.shape[1]))
+    corr_features = predictor.feature_selection(method="correlation", n_features=min(10, len(features)))
     print(f"  Correlation-based selection: {len(corr_features)} features")
 
     # Statistical tests between top models
@@ -1550,7 +1637,7 @@ def analyze_multiple_traces(registry: PathRegistry) -> Dict:
             "total_data_points": len(all_initial_params),
             "total_epochs_processed": total_epochs_processed,
             "parameter_count": initial_params_tensor.shape[1],
-            "feature_count": features.shape[1],
+            "feature_count": len(features),
             "epochs_range": {
                 "min": min(all_epochs_remaining),
                 "max": max(all_epochs_remaining),

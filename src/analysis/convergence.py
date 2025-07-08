@@ -1845,7 +1845,7 @@ def analyze_multiple_traces(registry: PathRegistry) -> Dict:
 
     os.makedirs(output_dir, exist_ok=True)
     fig_path = registry.analysis / "multi_trace_convergence_analysis.png"
-    predictor.visualize_results(plot_type="all", save_path=fig_path)
+    predictor.visualize_results(save_path=fig_path)
     print(f"  Plots saved to: {fig_path}")
 
     print("\n=== Multi-trace analysis complete ===")

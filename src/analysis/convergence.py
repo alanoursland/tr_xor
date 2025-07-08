@@ -49,7 +49,7 @@ KEY FEATURES:
 - Distance metrics: L1, L2, cosine, parameter-wise differences
 - Feature engineering: ratios, log transforms, interactions
 - Multiple predictive models: linear, polynomial, kernel, neural nets, ensembles
-- Statistical validation: cross-validation, bootstrap confidence intervals
+- Statistical validation: bootstrap confidence intervals
 - Designed to scale from single traces to large multi-run datasets
 
 This framework helps answer: "How much longer will this model take to converge?"
@@ -121,7 +121,6 @@ class PredictionResults:
     r2_score: float
     mse: float
     mae: float
-    cross_val_scores: Optional[torch.Tensor] = None
     feature_importance: Optional[torch.Tensor] = None
     model_params: Optional[Dict] = None
 
@@ -210,9 +209,8 @@ class ConvergencePredictor:
         regression_type: RegressionType,
         degree: int = 2,
         regularization: float = 1e-4,
-        cv_folds: int = 5,
     ) -> PredictionResults:
-        """Fit a regression model with cross-validation."""
+        """Fit a regression model without cross-validation."""
         if self.features is None:
             raise ValueError("No features computed. Call compute_features first.")
 
@@ -237,44 +235,9 @@ class ConvergencePredictor:
         else:
             raise NotImplementedError(f"Regression type {regression_type} not implemented")
 
-        # --- Cross-Validation ---
-        cv_scores = []
-        if cv_folds > 1:
-            from sklearn.model_selection import KFold
-            kf = KFold(n_splits=cv_folds, shuffle=True, random_state=42)
-
-            for train_idx, val_idx in kf.split(X.cpu().numpy()):
-                train_idx = torch.tensor(train_idx, device=self.device)
-                val_idx = torch.tensor(val_idx, device=self.device)
-                
-                # Create a fresh model for each fold
-                cv_model = type(model)(X.shape[1], 1).to(self.device)
-                
-                # Delegate training to the new helper method
-                cv_model = self._train_pytorch_model(
-                    model=cv_model,
-                    X_train=X[train_idx],
-                    y_train=y_transformed[train_idx],
-                    epochs=500, # Fewer epochs for CV folds
-                    weight_decay=regularization,
-                    early_stopping=True
-                )
-
-                # Validate
-                with torch.no_grad():
-                    val_pred = cv_model(X[val_idx]).squeeze()
-                    y_val = y[val_idx] # Always validate against original y
-                    if regression_type in [RegressionType.LOG_LINEAR, RegressionType.EXPONENTIAL]:
-                        val_pred = torch.exp(val_pred)
-
-                    val_r2 = 1 - (torch.sum((y_val - val_pred) ** 2) / torch.sum((y_val - y_val.mean()) ** 2)).item()
-                    cv_scores.append(val_r2)
-        
         # --- Final Model Training ---
-        final_model = type(model)(X.shape[1], 1).to(self.device)
-        # Delegate final training to the new helper method
         final_model = self._train_pytorch_model(
-            model=final_model,
+            model=model,
             X_train=X,
             y_train=y_transformed,
             epochs=1000,
@@ -300,14 +263,13 @@ class ConvergencePredictor:
             r2_score=r2,
             mse=mse,
             mae=mae,
-            cross_val_scores=torch.tensor(cv_scores) if cv_folds > 1 else None,
             model_params={"regularization": regularization},
         )
         self.results[model_name] = result
         return result
 
     def fit_kernel_regression(
-        self, X: torch.Tensor, y: torch.Tensor, kernel: str, regularization: float, cv_folds: int
+        self, X: torch.Tensor, y: torch.Tensor, kernel: str, regularization: float
     ) -> PredictionResults:
         """Kernel regression implementation with improved numerical stability"""
         n_samples = X.shape[0]
@@ -320,18 +282,22 @@ class ConvergencePredictor:
         if kernel == "rbf":
             # RBF kernel: exp(-gamma * ||x - y||^2)
             # Use median heuristic for gamma
-            dists = torch.cdist(X, X, p=2)
+            # We have to do this on the CPU because of memory
+            X_cpu = X.cpu()
+            dists_cpu = torch.cdist(X_cpu, X_cpu, p=2)
+            non_zero_dists_cpu = dists_cpu[dists_cpu > 0]
 
             # Avoid division by zero in gamma calculation
-            non_zero_dists = dists[dists > 0]
-            if len(non_zero_dists) > 0:
-                median_dist = torch.median(non_zero_dists)
+            if len(non_zero_dists_cpu) > 0:
+                median_dist = torch.median(non_zero_dists_cpu)
+                torch.clip(median_dist, min=1e-6)
                 gamma = 1.0 / (2.0 * median_dist**2)
             else:
                 # Fallback gamma if all distances are zero
                 gamma = 1.0
 
-            K = torch.exp(-gamma * dists**2)
+            K_cpu = torch.exp(-gamma * dists_cpu ** 2)
+            K = K_cpu.to(self.device)
         elif kernel == "linear":
             K = torch.mm(X, X.t())
         elif kernel == "polynomial":
@@ -513,21 +479,97 @@ class ConvergencePredictor:
             self.results[model_name] = result
             return result
 
-    def compare_models(self, models: Optional[List[str]] = None, metric: str = "r2") -> Dict[str, float]:
-        """Compare all fitted models by specified metric"""
-        if models is None:
-            models = list(self.results.keys())
+    def evaluate_on_test(
+        self,
+        initial_test: torch.Tensor,
+        final_test:   torch.Tensor,
+        epochs_test:  torch.Tensor,
+        *,
+        distance_metrics     = None,
+        include_raw          = True,
+        include_ratios       = True,
+        include_log          = True,
+        include_interactions = True,
+    ) -> Dict[str, Dict[str, float]]:
+        """
+        Evaluate every fitted model on a held-out test set.
+        Returns: {model_name: {"r2":…, "mse":…, "mae":…}, …}
+        """
+        if self.features is None:
+            raise ValueError("Train the models first so feature config is fixed.")
 
+        # --- 1. build the test feature matrix (same recipe as training) ----
+        X_test, _ = FeatureEngineering.create_all_features(
+            initial_test.to(self.device),
+            final_test.to(self.device),
+            distance_metrics or [DistanceMetric.L1,
+                                 DistanceMetric.L2,
+                                 DistanceMetric.PARAMETER_WISE],
+            include_raw, include_ratios, include_log, include_interactions,
+        )
+        y_test = epochs_test.to(self.device)
+
+        # --- 2. score each fitted model -----------------------------------
+        metrics = {}
+        for name, model in self.models.items():
+
+            # -- get predictions ------------------------------------------
+            if isinstance(model, nn.Module):
+                model.eval()
+                with torch.no_grad():
+                    pred = model(X_test).squeeze()
+
+            elif isinstance(model, dict) and "kernel" in model:
+                # kernel regression dict
+                X_train = model["X_train"]
+                alpha   = model["alpha"]
+                ktype   = model["kernel"]
+                gamma   = model.get("gamma")
+
+                if ktype == "rbf":
+                    K = torch.exp(-gamma * torch.cdist(
+                        X_test, X_train, p=2) ** 2)
+                elif ktype == "linear":
+                    K = torch.mm(X_test, X_train.t())
+                elif ktype == "polynomial":
+                    K = (1 + torch.mm(X_test, X_train.t())) ** 3
+                pred = torch.mv(K, alpha)
+
+            else:  # scikit-learn estimator
+                pred = torch.tensor(
+                    model.predict(X_test.cpu().numpy()),
+                    device=self.device, dtype=torch.float32
+                )
+
+            # -- metrics ---------------------------------------------------
+            mse = F.mse_loss(pred, y_test).item()
+            mae = F.l1_loss(pred, y_test).item()
+            r2  = 1 - ((y_test - pred).pow(2).sum() /
+                       (y_test - y_test.mean()).pow(2).sum()).item()
+
+            metrics[name] = {"r2": r2, "mse": mse, "mae": mae}
+
+        return metrics
+
+    def compare_models(self, metric: str = "r2", *, use_test: bool = False) -> Dict[str, float]:
+        """Return {model_name: score}.  
+        metric ∈ {"r2", "mse", "mae"}.  
+        If use_test=True, pull from result.test_metrics[metric]."""
         comparison = {}
-        for model_name in models:
-            if model_name in self.results:
-                result = self.results[model_name]
-                if metric == "r2":
-                    comparison[model_name] = result.r2_score
-                elif metric == "mse":
-                    comparison[model_name] = result.mse
-                elif metric == "mae":
-                    comparison[model_name] = result.mae
+        for model_name, result in self.results.items():
+
+            # Pick either training or test value --------------------------
+            if use_test and hasattr(result, "test_metrics"):
+                score = result.test_metrics.get(metric)
+            else:   # fall back to training metrics
+                if   metric == "r2":  score = result.r2_score
+                elif metric == "mse": score = result.mse
+                elif metric == "mae": score = result.mae
+                else:                 continue  # unknown metric
+            # -------------------------------------------------------------
+
+            if score is not None:
+                comparison[model_name] = score
 
         return comparison
 
@@ -741,6 +783,7 @@ class ConvergencePredictor:
                         non_zero_dists = dists[dists > 0]
                         if len(non_zero_dists) > 0:
                             median_dist = torch.median(non_zero_dists)
+                            torch.clip(median_dist, min=1e-6)
                             gamma = 1.0 / (2.0 * median_dist**2)
                         else:
                             gamma = fitted_model.get("gamma", 1.0)
@@ -862,100 +905,6 @@ class ConvergencePredictor:
         plt.tight_layout()
         plt.savefig(save_path)
         plt.close()
-
-    def _fit_kernel_regression(
-        self, X: torch.Tensor, y: torch.Tensor, kernel: str, regularization: float, cv_folds: int
-    ) -> PredictionResults:
-        """Kernel regression implementation with improved numerical stability"""
-        n_samples = X.shape[0]
-
-        # Add minimum regularization to ensure numerical stability
-        min_regularization = 1e-6
-        regularization = max(regularization, min_regularization)
-
-        # Compute kernel matrix
-        if kernel == "rbf":
-            # RBF kernel: exp(-gamma * ||x - y||^2)
-            # Use median heuristic for gamma
-            dists = torch.cdist(X, X, p=2)
-
-            # Avoid division by zero in gamma calculation
-            non_zero_dists = dists[dists > 0]
-            if len(non_zero_dists) > 0:
-                median_dist = torch.median(non_zero_dists)
-                gamma = 1.0 / (2.0 * median_dist**2)
-            else:
-                # Fallback gamma if all distances are zero
-                gamma = 1.0
-
-            K = torch.exp(-gamma * dists**2)
-        elif kernel == "linear":
-            K = torch.mm(X, X.t())
-        elif kernel == "polynomial":
-            K = (1 + torch.mm(X, X.t())) ** 3
-        else:
-            raise ValueError(f"Unknown kernel: {kernel}")
-
-        # Add regularization to diagonal (ridge regression in kernel space)
-        K_reg = K + regularization * torch.eye(n_samples, device=self.device)
-
-        # Try to solve the system K * alpha = y
-        try:
-            # First try direct solve
-            alpha = torch.linalg.solve(K_reg, y.unsqueeze(1)).squeeze()
-        except torch._C._LinAlgError:
-            # If direct solve fails, try with increased regularization
-            print(f"Kernel matrix singular with regularization={regularization}, increasing to {regularization * 100}")
-            K_reg = K + (regularization * 100) * torch.eye(n_samples, device=self.device)
-
-            try:
-                alpha = torch.linalg.solve(K_reg, y.unsqueeze(1)).squeeze()
-            except torch._C._LinAlgError:
-                # If still failing, use pseudoinverse as last resort
-                print("Using pseudoinverse for kernel regression")
-                alpha = torch.linalg.pinv(K_reg) @ y.unsqueeze(1)
-                alpha = alpha.squeeze()
-
-        # Predictions are K * alpha
-        predictions = torch.mv(K, alpha)
-
-        # Calculate metrics
-        mse = F.mse_loss(predictions, y).item()
-        mae = F.l1_loss(predictions, y).item()
-
-        # Handle potential numerical issues in R2 calculation
-        ss_res = torch.sum((y - predictions) ** 2)
-        ss_tot = torch.sum((y - y.mean()) ** 2)
-
-        if ss_tot > 0:
-            r2 = 1 - (ss_res / ss_tot).item()
-        else:
-            r2 = 0.0  # If no variance in y, R2 is undefined
-
-        # Store kernel info for future predictions
-        kernel_info = {
-            "X_train": X,
-            "alpha": alpha,
-            "kernel": kernel,
-            "gamma": gamma if kernel == "rbf" else None,
-            "regularization_used": regularization,
-        }
-
-        model_name = f"kernel_{kernel}"
-        self.models[model_name] = kernel_info
-
-        result = PredictionResults(
-            model_type=model_name,
-            predictions=predictions,
-            actual=y,
-            r2_score=r2,
-            mse=mse,
-            mae=mae,
-            model_params={"kernel": kernel, "regularization": regularization},
-        )
-
-        self.results[model_name] = result
-        return result
 
     def interpret_best_model(self, model_name: str, output_dir: Path) -> None:
         """
@@ -1495,7 +1444,7 @@ predictor.compute_features(
 )
 
 # Try multiple models
-linear_results = predictor.fit_regression(RegressionType.LINEAR, cv_folds=10)
+linear_results = predictor.fit_regression(RegressionType.LINEAR)
 poly_results = predictor.fit_regression(RegressionType.POLYNOMIAL, degree=3)
 nn_results = predictor.fit_neural_network([64, 32, 16])
 
@@ -1540,9 +1489,10 @@ def analyze_multiple_traces(registry: PathRegistry) -> Dict:
     predictor = ConvergencePredictor(device="cuda")
 
     # Collect data from all traces
-    all_initial_params = []
-    all_final_params = []
+    all_initial_params   = []
+    all_final_params     = []
     all_epochs_remaining = []
+    all_trace_ids        = []          # <-- NEW: keep run/trace labels
     trace_metadata = []
     total_epochs_processed = 0
 
@@ -1615,6 +1565,7 @@ def analyze_multiple_traces(registry: PathRegistry) -> Dict:
         all_initial_params.extend(trace_initial_params)
         all_final_params.extend(trace_final_params)
         all_epochs_remaining.extend(trace_epochs_remaining)
+        all_trace_ids.extend([i] * len(trace_initial_params))
         
         # Store metadata
         trace_metadata.append(trace_data["metadata"])
@@ -1626,18 +1577,66 @@ def analyze_multiple_traces(registry: PathRegistry) -> Dict:
     if not all_initial_params:
         raise ValueError("No valid data found in any trace files")
 
+    # -------------------------------------------------------------------
+    # --- HOLD-OUT WHOLE RUNS FOR AN HONEST TEST SET --------------------
+    # -------------------------------------------------------------------
+
+    # 1. assign a trace-id to every sample (already built earlier)
+    #    → all_trace_ids  == one int per row in all_initial_params
+    unique_runs  = np.unique(all_trace_ids)
+    test_runs    = np.random.choice(
+        unique_runs,
+        size=max(1, int(0.20 * len(unique_runs))),   # 20 % of runs
+        replace=False
+    )
+
+    test_mask  = np.isin(all_trace_ids, test_runs)
+    train_mask = ~test_mask
+
+    # 2. slice each list with the masks
+    def mask_list(lst, mask):
+        return [row for row, keep in zip(lst, mask) if keep]
+
+    train_initial = mask_list(all_initial_params,  train_mask)
+    train_final   = mask_list(all_final_params,    train_mask)
+    train_epochs  = mask_list(all_epochs_remaining,train_mask)
+
+    test_initial  = mask_list(all_initial_params,  test_mask)
+    test_final    = mask_list(all_final_params,    test_mask)
+    test_epochs   = mask_list(all_epochs_remaining,test_mask)
+
+    print(f"\nTrain runs : {train_mask.sum()} samples  "
+        f"from {len(unique_runs) - len(test_runs)} traces")
+    print(  f"Test  runs : {test_mask.sum()} samples  "
+        f"from {len(test_runs)} traces")
+
     print(f"\n=== Data collection summary ===")
     print(f"Total traces processed: {len(trace_metadata)}")
     print(f"Total epochs processed: {total_epochs_processed}")
     print(f"Total data points created: {len(all_initial_params)}")
     print(f"Overall epochs remaining range: {min(all_epochs_remaining)} to {max(all_epochs_remaining)}")
 
-    print("\nConverting to tensors...")
-    # Convert to tensors
-    initial_params_tensor = torch.tensor(np.array(all_initial_params), dtype=torch.float32)
-    final_params_tensor = torch.tensor(np.array(all_final_params), dtype=torch.float32)
-    epochs_tensor = torch.tensor(all_epochs_remaining, dtype=torch.float32)
-    print(f"  Tensor shapes: initial={initial_params_tensor.shape}, final={final_params_tensor.shape}, epochs={epochs_tensor.shape}")
+    print("\nConverting *training* set to tensors...")
+    # Convert the training lists into GPU/CPU tensors
+    initial_params_tensor = torch.tensor(np.array(train_initial), dtype=torch.float32)
+    final_params_tensor   = torch.tensor(np.array(train_final),   dtype=torch.float32)
+    epochs_tensor         = torch.tensor(train_epochs,            dtype=torch.float32)
+
+    print(f"  Train tensor shapes: "
+        f"initial={initial_params_tensor.shape}, "
+        f"final={final_params_tensor.shape}, "
+        f"epochs={epochs_tensor.shape}")
+
+    print("\nConverting *test* set to tensors...")
+    # Convert the held-out lists into tensors (stay on CPU/GPU via default device logic)
+    test_initial_tensor = torch.tensor(np.array(test_initial), dtype=torch.float32)
+    test_final_tensor   = torch.tensor(np.array(test_final),  dtype=torch.float32)
+    test_epochs_tensor  = torch.tensor(test_epochs,           dtype=torch.float32)
+
+    print(f"  Test tensor shapes: "
+        f"initial={test_initial_tensor.shape}, "
+        f"final={test_final_tensor.shape}, "
+        f"epochs={test_epochs_tensor.shape}")
 
     print("Loading data into predictor...")
     # Load data into predictor
@@ -1653,77 +1652,145 @@ def analyze_multiple_traces(registry: PathRegistry) -> Dict:
         include_interactions=True,
     )
 
-    print(f"Features computed: {len(features)}")
+    print(f"Features computed: {len(features[1])}")
     print(f"  Feature types: L1, L2, Cosine, Parameter-wise distances + raw diffs + ratios + log + interactions")
 
     # Fit various models
     results = {}
 
-    print("\n=== Training prediction models ===")
-    cv_folds = min(10, len(all_epochs_remaining) // 5)  # More folds with more data
-    print(f"Using {cv_folds}-fold cross-validation")
-    
     # 1. Simple linear regression
-    print("1. Training linear regression...")
-    results["linear"] = predictor.fit_regression(RegressionType.LINEAR, cv_folds=cv_folds)
-    print(f"   Linear R²: {results['linear'].r2_score:.4f}")
+    # print("1. Training linear regression...")
+    # results["linear"] = predictor.fit_regression(RegressionType.LINEAR)
+    # print(f"   Linear Train R²: {results['linear'].r2_score:.4f}")
 
-    # 2. Polynomial regression
-    print("2. Training polynomial regression (degree=2)...")
-    results["poly2"] = predictor.fit_regression(RegressionType.POLYNOMIAL, degree=2, cv_folds=cv_folds)
-    print(f"   Poly2 R²: {results['poly2'].r2_score:.4f}")
+    # 2. Polynomial regression x^2
+    # print("2. Training polynomial regression (degree=2)...")
+    # results["poly2"] = predictor.fit_regression(RegressionType.POLYNOMIAL, degree=2)
+    # print(f"   Poly2 Train R²: {results['poly2'].r2_score:.4f}")
 
-    print("3. Training polynomial regression (degree=3)...")
-    results["poly3"] = predictor.fit_regression(RegressionType.POLYNOMIAL, degree=3, cv_folds=cv_folds)
-    print(f"   Poly3 R²: {results['poly3'].r2_score:.4f}")
+    # 3. Polynomial regression x^3
+    # print("3. Training polynomial regression (degree=3)...")
+    # results["poly3"] = predictor.fit_regression(RegressionType.POLYNOMIAL, degree=3)
+    # print(f"   Poly3 Train R²: {results['poly3'].r2_score:.4f}")
 
     # 4. Log-linear (for exponential decay)
-    print("4. Training log-linear regression...")
-    results["log_linear"] = predictor.fit_regression(RegressionType.LOG_LINEAR, cv_folds=cv_folds)
-    print(f"   Log-linear R²: {results['log_linear'].r2_score:.4f}")
+    # print("4. Training log-linear regression...")
+    # results["log_linear"] = predictor.fit_regression(RegressionType.LOG_LINEAR)
+    # print(f"   Log-linear Train R²: {results['log_linear'].r2_score:.4f}")
 
     # 5. Exponential regression
-    print("5. Training exponential regression...")
-    results["exponential"] = predictor.fit_regression(RegressionType.EXPONENTIAL, cv_folds=cv_folds)
-    print(f"   Exponential R²: {results['exponential'].r2_score:.4f}")
+    # print("5. Training exponential regression...")
+    # results["exponential"] = predictor.fit_regression(RegressionType.EXPONENTIAL)
+    # print(f"   Exponential Train R²: {results['exponential'].r2_score:.4f}")
 
     # 6. Kernel regression
-    print("6. Training RBF kernel regression...")
-    results["kernel_rbf"] = predictor.fit_kernel_regression(predictor.features, predictor.data.epochs_to_converge, kernel="rbf", regularization=1e-4, cv_folds=min(5, cv_folds))
-    print(f"   Kernel RBF R²: {results['kernel_rbf'].r2_score:.4f}")
+    # print("6. Training RBF kernel regression...")
+    # results["kernel_rbf"] = predictor.fit_kernel_regression(predictor.features, predictor.data.epochs_to_converge, kernel="rbf", regularization=1e-4)
+    # print(f"   Kernel RBF Train R²: {results['kernel_rbf'].r2_score:.4f}")
 
-    print("7. Training linear kernel regression...")
-    results["kernel_linear"] = predictor.fit_kernel_regression(predictor.features, predictor.data.epochs_to_converge, kernel="linear", regularization=1e-4, cv_folds=min(5, cv_folds))
-    print(f"   Kernel Linear R²: {results['kernel_linear'].r2_score:.4f}")
+    # print("7. Training linear kernel regression...")
+    # results["kernel_linear"] = predictor.fit_kernel_regression(predictor.features, predictor.data.epochs_to_converge, kernel="linear", regularization=1e-4)
+    # print(f"   Kernel Linear Train R²: {results['kernel_linear'].r2_score:.4f}")
 
     # 8. Neural networks (with more data, we can try bigger networks)
-    print("8. Training neural network (small)...")
-    results["neural_net_small"] = predictor.fit_neural_network(
-        hidden_layers=[32, 16], activation="relu", epochs=500, early_stopping=True
-    )
-    print(f"   Neural net (small) R²: {results['neural_net_small'].r2_score:.4f}")
+    # print("8. Training neural network (small)...")
+    # results["neural_net_small"] = predictor.fit_neural_network(
+    #     hidden_layers=[32, 16], activation="relu", epochs=500, early_stopping=True
+    # )
+    # print(f"   Neural net (small) Train R²: {results['neural_net_small'].r2_score:.4f}")
 
-    if len(all_epochs_remaining) >= 100:
-        print("9. Training neural network (large)...")
-        results["neural_net_large"] = predictor.fit_neural_network(
-            hidden_layers=[64, 32, 16], activation="relu", epochs=1000, early_stopping=True
-        )
-        print(f"   Neural net (large) R²: {results['neural_net_large'].r2_score:.4f}")
-    else:
-        print("9. Skipping large neural network (insufficient data)")
+    # if len(all_epochs_remaining) >= 100:
+    #     print("9. Training neural network (large)...")
+    #     results["neural_net_large"] = predictor.fit_neural_network(
+    #         hidden_layers=[64, 32, 16], activation="relu", epochs=1000, early_stopping=True
+    #     )
+    #     print(f"   Neural net (large) Train R²: {results['neural_net_large'].r2_score:.4f}")
+    # else:
+    #     print("9. Skipping large neural network (insufficient data)")
 
     # 10. Ensemble methods
     print("10. Training random forest...")
     results["random_forest"] = predictor.fit_ensemble(n_estimators=100, method="random_forest")
-    print(f"    Random forest R²: {results['random_forest'].r2_score:.4f}")
+    print(f"    Random forest Train R²: {results['random_forest'].r2_score:.4f}")
 
-    print("11. Training gradient boosting...")
-    results["gradient_boosting"] = predictor.fit_ensemble(n_estimators=100, method="gradient_boosting")
-    print(f"    Gradient boosting R²: {results['gradient_boosting'].r2_score:.4f}")
+    # print("11. Training gradient boosting...")
+    # results["gradient_boosting"] = predictor.fit_ensemble(n_estimators=100, method="gradient_boosting")
+    # print(f"    Gradient boosting Train R²: {results['gradient_boosting'].r2_score:.4f}")
+
+    # ------------------------------------------------------------------
+    # === EVALUATE EVERY MODEL ON THE HELD-OUT TEST RUNS ===============
+    # ------------------------------------------------------------------
+    print("\n=== Generalisation to unseen runs (test set) ===")
+
+    # 1) build test feature matrix (identical options to training call)
+    test_features, _ = FeatureEngineering.create_all_features(
+        initial_params=test_initial_tensor.to(predictor.device),
+        final_params=test_final_tensor.to(predictor.device),
+        distance_metrics=[DistanceMetric.L1, DistanceMetric.L2,
+                        DistanceMetric.COSINE, DistanceMetric.PARAMETER_WISE],
+        include_raw=True,
+        include_ratios=True,
+        include_log=True,
+        include_interactions=True,
+    )
+
+    y_test = test_epochs_tensor.to(predictor.device)
+
+    test_metrics = {}   # {model_name: {"r2":…, "mse":…, "mae":…}}
+
+    for name, model in predictor.models.items():
+        # --- get predictions ------------------------------------------
+        # If the model is polynomial, expand test features too
+        X_test = test_features
+        if "poly_" in name:
+            degree = int(name.split("_")[1])
+            X_test = predictor._polynomial_features(X_test, degree)
+
+        if isinstance(model, torch.nn.Module):
+            model.eval()
+            with torch.no_grad():
+                pred = model(X_test).squeeze()
+
+        elif isinstance(model, dict) and "kernel" in model:  # kernel regression
+            X_train = model["X_train"]
+            alpha   = model["alpha"]
+            ktype   = model["kernel"]
+            gamma   = model.get("gamma")
+
+            if ktype == "rbf":
+                K = torch.exp(-gamma * torch.cdist(test_features, X_train, p=2) ** 2)
+            elif ktype == "linear":
+                K = torch.mm(test_features, X_train.t())
+            elif ktype == "polynomial":
+                K = (1 + torch.mm(test_features, X_train.t())) ** 3
+            pred = torch.mv(K, alpha)
+
+        else:  # scikit-learn estimators
+            pred = torch.tensor(
+                model.predict(test_features.cpu().numpy()),
+                device=predictor.device, dtype=torch.float32
+            )
+
+        # --- metrics ---------------------------------------------------
+        mse = torch.nn.functional.mse_loss(pred, y_test).item()
+        mae = torch.nn.functional.l1_loss(pred, y_test).item()
+        r2  = 1 - ((y_test - pred).pow(2).sum() /
+                (y_test - y_test.mean()).pow(2).sum()).item()
+
+        test_metrics[name] = {"r2": r2, "mse": mse, "mae": mae}
+        if name in predictor.results:
+            predictor.results[name].__dict__["test_metrics"] = test_metrics[name]
+        # print(f"{name:20s}  R²={r2:.4f}   MSE={mse:.3f}   MAE={mae:.3f}")
+
+    for name, metrics in sorted(test_metrics.items(), key=lambda x: x[1]["r2"], reverse=True):
+        print(f"{name:20s}  R²={metrics['r2']:.4f}   MSE={metrics['mse']:.3f}   MAE={metrics['mae']:.3f}")
+
+    # ------------------------------------------------------------------
 
     print("\n=== Model comparison and analysis ===")
+
     # Compare models
-    model_comparison = predictor.compare_models(metric="r2")
+    model_comparison = predictor.compare_models(metric="r2", use_test=True)
     print("Model R² scores:")
     for model, r2 in sorted(model_comparison.items(), key=lambda x: x[1], reverse=True):
         print(f"  {model}: {r2:.4f}")
@@ -1750,9 +1817,9 @@ def analyze_multiple_traces(registry: PathRegistry) -> Dict:
 
     # Bootstrap confidence intervals for best model
     best_model_name = sorted_models[0][0]
-    print(f"\nComputing bootstrap confidence intervals for {best_model_name}...")
-    confidence_intervals = predictor.bootstrap_confidence(model=best_model_name, n_bootstrap=200, confidence=0.95)
-    print(f"  Bootstrap completed with {confidence_intervals.get('n_successful_bootstraps', 'unknown')} successful samples")
+    # print(f"\nComputing bootstrap confidence intervals for {best_model_name}...")
+    # confidence_intervals = predictor.bootstrap_confidence(model=best_model_name, n_bootstrap=200, confidence=0.95)
+    # print(f"  Bootstrap completed with {confidence_intervals.get('n_successful_bootstraps', 'unknown')} successful samples")
     
     # Call the new interpretation function for the best model
     predictor.interpret_best_model(best_model_name, output_dir=registry.analysis)
@@ -1816,7 +1883,6 @@ def analyze_multiple_traces(registry: PathRegistry) -> Dict:
             "r2_score": results[results_key].r2_score,
             "mse": results[results_key].mse,
             "mae": results[results_key].mae,
-            "cross_val_scores": results[results_key].cross_val_scores.tolist() if results[results_key].cross_val_scores is not None else None
         },
         "feature_analysis": {
             "lasso_selected_features": (
@@ -1828,11 +1894,11 @@ def analyze_multiple_traces(registry: PathRegistry) -> Dict:
             "feature_descriptions": "Indices of most predictive features for convergence time",
         },
         "statistical_significance": stat_test,
-        "prediction_confidence": {
-            "lower_bound": confidence_intervals["lower"].tolist() if "lower" in confidence_intervals else None,
-            "upper_bound": confidence_intervals["upper"].tolist() if "upper" in confidence_intervals else None,
-            "bootstrap_samples": confidence_intervals.get('n_successful_bootstraps', 0)
-        },
+        # "prediction_confidence": {
+        #     "lower_bound": confidence_intervals["lower"].tolist() if "lower" in confidence_intervals else None,
+        #     "upper_bound": confidence_intervals["upper"].tolist() if "upper" in confidence_intervals else None,
+        #     "bootstrap_samples": confidence_intervals.get('n_successful_bootstraps', 0)
+        # },
         "convergence_patterns": {
             "traces_analyzed": len(trace_metadata),
             "average_convergence_epochs": np.mean([meta["total_epochs"] for meta in trace_metadata]),
@@ -2009,89 +2075,89 @@ if __name__ == "__main__":
     for i, (model, r2) in enumerate(sorted_models[:5]):
         print(f"  {i+1}. {model}: R² = {r2:.4f}")
 
-    print("\n" + "="*80)
-    print("MATHEMATICAL EQUATIONS FOR CONVERGENCE PREDICTION")
-    print("="*80)
+    # print("\n" + "="*80)
+    # print("MATHEMATICAL EQUATIONS FOR CONVERGENCE PREDICTION")
+    # print("="*80)
 
-    print("\n=== FEATURE ENGINEERING EQUATIONS ===")
-    print("The following synthetic features are computed from raw parameters:")
+    # print("\n=== FEATURE ENGINEERING EQUATIONS ===")
+    # print("The following synthetic features are computed from raw parameters:")
 
-    print("\nDistance Metrics:")
-    print("  L1_distance = |p0_init - p0_final| + |p1_init - p1_final| + |p2_init - p2_final|")
-    print("  L2_distance = sqrt((p0_init - p0_final)² + (p1_init - p1_final)² + (p2_init - p2_final)²)")
-    print("  cosine_distance = 1 - (initial_params · final_params) / (||initial_params|| × ||final_params||)")
+    # print("\nDistance Metrics:")
+    # print("  L1_distance = |p0_init - p0_final| + |p1_init - p1_final| + |p2_init - p2_final|")
+    # print("  L2_distance = sqrt((p0_init - p0_final)² + (p1_init - p1_final)² + (p2_init - p2_final)²)")
+    # print("  cosine_distance = 1 - (initial_params · final_params) / (||initial_params|| × ||final_params||)")
 
-    print("\nRaw Parameter Differences:")
-    print("  diff_p0 = p0_init - p0_final")
-    print("  diff_p1 = p1_init - p1_final") 
-    print("  diff_p2 = p2_init - p2_final")
+    # print("\nRaw Parameter Differences:")
+    # print("  diff_p0 = p0_init - p0_final")
+    # print("  diff_p1 = p1_init - p1_final") 
+    # print("  diff_p2 = p2_init - p2_final")
 
-    print("\nParameter Ratios:")
-    print("  ratio_p0 = p0_init / (p0_final + 1e-8)")
-    print("  ratio_p1 = p1_init / (p1_final + 1e-8)")
-    print("  ratio_p2 = p2_init / (p2_final + 1e-8)")
+    # print("\nParameter Ratios:")
+    # print("  ratio_p0 = p0_init / (p0_final + 1e-8)")
+    # print("  ratio_p1 = p1_init / (p1_final + 1e-8)")
+    # print("  ratio_p2 = p2_init / (p2_final + 1e-8)")
 
-    print("\nLog Transforms:")
-    print("  log_diff_p0 = log(|p0_init - p0_final| + 1e-8)")
-    print("  log_diff_p1 = log(|p1_init - p1_final| + 1e-8)")
-    print("  log_diff_p2 = log(|p2_init - p2_final| + 1e-8)")
+    # print("\nLog Transforms:")
+    # print("  log_diff_p0 = log(|p0_init - p0_final| + 1e-8)")
+    # print("  log_diff_p1 = log(|p1_init - p1_final| + 1e-8)")
+    # print("  log_diff_p2 = log(|p2_init - p2_final| + 1e-8)")
 
-    print("\nInteraction Terms:")
-    print("  interaction_p0_p1 = diff_p0 × diff_p1")
-    print("  interaction_p0_p2 = diff_p0 × diff_p2")
-    print("  interaction_p1_p2 = diff_p1 × diff_p2")
+    # print("\nInteraction Terms:")
+    # print("  interaction_p0_p1 = diff_p0 × diff_p1")
+    # print("  interaction_p0_p2 = diff_p0 × diff_p2")
+    # print("  interaction_p1_p2 = diff_p1 × diff_p2")
 
-    print("\n=== CONVERGENCE PREDICTION EQUATIONS ===")
+    # print("\n=== CONVERGENCE PREDICTION EQUATIONS ===")
 
-    # Print all model equations with their accuracy
-    model_comparison = analysis_results['model_comparison']
-    sorted_models = sorted(model_comparison.items(), key=lambda x: x[1], reverse=True)
+    # # Print all model equations with their accuracy
+    # model_comparison = analysis_results['model_comparison']
+    # sorted_models = sorted(model_comparison.items(), key=lambda x: x[1], reverse=True)
 
-    print("\nAll Trained Models (ranked by accuracy):")
-    for i, (model_name, r2_score) in enumerate(sorted_models):
-        print(f"\n{i+1}. {model_name.upper()} (R² = {r2_score:.4f}):")
+    # print("\nAll Trained Models (ranked by accuracy):")
+    # for i, (model_name, r2_score) in enumerate(sorted_models):
+    #     print(f"\n{i+1}. {model_name.upper()} (R² = {r2_score:.4f}):")
         
-        if "linear" in model_name and "log" not in model_name and "kernel" not in model_name:
-            print("   epochs_remaining = β₀ + β₁×L1_distance + β₂×L2_distance + β₃×cosine_distance + ...")
-            print("   [Linear combination of all 18 features]")
+    #     if "linear" in model_name and "log" not in model_name and "kernel" not in model_name:
+    #         print("   epochs_remaining = β₀ + β₁×L1_distance + β₂×L2_distance + β₃×cosine_distance + ...")
+    #         print("   [Linear combination of all 18 features]")
             
-        elif "poly" in model_name:
-            degree = "2" if "poly_2" in model_name else "3"
-            print(f"   epochs_remaining = polynomial expansion of degree {degree}")
-            print("   [Includes squared terms, cubic terms, and cross-products of features]")
+    #     elif "poly" in model_name:
+    #         degree = "2" if "poly_2" in model_name else "3"
+    #         print(f"   epochs_remaining = polynomial expansion of degree {degree}")
+    #         print("   [Includes squared terms, cubic terms, and cross-products of features]")
             
-        elif "log_linear" in model_name:
-            print("   log(epochs_remaining) = β₀ + β₁×L1_distance + β₂×L2_distance + ...")
-            print("   epochs_remaining = exp(β₀ + β₁×L1_distance + β₂×L2_distance + ...)")
+    #     elif "log_linear" in model_name:
+    #         print("   log(epochs_remaining) = β₀ + β₁×L1_distance + β₂×L2_distance + ...")
+    #         print("   epochs_remaining = exp(β₀ + β₁×L1_distance + β₂×L2_distance + ...)")
             
-        elif "exponential" in model_name:
-            print("   epochs_remaining = exp(β₀ + β₁×L1_distance + β₂×L2_distance + ...)")
+    #     elif "exponential" in model_name:
+    #         print("   epochs_remaining = exp(β₀ + β₁×L1_distance + β₂×L2_distance + ...)")
             
-        elif "kernel_rbf" in model_name:
-            print("   epochs_remaining = Σᵢ αᵢ × exp(-γ||x - xᵢ||²)")
-            print("   [Radial Basis Function kernel with Gaussian similarity]")
+    #     elif "kernel_rbf" in model_name:
+    #         print("   epochs_remaining = Σᵢ αᵢ × exp(-γ||x - xᵢ||²)")
+    #         print("   [Radial Basis Function kernel with Gaussian similarity]")
             
-        elif "kernel_linear" in model_name:
-            print("   epochs_remaining = Σᵢ αᵢ × (x · xᵢ)")
-            print("   [Linear kernel regression]")
+    #     elif "kernel_linear" in model_name:
+    #         print("   epochs_remaining = Σᵢ αᵢ × (x · xᵢ)")
+    #         print("   [Linear kernel regression]")
             
-        elif "neural_net" in model_name or "nn_" in model_name:
-            if "small" in model_name or "2layer" in model_name:
-                print("   epochs_remaining = NN([32, 16] hidden units)")
-            else:
-                print("   epochs_remaining = NN([64, 32, 16] hidden units)")
-            print("   [Multi-layer neural network with ReLU activations]")
+    #     elif "neural_net" in model_name or "nn_" in model_name:
+    #         if "small" in model_name or "2layer" in model_name:
+    #             print("   epochs_remaining = NN([32, 16] hidden units)")
+    #         else:
+    #             print("   epochs_remaining = NN([64, 32, 16] hidden units)")
+    #         print("   [Multi-layer neural network with ReLU activations]")
             
-        elif "random_forest" in model_name:
-            print("   epochs_remaining = average of 100 decision trees")
-            print("   [Ensemble of decision trees with feature bagging]")
+    #     elif "random_forest" in model_name:
+    #         print("   epochs_remaining = average of 100 decision trees")
+    #         print("   [Ensemble of decision trees with feature bagging]")
             
-        elif "gradient_boosting" in model_name:
-            print("   epochs_remaining = Σₜ learning_rate × tree_t(features)")
-            print("   [Sequential ensemble of 100 boosted decision trees]")
+    #     elif "gradient_boosting" in model_name:
+    #         print("   epochs_remaining = Σₜ learning_rate × tree_t(features)")
+    #         print("   [Sequential ensemble of 100 boosted decision trees]")
             
-        else:
-            print("   [Complex non-linear model]")
+    #     else:
+    #         print("   [Complex non-linear model]")
 
     # Show the best performing models summary
     best_model_name = sorted_models[0][0]

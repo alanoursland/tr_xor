@@ -974,94 +974,99 @@ class ConvergencePredictor:
         self.results[model_name] = result
         return result
 
-    def interpret_best_model(self, model_name: str, feature_names: Dict[int, str], trace_dir: str) -> None:
-            """
-            Provides interpretability for the best performing model using SHAP,
-            feature importances, and a surrogate decision tree.
-            """
-            if model_name not in self.models:
-                print(f"Model '{model_name}' not found. Cannot perform interpretation.")
-                return
+    def interpret_best_model(
+        self, model_name: str, feature_names: Dict[int, str], output_dir: Path
+    ) -> None:
+        """
+        Provides interpretability for the best model and saves artifacts to disk.
 
-            print("\n" + "="*80)
-            print(f"INTERPRETATION FOR BEST MODEL: {model_name}")
-            print("="*80)
+        Args:
+            model_name: The name of the model to interpret.
+            feature_names: A mapping of feature indices to human-readable names.
+            output_dir: The directory Path object where plots should be saved.
+        """
+        if model_name not in self.models:
+            print(f"Model '{model_name}' not found. Cannot perform interpretation.")
+            return
 
-            model = self.models[model_name]
-            X_cpu = self.features.cpu().numpy()
-            y_cpu = self.data.epochs_to_converge.cpu().numpy()
+        print("\n" + "="*80)
+        print(f"INTERPRETATION FOR BEST MODEL: {model_name}")
+        print("="*80)
 
-            # 1. Ranked Feature Importance
-            # ... (This section is unchanged) ...
-            if hasattr(model, "feature_importances_"):
-                importances = model.feature_importances_
-                sorted_indices = np.argsort(importances)[::-1]
+        model = self.models[model_name]
+        X_cpu = self.features.cpu().numpy()
+        y_cpu = self.data.epochs_to_converge.cpu().numpy()
 
-                print("\n--- Top 10 Most Important Features ---")
-                for i in range(min(10, len(importances))):
-                    idx = sorted_indices[i]
-                    feature_name = feature_names.get(idx, f"feature_{idx}")
-                    print(f"{i+1}. {feature_name}: {importances[idx]:.4f}")
+        # 1. Ranked Feature Importance (if available)
+        if hasattr(model, "feature_importances_"):
+            importances = model.feature_importances_
+            sorted_indices = np.argsort(importances)[::-1]
 
-                # 2. Partial Dependence Plots for top features
-                # ... (This section is unchanged) ...
-                print("\nGenerating Partial Dependence Plots for top 2 features...")
-                fig, ax = plt.subplots(figsize=(12, 6))
-                top_two_indices = sorted_indices[:2]
-                display = PartialDependenceDisplay.from_estimator(
-                    model,
-                    X_cpu,
-                    features=top_two_indices,
-                    feature_names=[feature_names.get(i, f"f_{i}") for i in range(X_cpu.shape[1])],
-                    ax=ax
-                )
-                plt.suptitle(f"Partial Dependence Plots for {model_name}")
-                plt.tight_layout(rect=[0, 0, 1, 0.96])
-                # Create interpretation output directory
-                fig_path = registry.analysis / "partial_dependence_plots.png"
-                plt.savefig(fig_path)
-                plt.close()
-                print(f"  Plots saved to {fig_path}")
+            print("\n--- Top 10 Most Important Features ---")
+            for i in range(min(10, len(importances))):
+                idx = sorted_indices[i]
+                feature_name = feature_names.get(idx, f"feature_{idx}")
+                print(f"{i+1}. {feature_name}: {importances[idx]:.4f}")
+
+        # 2. Partial Dependence Plots for top features
+        print("\nGenerating Partial Dependence Plots for top 2 features...")
+        fig, ax = plt.subplots(figsize=(12, 6))
+        top_two_indices = sorted_indices[:2]
+        display = PartialDependenceDisplay.from_estimator(
+            model,
+            X_cpu,
+            features=top_two_indices,
+            feature_names=[feature_names.get(i, f"f_{i}") for i in range(X_cpu.shape[1])],
+            ax=ax
+        )
+        plt.suptitle(f"Partial Dependence Plots for {model_name}")
+        plt.tight_layout(rect=[0, 0, 1, 0.96])
+        # Create interpretation output directory
+        fig_path = output_dir / "partial_dependence_plots.png"
+        plt.savefig(fig_path)
+        plt.close()
+        print(f"  Plots saved to {fig_path}")
 
 
-            # 3. SHAP Analysis (for tree models)
-            # if isinstance(model, (RandomForestRegressor, GradientBoostingRegressor)):
-            #     print("\nCalculating SHAP values for model interpretation...")
-                
-            #     # ================== NEW: SAMPLING CODE ==================
-            #     # To prevent long runtimes, we'll use a random sample for SHAP analysis.
-            #     X_sample = shap.sample(X_cpu, 2000)
-            #     # ========================================================
-                
-            #     explainer = shap.TreeExplainer(model)
-            #     shap_values = explainer.shap_values(X_sample) # Use the sample here
-
-            #     # Generate and save SHAP summary plot
-            #     shap.summary_plot(shap_values, X_sample, feature_names=[feature_names.get(i, f"f_{i}") for i in range(X_cpu.shape[1])], show=False)
-            #     fig_path = registry.analysis / "shap_summary_plot.png"
-            #     plt.title(f"SHAP Feature Impact for {model_name}")
-            #     plt.savefig(fig_path, bbox_inches='tight')
-            #     plt.close()
-            #     print(f"  SHAP summary plot saved to {fig_path}")
-
-            # 4. Surrogate Decision Tree Model
-            # ... (This section is unchanged) ...
-            print("\n--- Approximating with a Simple Decision Tree (Surrogate Model) ---")
-            surrogate_model = DecisionTreeRegressor(max_depth=4, random_state=42)
+        # 3. SHAP Analysis (for tree models)
+        # if isinstance(model, (RandomForestRegressor, GradientBoostingRegressor)):
+        #     print("\nCalculating SHAP values for model interpretation...")
             
-            black_box_predictions = model.predict(X_cpu)
-            surrogate_model.fit(X_cpu, black_box_predictions)
+        #     # ================== NEW: SAMPLING CODE ==================
+        #     # To prevent long runtimes, we'll use a random sample for SHAP analysis.
+        #     X_sample = shap.sample(X_cpu, 2000)
+        #     # ========================================================
             
-            surrogate_r2 = surrogate_model.score(X_cpu, black_box_predictions)
-            print(f"Simple tree R² (approximating Random Forest): {surrogate_r2:.4f}")
+        #     explainer = shap.TreeExplainer(model)
+        #     shap_values = explainer.shap_values(X_sample) # Use the sample here
 
-            if surrogate_r2 > 0.75:
-                print("The simple tree is a good approximation. Here are its rules:")
-                feature_name_list = [feature_names.get(i, f"feature_{i}") for i in range(X_cpu.shape[1])]
-                tree_rules = export_text(surrogate_model, feature_names=feature_name_list, max_depth=3)
-                print(tree_rules)
-            else:
-                print("The surrogate model is not a close enough approximation to display simple rules.")
+        #     # Generate and save SHAP summary plot
+        #     shap.summary_plot(shap_values, X_sample, feature_names=[feature_names.get(i, f"f_{i}") for i in range(X_cpu.shape[1])], show=False)
+        #     fig_path = output_dir / "shap_summary_plot.png"
+        #     plt.title(f"SHAP Feature Impact for {model_name}")
+        #     plt.savefig(fig_path, bbox_inches='tight')
+        #     plt.close()
+        #     print(f"  SHAP summary plot saved to {fig_path}")
+
+        # 4. Surrogate Decision Tree Model
+        # ... (This section is unchanged) ...
+        print("\n--- Approximating with a Simple Decision Tree (Surrogate Model) ---")
+        surrogate_model = DecisionTreeRegressor(max_depth=4, random_state=42)
+        
+        black_box_predictions = model.predict(X_cpu)
+        surrogate_model.fit(X_cpu, black_box_predictions)
+        
+        surrogate_r2 = surrogate_model.score(X_cpu, black_box_predictions)
+        print(f"Simple tree R² (approximating Random Forest): {surrogate_r2:.4f}")
+
+        if surrogate_r2 > 0.75:
+            print("The simple tree is a good approximation. Here are its rules:")
+            feature_name_list = [feature_names.get(i, f"feature_{i}") for i in range(X_cpu.shape[1])]
+            tree_rules = export_text(surrogate_model, feature_names=feature_name_list, max_depth=3)
+            print(tree_rules)
+        else:
+            print("The surrogate model is not a close enough approximation to display simple rules.")
+
 
     def _train_pytorch_model(
             self,
@@ -1703,7 +1708,7 @@ def analyze_multiple_traces(registry: PathRegistry) -> Dict:
     # Generate human-readable feature names for interpretation
     feature_map = map_features_to_indices(predictor) 
     # Call the new interpretation function for the best model
-    predictor.interpret_best_model(best_model_name, feature_map, trace_dir)
+    predictor.interpret_best_model(best_model_name, feature_map, output_dir=registry.analysis)
 
     # Map internal model names back to results keys
     model_name_mapping = {
@@ -1984,6 +1989,24 @@ if __name__ == "__main__":
 
     analysis_results = analyze_multiple_traces(registry)
 
+    summary_path = registry.analysis / "analysis_summary.json"
+    print(f"\nSaving detailed summary to {summary_path}...")
+    with open(summary_path, 'w') as f:
+        # Custom converter to handle numpy/torch objects in the summary
+        class NpEncoder(json.JSONEncoder):
+            def default(self, obj):
+                if isinstance(obj, np.integer):
+                    return int(obj)
+                if isinstance(obj, np.floating):
+                    return float(obj)
+                if isinstance(obj, np.ndarray):
+                    return obj.tolist()
+                if isinstance(obj, torch.Tensor):
+                    return obj.tolist()
+                return super(NpEncoder, self).default(obj)
+        
+        json.dump(analysis_results, f, indent=4, cls=NpEncoder)
+    print("  Summary saved.")
 
     # Print summary
     print("Convergence Analysis Results")

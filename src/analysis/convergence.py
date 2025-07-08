@@ -17,6 +17,7 @@ from sklearn.tree import DecisionTreeRegressor, export_text
 from sklearn.inspection import PartialDependenceDisplay
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 from pathlib import Path
+from sklearn.base import clone
 
 """
 Convergence Prediction Framework
@@ -512,7 +513,6 @@ class ConvergencePredictor:
             self.results[model_name] = result
             return result
 
-
     def compare_models(self, models: Optional[List[str]] = None, metric: str = "r2") -> Dict[str, float]:
         """Compare all fitted models by specified metric"""
         if models is None:
@@ -710,46 +710,27 @@ class ConvergencePredictor:
 
             # Handle different model types
             if isinstance(fitted_model, nn.Module):
-                # PyTorch models - keep everything on GPU
-                if isinstance(fitted_model, nn.Linear):
-                    boot_model = nn.Linear(fitted_model.in_features, fitted_model.out_features).to(self.device)
-                elif isinstance(fitted_model, nn.Sequential):
-                    # Recreate architecture
-                    layers = []
-                    for layer in fitted_model:
-                        if isinstance(layer, nn.Linear):
-                            layers.append(nn.Linear(layer.in_features, layer.out_features))
-                        elif isinstance(layer, nn.ReLU):
-                            layers.append(nn.ReLU())
-                        elif isinstance(layer, nn.Tanh):
-                            layers.append(nn.Tanh())
-                        elif isinstance(layer, nn.Sigmoid):
-                            layers.append(nn.Sigmoid())
-                    boot_model = nn.Sequential(*layers).to(self.device)
+                # PyTorch models - recreate and train
+                boot_model = self._recreate_model(fitted_model)
+                
+                # Train the bootstrap model
+                boot_model = self._train_pytorch_model(
+                    model=boot_model,
+                    X_train=X_boot,
+                    y_train=y_boot,
+                    epochs=50,  # Reduced for bootstrap speed
+                    learning_rate=0.01,
+                    early_stopping=False  # No early stopping for bootstrap
+                )
 
-                # Reset parameters
-                boot_model.apply(lambda m: m.reset_parameters() if hasattr(m, "reset_parameters") else None)
-
-                # Fast GPU training with fewer epochs for bootstrap
-                optimizer = torch.optim.Adam(boot_model.parameters(), lr=0.01)
-                criterion = nn.MSELoss()
-
-                # Reduced epochs for bootstrap speed
-                for _ in range(50):  # Reduced from 100
-                    optimizer.zero_grad()
-                    pred = boot_model(X_boot).squeeze()
-                    loss = criterion(pred, y_boot)
-                    loss.backward()
-                    optimizer.step()
-
-                # Get predictions on full dataset (GPU)
+                # Get predictions on full dataset
                 boot_model.eval()
                 with torch.no_grad():
                     boot_pred = boot_model(X).squeeze()
                     bootstrap_predictions.append(boot_pred)
 
             elif isinstance(fitted_model, dict):
-                # Kernel regression - keep on GPU
+                # Kernel regression - special handling
                 if "kernel" in fitted_model:
                     kernel_type = fitted_model["kernel"]
                     regularization = fitted_model.get("regularization_used", 1e-4)
@@ -785,12 +766,9 @@ class ConvergencePredictor:
 
                     boot_pred = torch.mv(K_full, alpha_boot)
                     bootstrap_predictions.append(boot_pred)
-
             else:
-                # Sklearn models - must use CPU
-                from sklearn.base import clone
-
-                boot_model = clone(fitted_model)
+                # Sklearn models
+                boot_model = self._recreate_model(fitted_model)
                 X_boot_cpu = X_boot.cpu().numpy()
                 y_boot_cpu = y_boot.cpu().numpy()
                 X_cpu = X.cpu().numpy()
@@ -821,8 +799,8 @@ class ConvergencePredictor:
             "n_successful_bootstraps": len(bootstrap_predictions),
         }
 
-    def visualize_results(self, plot_type: str = "all", save_path: Optional[str] = None) -> None:
-        """Generate diagnostic plots - simplified for research"""
+    def visualize_results(self, save_path: Path) -> None:
+        """Generate diagnostic plots using stored feature names."""
 
         if not self.results:
             print("No results to visualize")
@@ -863,22 +841,27 @@ class ConvergencePredictor:
 
         # 4. Feature importance (if available)
         ax = axes[1, 1]
-        for model_name, result in self.results.items():
-            if result.feature_importance is not None:
-                importance = result.feature_importance.cpu().numpy()
-                ax.bar(range(len(importance)), importance, alpha=0.5, label=model_name)
-                ax.set_title("Feature Importance")
-                ax.set_xlabel("Feature Index")
-                ax.set_ylabel("Importance")
-                ax.legend()
-                break
+        ax.set_title("Top 10 Feature Importances")
+        best_model_name, best_result = max(self.results.items(), key=lambda item: item[1].r2_score)
+
+        if best_result.feature_importance is not None:
+            importances = best_result.feature_importance.cpu().numpy()
+            
+            indices = np.argsort(importances)[-10:] # Get top 10
+            top_features = [self.feature_names[i] for i in indices]
+            top_importances = importances[indices]
+
+            ax.barh(top_features, top_importances)
+            ax.set_xlabel("Importance")
+            ax.set_ylabel("Feature")
+            ax.set_title(f"Top 10 Features for {best_model_name}")
+        else:
+            ax.text(0.5, 0.5, "Feature importance not available\nfor the best model.", 
+                    ha='center', va='center', transform=ax.transAxes)
 
         plt.tight_layout()
-
-        if save_path:
-            plt.savefig(save_path)
-        else:
-            plt.show()
+        plt.savefig(save_path)
+        plt.close()
 
     def _fit_kernel_regression(
         self, X: torch.Tensor, y: torch.Tensor, kernel: str, regularization: float, cv_folds: int
@@ -974,9 +957,7 @@ class ConvergencePredictor:
         self.results[model_name] = result
         return result
 
-    def interpret_best_model(
-        self, model_name: str, feature_names: Dict[int, str], output_dir: Path
-    ) -> None:
+    def interpret_best_model(self, model_name: str, output_dir: Path) -> None:
         """
         Provides interpretability for the best model and saves artifacts to disk.
 
@@ -1005,7 +986,7 @@ class ConvergencePredictor:
             print("\n--- Top 10 Most Important Features ---")
             for i in range(min(10, len(importances))):
                 idx = sorted_indices[i]
-                feature_name = feature_names.get(idx, f"feature_{idx}")
+                feature_name = self.feature_names[idx]
                 print(f"{i+1}. {feature_name}: {importances[idx]:.4f}")
 
         # 2. Partial Dependence Plots for top features
@@ -1016,7 +997,7 @@ class ConvergencePredictor:
             model,
             X_cpu,
             features=top_two_indices,
-            feature_names=[feature_names.get(i, f"f_{i}") for i in range(X_cpu.shape[1])],
+            feature_names=self.feature_names,
             ax=ax
         )
         plt.suptitle(f"Partial Dependence Plots for {model_name}")
@@ -1041,7 +1022,7 @@ class ConvergencePredictor:
         #     shap_values = explainer.shap_values(X_sample) # Use the sample here
 
         #     # Generate and save SHAP summary plot
-        #     shap.summary_plot(shap_values, X_sample, feature_names=[feature_names.get(i, f"f_{i}") for i in range(X_cpu.shape[1])], show=False)
+        #     shap.summary_plot(shap_values, X_sample, feature_names=self.feature_names, show=False)
         #     fig_path = output_dir / "shap_summary_plot.png"
         #     plt.title(f"SHAP Feature Impact for {model_name}")
         #     plt.savefig(fig_path, bbox_inches='tight')
@@ -1061,12 +1042,10 @@ class ConvergencePredictor:
 
         if surrogate_r2 > 0.75:
             print("The simple tree is a good approximation. Here are its rules:")
-            feature_name_list = [feature_names.get(i, f"feature_{i}") for i in range(X_cpu.shape[1])]
-            tree_rules = export_text(surrogate_model, feature_names=feature_name_list, max_depth=3)
+            tree_rules = export_text(surrogate_model, feature_names=self.feature_names, max_depth=3)
             print(tree_rules)
         else:
             print("The surrogate model is not a close enough approximation to display simple rules.")
-
 
     def _train_pytorch_model(
             self,
@@ -1129,7 +1108,77 @@ class ConvergencePredictor:
             # Ensure the model is in evaluation mode after training
             model.eval()
             return model
-    
+
+    def _recreate_model(self, original_model):
+        """
+        Create a fresh copy of a model for bootstrap sampling.
+        
+        Args:
+            original_model: The fitted model to recreate (can be nn.Module, dict, or sklearn model)
+            
+        Returns:
+            A new unfitted model with the same architecture
+        """
+        if isinstance(original_model, nn.Linear):
+            # Simple linear model
+            new_model = nn.Linear(original_model.in_features, original_model.out_features).to(self.device)
+            new_model.apply(lambda m: m.reset_parameters() if hasattr(m, "reset_parameters") else None)
+            return new_model
+            
+        elif isinstance(original_model, nn.Sequential):
+            # Neural network with multiple layers
+            layers = []
+            for layer in original_model:
+                if isinstance(layer, nn.Linear):
+                    layers.append(nn.Linear(layer.in_features, layer.out_features))
+                elif isinstance(layer, nn.ReLU):
+                    layers.append(nn.ReLU())
+                elif isinstance(layer, nn.Tanh):
+                    layers.append(nn.Tanh())
+                elif isinstance(layer, nn.Sigmoid):
+                    layers.append(nn.Sigmoid())
+            new_model = nn.Sequential(*layers).to(self.device)
+            new_model.apply(lambda m: m.reset_parameters() if hasattr(m, "reset_parameters") else None)
+            return new_model
+            
+        elif isinstance(original_model, dict):
+            # Kernel regression - return the dict as-is (will be handled differently)
+            return original_model
+            
+        else:
+            # Sklearn models
+            from sklearn.base import clone
+            return clone(original_model)
+
+    def _extract_detailed_linear_equation(self) -> str:
+        """
+        Extracts the full linear equation with proper feature names using
+        the internally stored model and feature_names list.
+        """
+        model_name = "linear" # Assuming the simple linear model is named 'linear'
+        if model_name not in self.models:
+            return "Linear model not found or has not been trained."
+        
+        linear_model = self.models[model_name]
+        if not isinstance(linear_model, torch.nn.Linear):
+             return f"Model '{model_name}' is not a torch.nn.Linear module."
+
+        weights = linear_model.weight.data.cpu().numpy().flatten()
+        bias = linear_model.bias.data.cpu().numpy()[0]
+        
+        # Use self.feature_names as the single source of truth
+        if len(weights) != len(self.feature_names):
+            return "Mismatch between number of weights and feature names."
+            
+        equation_parts = [f"{bias:.4f}"]
+        for i, weight in enumerate(weights):
+            if abs(weight) > 1e-6:  # Only include significant terms
+                feature_name = self.feature_names[i]
+                sign = "+" if weight >= 0 else "-"
+                equation_parts.append(f" {sign} {abs(weight):.4f} * {feature_name}")
+        
+        return "epochs_remaining = " + "".join(equation_parts)
+
 
 # ============================================================================
 # FEATURE ENGINEERING UTILITIES
@@ -1705,10 +1754,8 @@ def analyze_multiple_traces(registry: PathRegistry) -> Dict:
     confidence_intervals = predictor.bootstrap_confidence(model=best_model_name, n_bootstrap=200, confidence=0.95)
     print(f"  Bootstrap completed with {confidence_intervals.get('n_successful_bootstraps', 'unknown')} successful samples")
     
-    # Generate human-readable feature names for interpretation
-    feature_map = map_features_to_indices(predictor) 
     # Call the new interpretation function for the best model
-    predictor.interpret_best_model(best_model_name, feature_map, output_dir=registry.analysis)
+    predictor.interpret_best_model(best_model_name, output_dir=registry.analysis)
 
     # Map internal model names back to results keys
     model_name_mapping = {
@@ -1888,78 +1935,6 @@ def document_feature_equations(predictor: ConvergencePredictor) -> Dict[str, Lis
     
     return feature_equations
 
-
-def map_features_to_indices(predictor: ConvergencePredictor) -> Dict[int, str]:
-    """
-    Map feature indices to their mathematical definitions.
-    """
-    n_params = predictor.data.initial_params.shape[1]
-    param_names = [f"p{i}" for i in range(n_params)]
-    
-    feature_index_map = {}
-    current_idx = 0
-    
-    # Distance metrics (assuming L1, L2, cosine, parameter-wise are used)
-    feature_index_map[current_idx] = "L1_distance"
-    current_idx += 1
-    feature_index_map[current_idx] = "L2_distance" 
-    current_idx += 1
-    feature_index_map[current_idx] = "cosine_distance"
-    current_idx += 1
-    
-    # Parameter-wise distances
-    for i in range(n_params):
-        feature_index_map[current_idx] = f"abs_diff_{param_names[i]}"
-        current_idx += 1
-    
-    # Raw differences
-    for i in range(n_params):
-        feature_index_map[current_idx] = f"diff_{param_names[i]}"
-        current_idx += 1
-    
-    # Ratios
-    for i in range(n_params):
-        feature_index_map[current_idx] = f"ratio_{param_names[i]}"
-        current_idx += 1
-    
-    # Log transforms
-    for i in range(n_params):
-        feature_index_map[current_idx] = f"log_diff_{param_names[i]}"
-        current_idx += 1
-        
-    # Interactions
-    for i in range(n_params):
-        for j in range(i + 1, n_params):
-            feature_index_map[current_idx] = f"interaction_{param_names[i]}_{param_names[j]}"
-            current_idx += 1
-    
-    return feature_index_map
-
-
-def extract_detailed_linear_equation(predictor: ConvergencePredictor, results: Dict) -> str:
-    """
-    Extract the full linear equation with proper feature names.
-    """
-    if "linear" not in results:
-        return "Linear model not found"
-    
-    linear_model = predictor.models["linear"]
-    weights = linear_model.weight.data.cpu().numpy().flatten()
-    bias = linear_model.bias.data.cpu().numpy()[0]
-    
-    # Get feature names
-    feature_map = map_features_to_indices(predictor)
-    
-    # Build equation
-    equation_parts = [f"{bias:.4f}"]
-    
-    for i, weight in enumerate(weights):
-        if abs(weight) > 1e-6:  # Only include significant terms
-            feature_name = feature_map.get(i, f"feature_{i}")
-            sign = "+" if weight >= 0 else "-"
-            equation_parts.append(f" {sign} {abs(weight):.4f} × {feature_name}")
-    
-    return "epochs_remaining = " + "".join(equation_parts)
 
 # ============================================================================
 # OUTPUT GENERATION

@@ -52,3 +52,19 @@ def xor_labels_one_hot() -> torch.Tensor:
         ],
         dtype=torch.float32,
     )
+
+def accuracy_binary_threshold(output: torch.Tensor, target: torch.Tensor) -> float:
+    # Squeeze output in case shape is (N, 1)
+    output = output.squeeze()
+
+    # Apply threshold at 0.5
+    preds = (output >= 0.5).float()
+
+    # Compute accuracy
+    return (preds == target).float().mean().item()
+
+
+def accuracy_one_hot(output: torch.Tensor, target: torch.Tensor) -> float:
+    preds = torch.argmax(output, dim=1)
+    true = torch.argmax(target, dim=1)
+    return (preds == true).float().mean().item()

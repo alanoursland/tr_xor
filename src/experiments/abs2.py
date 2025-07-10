@@ -29,7 +29,6 @@ def config_abs2_single_bce() -> ExperimentConfig:
         analysis=AnalysisConfig(
             accuracy_fn=accuracy_one_hot,
             # Core analyses
-            weight_clustering=True,
             parameter_displacement=False,
             distance_to_hyperplanes=True,
             hyperplane_clustering=True,

@@ -14,7 +14,7 @@ import math
 from typing import List, Dict, Tuple, Optional, Union, Callable, Any
 from enum import Enum
 from abc import ABC, abstractmethod
-
+import random
 
 # ==============================================================================
 # Custom Activations and Layers
@@ -229,6 +229,67 @@ class MagnitudeEater(nn.Module):
         self.running_avg.zero_()
         self.point_count.zero_()
 
+class RandomPivotLinear(nn.Module):
+    """
+    A linear layer with “random‐pivot” repivoting:
+      y = Wᵀ(x - x0) + b
+    before each forward (in training) we sample
+      x0' ~ N(0, σ² I)
+    and adjust b so that Wᵀx + b is unchanged:
+      b ← b + Wᵀ(x0' - x0)
+    """
+    def __init__(self, in_features, out_features, bias=True, sigma=1.0):
+        super().__init__()
+        self.in_features  = in_features
+        self.out_features = out_features
+        self.sigma        = sigma
+
+        self.weight = nn.Parameter(torch.Tensor(out_features, in_features))
+        if bias:
+            self.bias = nn.Parameter(torch.Tensor(out_features))
+        else:
+            self.register_parameter('bias', None)
+
+        # store the “old” pivot; initialized to zero
+        self.register_buffer('pivot', torch.zeros(in_features))
+
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        # standard Kaiming init
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        if self.bias is not None:
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
+            bound = 1.0 / math.sqrt(fan_in)
+            nn.init.uniform_(self.bias, -bound, bound)
+        # start with pivot = 0
+        self.pivot.zero_()
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        # only repivot during training and if sigma > 0
+        if self.training and self.sigma > 0:
+            # --- NEW: Only repivot 10% of the time ---
+            if random.random() < 0.1:
+                with torch.no_grad():
+                    # 1) sample new pivot
+                    x0_new = torch.randn(self.in_features, device=input.device) * self.sigma
+                    # 2) compute shift
+                    delta = x0_new - self.pivot
+                    # 3) adjust bias in-place so Wᵀx + b is unchanged
+                    if self.bias is not None:
+                        # weight.data @ delta  has shape (out_features,)
+                        self.bias.data += torch.mv(self.weight.data, delta)
+                    # 4) store new pivot
+                    self.pivot.copy_(x0_new)
+
+        # apply linear map on centered input
+        # F.linear does: input @ weightᵀ + bias
+        return F.linear(input - self.pivot, self.weight, self.bias)
+
+class Squeeze(nn.Module):
+    def forward(self, x):
+        return x.squeeze()
+
 # ==============================================================================
 # Custom Models
 # ==============================================================================
@@ -271,7 +332,6 @@ class Model_Abs1(nn.Module):
         nn.init.normal_(self.linear1.weight, mean=0.0, std=4.0)
         nn.init.zeros_(self.linear1.bias)
         return self
-
 
 class Model_ReLU1(nn.Module):
     def __init__(self, activation=nn.ReLU()):

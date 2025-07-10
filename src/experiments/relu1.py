@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from enum import Enum
 
 from configs import get_experiment_config, experiment, ExperimentConfig, TrainingConfig, DataConfig, AnalysisConfig, ExecutionConfig, LoggingConfig
-from data import xor_data_centered, xor_labels_T1, xor_labels_one_hot
+from data import xor_data_centered, xor_labels_T1, accuracy_binary_threshold
 
 @experiment("relu1_normal")
 def config_relu1_normal() -> ExperimentConfig:
@@ -30,7 +30,6 @@ def config_relu1_normal() -> ExperimentConfig:
         analysis=AnalysisConfig(
             accuracy_fn=accuracy_binary_threshold,
             # Core analyses (default enabled)
-            weight_clustering=True,
             parameter_displacement=True,
             distance_to_hyperplanes=True,
             hyperplane_clustering=True,
@@ -199,7 +198,6 @@ def config_relu1_init_dist() -> ExperimentConfig:
     config.training.epochs = 0
     config.execution.num_runs = 100
 
-    config.analysis.weight_clustering=False
     config.analysis.parameter_displacement=False
     config.analysis.distance_to_hyperplanes=False
     config.analysis.hyperplane_clustering=False

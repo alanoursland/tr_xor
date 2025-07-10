@@ -26,7 +26,6 @@ def config_relu2_two_bce() -> ExperimentConfig:
         analysis=AnalysisConfig(
             accuracy_fn=accuracy_one_hot,
             # Core analyses
-            weight_clustering=True,
             parameter_displacement=False,
             distance_to_hyperplanes=True,
             hyperplane_clustering=True,
@@ -147,7 +146,6 @@ def config_relu2_init_dist() -> ExperimentConfig:
     config.training.epochs = 0
     config.execution.num_runs = 100
 
-    config.analysis.weight_clustering=False
     config.analysis.parameter_displacement=False
     config.analysis.distance_to_hyperplanes=False
     config.analysis.hyperplane_clustering=False
@@ -171,7 +169,6 @@ def config_relu2_two_mse_sgd() -> ExperimentConfig:
     config.training.epochs = 600
     config.training.loss_change_patience = None
 
-    config.analysis.weight_clustering=False
     config.analysis.parameter_displacement=False
     config.analysis.distance_to_hyperplanes=False
     config.analysis.hyperplane_clustering=False
@@ -206,7 +203,6 @@ def config_relu1_reinit_0th() -> ExperimentConfig:
 
     config.training.loss_change_patience = None
 
-    config.analysis.weight_clustering=False
     config.analysis.parameter_displacement=False
     config.analysis.distance_to_hyperplanes=False
     config.analysis.hyperplane_clustering=False

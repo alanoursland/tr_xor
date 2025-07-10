@@ -557,9 +557,9 @@ def collate_layer_entries(layer_entries):
     # print(f"example_keys = {param_keys}")
 
     result = {}
-    unit_ids = []
 
     for key in param_keys:
+        unit_ids_this_param = []
         param_list = [entry[key] for entry in layer_entries]
         arr = np.stack(param_list)
 
@@ -568,31 +568,32 @@ def collate_layer_entries(layer_entries):
             runs, units, features = arr.shape
             flat_arr = arr.reshape(-1, features)
             # Expand run_id/unit_id
-            run_ids = np.repeat(base_run_ids, units)
-            unit_ids.extend(list(np.tile(np.arange(units), runs)))
+            run_ids = np.repeat(base_run_ids, units).tolist()
+            unit_ids_this_param = list(np.tile(np.arange(units), runs))
 
         elif arr.ndim == 2:
             # Scale: (runs, units)
             runs, units = arr.shape
             flat_arr = arr.reshape(-1, 1)
-            run_ids = np.repeat(base_run_ids, units)
-            unit_ids.extend(list(np.tile(np.arange(units), runs)))
+            run_ids = np.repeat(base_run_ids, units).tolist()
+            unit_ids_this_param = list(np.tile(np.arange(units), runs))
 
         elif arr.ndim == 1:
             runs = arr.shape[0]
             units = 1
             flat_arr = arr.reshape(-1, 1)
             run_ids = base_run_ids  # one-to-one
-            unit_ids.extend([None] * runs)  # No units to repeat
+            unit_ids_this_param = [None] * runs  # No units to repeat
 
         else:
             raise ValueError(f"Unsupported param shape: {arr.shape}")
 
-        result[key] = flat_arr
-
-    # Run IDs — always a flat list, repeat later if needed
-    result['run_ids'] = np.repeat(base_run_ids, units).tolist()
-    result['unit_ids'] = unit_ids
+        # result[key] = flat_arr
+        result[key] = {
+            "array": flat_arr,
+            "run_ids": run_ids,
+            "unit_ids": unit_ids_this_param,
+        }
 
     return result
 
@@ -625,7 +626,6 @@ def cluster_units(
 def format_clustering_results(
     layer_name: str,
     layer_results: Dict,
-    run_ids: List,
     eps: float,
     min_samples: int,
 ) -> Dict[str, Any]:
@@ -653,6 +653,7 @@ def format_clustering_results(
     for param_key, param_value in layer_results.items():
         param_cluster_labels = param_value["labels"]    # cluster ids
         param_cluster_array = param_value["array"]      # cluster data
+        param_run_ids = param_value["run_ids"] 
         param_n_clusters = param_value["n_clusters"] # number of clusters
         param_noise_count = param_value["noise_count"] # number of noise points
 
@@ -670,7 +671,7 @@ def format_clustering_results(
 
             mask = param_cluster_labels == cluster_label
             cluster_array = param_cluster_array[mask]
-            cluster_run_ids = [run_ids[i] for i in range(len(run_ids)) if mask[i]]
+            cluster_run_ids = [param_run_ids[i] for i in range(len(param_run_ids)) if mask[i]]
 
             param_list.append({
                 "cluster_label": cluster_label,
@@ -705,38 +706,32 @@ def analyze_hyperplane_clustering(
 
     # Extract all parameter data from runs
     layer_data = extract_layer_parameters(successful_runs)
-
-    # print(f"layer_data.keys() = {layer_data.keys()}")
-
+    
     cluster_results = {}
     for layer_name, layer_entries in layer_data.items():
         try:
             # Prepare data for clustering
-            collated_parameters   = collate_layer_entries(layer_entries)
-            run_ids = collated_parameters  ["run_ids"]
-
-            # print(f"collated_parameters = {collated_parameters  }")
-
+            collated_parameters = collate_layer_entries(layer_entries)
             layer_results = {}
-            for param_key, flat_array in collated_parameters.items():
-                if param_key == "run_ids":
-                    continue
+            for param_key, param_value in collated_parameters.items():
                 if param_key == "unit_ids":
-                    continue
+                    continue  # you can skip this if you keep 'unit_ids' separately
+                flat_array = param_value["array"]
 
-                # print(f"{layer_name} {param_key}")
                 labels, n_clusters, noise_count = cluster_units(flat_array, eps, min_samples)
 
-                # 👉 Store the raw cluster output in a clean shape:
+                # Store the raw cluster output in a clean shape:
                 layer_results[param_key] = {
                     "labels": labels,
                     "array": flat_array,
                     "n_clusters": n_clusters,
-                    "noise_count": noise_count
+                    "noise_count": noise_count,
+                    "run_ids": param_value["run_ids"],
+                    "unit_ids": param_value["unit_ids"],
                 }
 
             # Format results
-            cluster_results[layer_name] = format_clustering_results(layer_name, layer_results, run_ids, eps, min_samples)
+            cluster_results[layer_name] = format_clustering_results(layer_name, layer_results, eps, min_samples)
 
         except Exception as e:
             cluster_results[layer_name] = {"error": f"Failed to cluster: {str(e)}"}

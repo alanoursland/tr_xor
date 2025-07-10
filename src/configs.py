@@ -99,7 +99,6 @@ class AnalysisConfig:
    accuracy_threshold: float = 1.0  # for filtering successful runs
    
    # Individual analyses
-   weight_clustering: bool = True           # DBSCAN clustering of final weights
    parameter_displacement: bool = False     # Initial→final weight angle/norm analysis
    distance_to_hyperplanes: bool = True     # Clusters linear layer distances to classes
    hyperplane_clustering: bool = False      # Clusters hyperplane positions

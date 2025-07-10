@@ -25,7 +25,6 @@ def config_abs1_normal() -> ExperimentConfig:
         analysis=AnalysisConfig(
             accuracy_fn=accuracy_binary_threshold,
             # Core analyses (default enabled)
-            weight_clustering=True,
             parameter_displacement=True,
             distance_to_hyperplanes=True,
             hyperplane_clustering=True,

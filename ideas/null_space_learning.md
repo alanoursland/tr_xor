@@ -1,3 +1,169 @@
+**Learning Null-Space Projectors for Catastrophic-Forgetting-Free Incremental Learning**
+*(a concise technical note)*
+
+---
+
+## 1 Introduction
+
+When a linear neuron (or last-layer logit) is described by
+
+$$
+f(x)=W^{\!\top}x+b
+\quad\Longleftrightarrow\quad 
+\theta=\begin{bmatrix}W\\ b\end{bmatrix}\in\mathbb R^{d+1},
+$$
+
+every sample $(x_i,y_i)$ that **must stay perfect forever** imposes one linear constraint
+
+$$
+a_i^{\top}\theta = 0 ,\qquad 
+a_i:=\begin{bmatrix}x_i\\ 1\end{bmatrix}.
+$$
+
+Collecting all “protected” rows in $A_{\text{old}}\in\mathbb R^{m\times(d+1)}$ leaves a **null space**
+
+$$
+\mathcal N=\ker A_{\text{old}}\subseteq\mathbb R^{d+1}
+$$
+
+of parameter directions that change *none* of those logits.
+The cheapest analytic way to add one new point (a rank-1 update) uses the Sherman–Morrison formula and costs Θ($d^{2}$) FLOPs. ([en.wikipedia.org][1])
+
+---
+
+## 2 Theoretical motivation
+
+* **Degrees of freedom.** A hyper-plane in $\mathbb R^{d}$ has $d+1$ free parameters.
+  Pinning $m=d-1$ prototypes still leaves exactly one degree of freedom: a 2-D null-space basis $U$.
+* **Adding a new prototype.** Rotate the weight vector *inside* that 2-D space until the new point is hit; the algebra collapses to a 2 × 2 solve, hence Θ($d^{2}$).
+* **Why gradient descent alone is wrong.** A naïve step leaves the null-space, immediately wrecking the old outputs; you must first **project** every update back into $\mathcal N$ (projected GD) or use the analytic one-shot correction.
+
+(This argument is the linearised, single-neuron version of the continual-learning dilemma raised throughout our conversation.)
+
+---
+
+## 3 Analytic rank-1 update vs. SGD
+
+| procedure                 | per-update FLOPs      | preserves old points *exactly*? |
+| ------------------------- | --------------------- | ------------------------------- |
+| Sherman–Morrison / RLS    | Θ($d^{2}$)            | **yes**                         |
+| Projected GD (many steps) | Θ(#steps · d · batch) | yes (after each projection)     |
+| Plain SGD                 | Θ(#steps · d · batch) | **no**                          |
+
+Recursive-least-squares (RLS) libraries implement the rank-1 update exactly with the same cost profile. ([arxiv.org][2], [arxiv.org][3])
+
+---
+
+## 4 Learning a null-space projector with back-prop
+
+Instead of storing prototypes, keep a **trainable basis** $U\in\mathbb R^{(d+1)\times r}$ (typically $r\ll d$) and restrict every weight change to
+
+$$
+\Delta \theta = U\,U^{\!\top}\!\nabla_\theta\ell .
+$$
+
+Add two losses
+
+$$
+\mathcal L_{\text{null}}=\|G\,U\|_{F}^{2},
+\qquad
+\mathcal L_{\text{orth}}=\|U^{\!\top}U-I_r\|_{F}^{2},
+$$
+
+where the rows of $G$ are *reference directions* (previous gradients or features).
+Minimising
+
+$$
+\mathcal L=\ell(\theta-\eta UU^{\!\top}\nabla\ell)+
+\lambda\mathcal L_{\text{null}}+
+\beta \mathcal L_{\text{orth}}
+$$
+
+makes $G\,U\!\to\!0$ while keeping $U$ orthonormal, so $UU^{\!\top}$ behaves as an *approximate* null-space projector that can be refined continuously during SGD.
+
+---
+
+## 5 Relation to continual-learning practice
+
+* **If the backbone is frozen** (common in vision/LLM adapters), rank-1 analytic updates give *exact* zero-forgetting for the classifier head at minimal cost.
+* **If the backbone keeps learning,** a learned projector $U$ amortises the protection across many future steps, acting like a soft, adaptive variant of the analytic null-space.
+
+---
+
+## 6 Prior work
+
+### 6.1 Analytic / RLS-based methods
+
+| year                                 | key idea                         | notes                                                                |
+| ------------------------------------ | -------------------------------- | -------------------------------------------------------------------- |
+| **ACIL** (2022)                      | exact class-incremental RLS head | exemplar-free, Θ($d^{2}$) per class ([arxiv.org][3])                 |
+| **F-OAL** (2024)                     | *forward-only* online RLS        | no back-prop, streams mini-batches ([arxiv.org][2])                  |
+| **Analytic Subspace Routing** (2025) | low-rank RLS adapters for LLMs   | routes tasks into subspaces, Θ($d^{2}$) per adapter ([arxiv.org][4]) |
+
+### 6.2 Gradient-projection / null-space methods
+
+| year                  | method                           | what spans $G$                                     |
+| --------------------- | -------------------------------- | -------------------------------------------------- |
+| **OWM** (2018)        | orthogonal weight modification   | previous *inputs* ([arxiv.org][5])                 |
+| **OGD** (2019)        | orthogonal gradient descent      | buffer of past *gradients* ([arxiv.org][6])        |
+| **Sketch-OGD** (2023) | memory-efficient OGD             | sketch of gradients, fixed memory ([arxiv.org][7]) |
+| **Adam-NSCL** (2021)  | null-space of feature covariance | incremental SVD per layer ([arxiv.org][8])         |
+
+### 6.3 Regularisation baselines
+
+* **Elastic Weight Consolidation** (EWC, 2017) – quadratic penalty via the Fisher information; slows but does not *eliminate* forgetting. ([arxiv.org][9])
+
+---
+
+## 7 Practical considerations
+
+* **Cost & memory.**
+  *Analytic* RLS stores $P\in\mathbb R^{(d+1)\times(d+1)}$ – Θ($d^{2}$) memory.
+  *Learned projectors* store $U$ – Θ($d r$); choose $r\!\ll\!d$.
+* **When to use what.**
+
+  * Few new samples per task → analytic rank-1 is fastest.
+  * Long streams or co-training the backbone → learn $U$ with the null-space loss.
+* **Scalability tricks.** Diagonal or low-rank sketches of $P$; grouping neurons to share one $U$; chunked RLS for very wide layers.
+
+---
+
+## 8 Conclusion
+
+Interpreting catastrophic forgetting through *null-space geometry* unifies analytic rank-1 fixes and gradient-projection methods:
+
+* A **null-space projector** guarantees that formerly perfect outputs stay perfect.
+* You can obtain it either **analytically** (RLS/Sherman–Morrison) or **learn it** with a simple Frobenius-norm loss.
+* Both strategies now power state-of-the-art continual-learning systems across vision, language, and robotics.
+
+---
+
+## References
+
+1. Zhuang et al., *ACIL: Analytic Class-Incremental Learning*, NeurIPS 2022. ([arxiv.org][3])
+2. Zhuang et al., *F-OAL: Forward-only Online Analytic Learning*, NeurIPS 2024. ([arxiv.org][2])
+3. Tong et al., *Analytic Subspace Routing*, arXiv 2025. ([arxiv.org][4])
+4. Zeng et al., *Continual Learning of Context-Dependent Processing (OWM)*, Nat. Mach. Intell. 2019. ([arxiv.org][5])
+5. Farajtabar et al., *Orthogonal Gradient Descent*, ICLR 2020. ([arxiv.org][6])
+6. Wright et al., *SketchOGD: Memory-Efficient Continual Learning*, ICLR 2024. ([arxiv.org][7])
+7. Wang et al., *Adam-NSCL: Training in the Null Space of Feature Covariance*, CVPR 2021. ([arxiv.org][8])
+8. Kirkpatrick et al., *Overcoming Catastrophic Forgetting with EWC*, PNAS 2017. ([arxiv.org][9])
+9. *Sherman–Morrison formula*, Wikipedia. ([en.wikipedia.org][1])
+
+---
+
+[1]: https://en.wikipedia.org/wiki/Sherman%E2%80%93Morrison_formula?utm_source=chatgpt.com "Sherman–Morrison formula - Wikipedia"
+[2]: https://arxiv.org/abs/2403.15751?utm_source=chatgpt.com "F-OAL: Forward-only Online Analytic Learning with Fast Training and Low Memory Footprint in Class Incremental Learning"
+[3]: https://arxiv.org/abs/2205.14922?utm_source=chatgpt.com "ACIL: Analytic Class-Incremental Learning with Absolute Memorization and Privacy Protection"
+[4]: https://arxiv.org/abs/2503.13575?utm_source=chatgpt.com "How Recursive Least Squares Works in Continual Learning of Large ..."
+[5]: https://arxiv.org/abs/1810.01256?utm_source=chatgpt.com "Continual Learning of Context-dependent Processing in Neural Networks"
+[6]: https://arxiv.org/abs/1910.07104?utm_source=chatgpt.com "Orthogonal Gradient Descent for Continual Learning"
+[7]: https://arxiv.org/abs/2305.16424?utm_source=chatgpt.com "SketchOGD: Memory-Efficient Continual Learning"
+[8]: https://arxiv.org/abs/2103.07113?utm_source=chatgpt.com "Training Networks in Null Space of Feature Covariance for Continual Learning"
+[9]: https://arxiv.org/pdf/1612.00796?utm_source=chatgpt.com "[PDF] Overcoming catastrophic forgetting in neural networks - arXiv"
+
+---
+
 **Yes — there’s now a small but fast-growing line of *analytic / rank-1* methods in continual-learning that do almost exactly what you sketched.**
 The papers usually call the trick “analytic learning”, “recursive least-squares (RLS)”, or simply “Sherman–Morrison updates”.  Here are the main threads:
 

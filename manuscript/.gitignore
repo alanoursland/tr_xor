@@ -1,0 +1,29 @@
+# LaTeX intermediate files
+*.aux
+*.bbl
+*.bcf
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.run.xml
+*.synctex.gz
+*.toc
+*.lof
+*.lot
+*.nav
+*.snm
+
+# PDF output
+*.pdf
+
+# Editor/IDE specific
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# VSCode
+.vscode/

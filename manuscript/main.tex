@@ -1,0 +1,25 @@
+\documentclass[11pt]{book}
+
+\usepackage[backend=biber,refsection=chapter]{biblatex}
+\addbibresource{bib/refs.bib} % global file shared by all chapters
+
+% --------------------------
+% Preamble
+% --------------------------
+% \input{preamble.tex}
+
+% --------------------------
+% Document
+% --------------------------
+\begin{document}
+
+\frontmatter
+\tableofcontents
+
+\mainmatter
+
+% Chapter: Abs1 Experiment Suite
+\input{abs1/abs1}
+\input{relu1/relu1}
+
+\end{document}

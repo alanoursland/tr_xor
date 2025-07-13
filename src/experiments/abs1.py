@@ -1,18 +1,28 @@
 import torch
 import torch.nn as nn
-import models
 import monitor
 import itertools
 import torch.nn.functional as F
+import models
 from enum import Enum
 
+from models import init_model, with_normal_weights, with_kaiming_weights, with_xavier_weights, with_tiny_weights, with_large_weights, with_zero_bias
 from configs import get_experiment_config, experiment, ExperimentConfig, TrainingConfig, DataConfig, AnalysisConfig, ExecutionConfig, LoggingConfig
 from data import xor_data_centered, xor_labels_T1, accuracy_binary_threshold
+from collections import OrderedDict
+
+def create_abs1(activation=models.Abs()):
+    return nn.Sequential(OrderedDict([
+        ('linear1', nn.Linear(2,1)),
+        ('activation', activation),
+        ('squeeze', models.Squeeze())
+    ]))
 
 @experiment("abs1_normal")
 def config_abs1_normal() -> ExperimentConfig:
     """Factory function for absolute value XOR experiment."""
-    model = models.Model_Abs1().init_normal()
+    model = init_model(create_abs1(), with_normal_weights, with_zero_bias)
+    
     optimizer = torch.optim.Adam(model.parameters(), lr=0.01, betas=(0.9, 0.99))
     loss_function = nn.MSELoss()
 
@@ -43,12 +53,11 @@ def config_abs1_normal() -> ExperimentConfig:
         logging=LoggingConfig(train_epochs=200),
     )
 
-
 @experiment("abs1_tiny")
 def config_abs1_tiny() -> ExperimentConfig:
     """Tiny initialization variant of abs1."""
     config = get_experiment_config("abs1_normal")
-    config.model.init_tiny()
+    init_model(config.model, with_tiny_weights, with_zero_bias)
     config.description = "Centered XOR with single absolute value unit and tiny normal init."
     return config
 
@@ -57,7 +66,7 @@ def config_abs1_tiny() -> ExperimentConfig:
 def config_abs1_large() -> ExperimentConfig:
     """Large initialization variant of abs1."""
     config = get_experiment_config("abs1_normal")
-    config.model.init_large()
+    init_model(config.model, with_large_weights, with_zero_bias)
     config.training.epochs = 2000  # Slower convergence expected
     config.description = "Centered XOR with single absolute value unit and large normal init."
     return config
@@ -67,7 +76,7 @@ def config_abs1_large() -> ExperimentConfig:
 def config_abs1_kaiming() -> ExperimentConfig:
     """Kaiming initialization variant of abs1."""
     config = get_experiment_config("abs1_normal")
-    config.model.init_kaiming()
+    init_model(config.model, with_kaiming_weights, with_zero_bias)
     config.description = "Centered XOR with single absolute value unit and kaiming init."
     return config
 
@@ -76,20 +85,8 @@ def config_abs1_kaiming() -> ExperimentConfig:
 def config_abs1_xavier() -> ExperimentConfig:
     """Xavier initialization variant of abs1."""
     config = get_experiment_config("abs1_normal")
-    config.model.init_xavier()
+    init_model(config.model, with_xavier_weights, with_zero_bias)
     config.description = "Centered XOR with single absolute value unit and xavier init."
-    return config
-
-@experiment("abs1_leaky")
-def config_abs1_leaky() -> ExperimentConfig:
-    """Factory function for ReLU XOR experiment."""
-    config = get_experiment_config("relu1_normal")
-
-    config.model = models.Model_ReLU1(activation=models.LeakyAbs()).init_normal()
-    config.training.optimizer = torch.optim.Adam(config.model.parameters(), lr=0.01, betas=(0.9, 0.99))
-    config.training.epochs = 5000
-    config.analysis.plot_hyperplanes = True
-    config.description = "Centered XOR with two nodes, Leaky Abs, sum, and normal init."
     return config
 
 

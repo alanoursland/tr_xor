@@ -291,47 +291,61 @@ class Squeeze(nn.Module):
         return x.squeeze()
 
 # ==============================================================================
-# Custom Models
+# nn.Sequential Model Initialization
 # ==============================================================================
 
+Initializer = Callable[[nn.Sequential], nn.Sequential]
 
-class Model_Abs1(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.linear1 = nn.Linear(2, 1)
-        self.activation = Abs()
-        nn.init.kaiming_normal_(self.linear1.weight, nonlinearity="relu")
-        nn.init.zeros_(self.linear1.bias)
+def init_model(model: nn.Sequential, *initializers: Initializer) -> nn.Sequential:
+    for init in initializers:
+        model = init(model)
+    return model
 
-    def forward(self, x):
-        x = self.linear1(x)
-        x = self.activation(x)
-        return x.squeeze()
+def with_zero_bias(model: nn.Sequential) -> nn.Sequential:
+    for module in model.modules():
+        bias = getattr(module, "bias", None)
+        if isinstance(bias, torch.nn.Parameter):
+            nn.init.zeros_(bias)
+    return model
 
-    def init_normal(self):
-        nn.init.normal_(self.linear1.weight, mean=0.0, std=0.5)
-        nn.init.zeros_(self.linear1.bias)
-        return self
+def with_normal_weights(model: nn.Sequential) -> nn.Sequential:
+    for module in model.modules():
+        weight = getattr(module, "weight", None)
+        if isinstance(weight, torch.nn.Parameter):
+            nn.init.normal_(weight, mean=0.0, std=0.5)
+    return model
 
-    def init_kaiming(self):
-        nn.init.kaiming_normal_(self.linear1.weight, nonlinearity="relu")
-        nn.init.zeros_(self.linear1.bias)
-        return self
+def with_kaiming_weights(model: nn.Sequential) -> nn.Sequential:
+    for module in model.modules():
+        weight = getattr(module, "weight", None)
+        if isinstance(weight, torch.nn.Parameter):
+            nn.init.kaiming_normal_(weight, nonlinearity="relu")
+    return model
 
-    def init_xavier(self):
-        nn.init.xavier_normal_(self.linear1.weight)
-        nn.init.zeros_(self.linear1.bias)
-        return self
+def with_xavier_weights(model: nn.Sequential) -> nn.Sequential:
+    for module in model.modules():
+        weight = getattr(module, "weight", None)
+        if isinstance(weight, torch.nn.Parameter):
+            nn.init.xavier_normal_(weight)
+    return model
 
-    def init_tiny(self):
-        nn.init.normal_(self.linear1.weight, mean=0.0, std=0.1)
-        nn.init.zeros_(self.linear1.bias)
-        return self
+def with_tiny_weights(model: nn.Sequential) -> nn.Sequential:
+    for module in model.modules():
+        weight = getattr(module, "weight", None)
+        if isinstance(weight, torch.nn.Parameter):
+            nn.init.normal_(weight, mean=0.0, std=0.1)
+    return model
 
-    def init_large(self):
-        nn.init.normal_(self.linear1.weight, mean=0.0, std=4.0)
-        nn.init.zeros_(self.linear1.bias)
-        return self
+def with_large_weights(model: nn.Sequential) -> nn.Sequential:
+    for module in model.modules():
+        weight = getattr(module, "weight", None)
+        if isinstance(weight, torch.nn.Parameter):
+            nn.init.normal_(weight, mean=0.0, std=4.0)
+    return model
+
+# ==============================================================================
+# Custom Models
+# ==============================================================================
 
 class Model_ReLU1(nn.Module):
     def __init__(self, activation=nn.ReLU()):

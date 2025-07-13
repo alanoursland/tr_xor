@@ -135,6 +135,18 @@ def config_relu1_leaky() -> ExperimentConfig:
     config.description = "Centered XOR with two nodes, Leaky ReLU, sum, and normal init."
     return config
 
+@experiment("abs1_leaky")
+def config_abs1_leaky() -> ExperimentConfig:
+    """Factory function for ReLU XOR experiment."""
+    config = get_experiment_config("relu1_normal")
+
+    models.Model_ReLU1(activation=models.LeakyAbs()).init_normal()
+    config.training.optimizer = torch.optim.Adam(config.model.parameters(), lr=0.01, betas=(0.9, 0.99))
+    config.training.epochs = 5000
+    config.analysis.plot_hyperplanes = True
+    config.description = "Centered XOR with two nodes, Leaky Abs, sum, and normal init."
+    return config
+
 @experiment("relu1_biased")
 def config_relu1_biased() -> ExperimentConfig:
     """Factory function for ReLU XOR experiment."""

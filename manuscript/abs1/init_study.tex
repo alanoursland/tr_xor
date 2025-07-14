@@ -5,7 +5,7 @@
 
 \subsection*{Experimental Variants}
 We test five weight–initialization schemes—\textsc{tiny}, \textsc{normal},
-\textsc{xavier}, \textsc{kaiming}, and \textsc{large}—were evaluated under
+\textsc{Xavier}, \textsc{Kaiming}, and \textsc{large}—were evaluated under
 identical training conditions (Adam, $lr=0.01$, $50$ seeds, early–stop at
 $\mathcal L<10^{-7}$).  The following subsections present classification
 accuracy, convergence timing, weight–space movement, and geometric outcomes.
@@ -18,7 +18,7 @@ accuracy, convergence timing, weight–space movement, and geometric outcomes.
 \caption{Number of runs (out of 50) achieving each discrete accuracy level
 on the centred XOR dataset.  All variants ultimately attain $100\,\%$
 accuracy.}
-\label{tab:init-accuracy}
+\label{tab:abs1-init-accuracy}
 \begin{tabular}{lccccc}
 \toprule
 \multirow{2}{*}{Init} & \multicolumn{5}{c}{Accuracy level}\\
@@ -46,7 +46,7 @@ at intermediate performance plateaus.
 \begin{table}[h]
 \centering
 \caption{Epochs to reach $\mathcal L<10^{-7}$ (percentiles over 50 runs).}
-\label{tab:init-epochs}
+\label{tab:abs1-init-epochs}
 \begin{tabular}{lccccc}
 \toprule
 Init & 0\,\% & 25\,\% & 50\,\% & 75\,\% & 100\,\% \\
@@ -73,7 +73,7 @@ principal driver of its median $671$-epoch runtime.
 \centering
 \caption{Median angle (°) between initial and final weights and median
 norm ratio $\lVert W_{\text{init}}\rVert / \lVert W_{\text{final}}\rVert$.}
-\label{tab:init-angle-norm}
+\label{tab:abs1-init-angle-norm}
 \begin{tabular}{lcc}
 \toprule
 Init & Angle (median) & Norm ratio (median) \\
@@ -101,7 +101,7 @@ more complex settings.
 \begin{table}[h]
 \centering
 \caption{Mean final loss and range across runs.}
-\label{tab:init-loss}
+\label{tab:abs1-init-loss}
 \begin{tabular}{lccc}
 \toprule
 Init & Mean & Min & Max \\
@@ -146,7 +146,7 @@ We verify this in two complementary ways:
 initializer).  Distance values are mean ± std.  The entry
 “2 (27/23)” means two weight clusters containing 27 and 23 runs,
 respectively.}
-\label{tab:init-geometry}
+\label{tab:abs1-init-geometry}
 \begin{tabular}{lcccc}
 \toprule
 \multirow{2}{*}{Init} &
@@ -176,7 +176,7 @@ Large   & $0.00\pm0.00$ & $1.41\pm0.00$ & 1 & 2 (27/23) \\
     \caption{Run 001 (sign-flip)}
   \end{subfigure}
   \caption{Two mirror-symmetric prototype surfaces learned under the
-           \textsc{kaiming} initializer.  
+           \textsc{Kaiming} initializer.  
            Dashed line: \(f(x)=0\).  
            \(\bullet\): class-False points (output = 0).  
            \(\blacktriangle\): class-True points (output = 1).}
@@ -197,7 +197,7 @@ Large   & $0.00\pm0.00$ & $1.41\pm0.00$ & 1 & 2 (27/23) \\
         sign flips of one another,
         \((\frac12,-\frac12,0)\) and \((-\frac12,\frac12,0)\).
         Figure~\ref{fig:abs1-hyperplanes} visualises the corresponding
-        hyperplanes for two \textsc{kaiming} runs, illustrating the
+        hyperplanes for two \textsc{Kaiming} runs, illustrating the
         mirror-image symmetry that stems from the centred XOR data.
 \end{itemize}
 

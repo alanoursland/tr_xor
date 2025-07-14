@@ -1,6 +1,151 @@
 ﻿% !TeX root = ../main.tex
-
 \section{Optimizer Study}
-\label{sec:abs1-optimizer}
+\label{sec:abs1-optim}
 
-% TODO: Add content for optim_study
+\subsection*{Motivation}
+
+The \textsc{abs1} architecture admits a closed-form optimum (Section~\ref{sec:abs1-model-data}).  
+Once the gradient points exactly toward that optimum a single ``perfect’’ step can solve the problem.  
+This section asks:
+
+\begin{itemize}
+    \item How close does a first-order optimiser get to that ideal?
+    \item How does the adaptive-moment strategy of \textsc{Adam} interact with that optimization?
+\end{itemize}
+
+\subsection*{SGD and Newton’s Method}
+\label{sec:sgd-newton}
+
+For this model the loss surface is locally \emph{exactly quadratic} once the
+sign pattern of $w^{\mathsf T}x+b$ is fixed.  That property lets us show that
+stochastic gradient descent with learning-rate $\eta=0.5$ performs the same
+parameter update as one step of Newton’s method.
+
+\paragraph{Gradient and Hessian.}
+With $b=0$ and $w_1=-w_2=\alpha$ the centred XOR inputs yield the loss
+\eqref{eq:closed-loss}; more generally, taking derivatives of
+\eqref{eq:mse-loss} for a fixed sign pattern gives
+\[
+    \nabla\! \mathcal L(w,b) \;=\; 2\begin{bmatrix}w_1\\ w_2\\ b\end{bmatrix},
+    \qquad
+    \nabla^2\! \mathcal L(w,b) \;=\; 2I_{3\times3}.
+\]
+Thus the Hessian is constant and isotropic: \(H = 2I\).
+
+\paragraph{Newton update.}
+Newton’s method proposes the step
+\[
+    \Delta\theta_{\text{Newt}}
+    \;=\;
+    -H^{-1}\nabla\! \mathcal L
+    \;=\;
+    -\tfrac12\,\nabla\! \mathcal L,
+\]
+so the updated parameters are
+\(
+    \theta^{+} = \theta - \tfrac12 \nabla\! \mathcal L.
+\)
+
+\paragraph{SGD update.}
+Plain SGD with a constant learning-rate $\eta$ performs
+\[
+    \Delta\theta_{\text{SGD}}
+    \;=\;
+    -\eta\,\nabla\! \mathcal L.
+\]
+Setting \(\eta=\tfrac12\) makes \(\Delta\theta_{\text{SGD}} =
+\Delta\theta_{\text{Newt}}\).  Hence each SGD step with
+\(\eta=0.5\) coincides \emph{exactly} with a Newton step.
+
+\subsection*{Experimental setup}
+\begin{itemize}
+    \item \textbf{Weights} — Kaiming normal ($\mathcal N(0,2/n_\text{in})$).
+    \item \textbf{Loss} — mean-squared error, $\varepsilon=10^{-7}$ stop criterion.
+    \item \textbf{Runs} — $50$ independent seeds in each condition.
+    \item \textbf{Optimisers}  
+        \begin{enumerate}
+            \item \textbf{SGD, lr = 0.50} — optimal learning rate for SGD.
+            \item \textbf{Adam, lr = 0.01} — conventional setting from Section~\ref{sec:abs1-init}.
+            \item \textbf{Adam, lr = 0.50} — high-gain to rate to contrast with optimal SGD.
+        \end{enumerate}
+\end{itemize}
+
+\subsection*{Convergence Timing}
+
+\begin{table}[h]
+\centering
+\caption{Epochs to reach $\mathcal{L}\le10^{-7}$ (percentiles over 50 runs).}
+\label{tab:abs1-opt-conv}
+\begin{tabular}{lccccc}
+\toprule
+\multirow{2}{*}{Optimiser} &
+\multicolumn{5}{c}{Epoch percentile} \\
+\cmidrule(lr){2-6}
+ & 0\,\% & 25\,\% & 50\,\% & 75\,\% & 100\,\% \\
+\midrule
+SGD,  0.50 & 2   & 2   & 2   & 2   & 2   \\ 
+Adam, 0.01 & 61  & 139 & 198 & 266 & 548 \\
+Adam, 0.50 & 94  & 118 & 126 & 137 & 154 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Accuracy and geometry.}
+All three settings achieve 100 \% XOR accuracy and reproduce the same two
+sign-symmetric prototype surfaces reported in
+Section~\ref{sec:abs1-init}.  The optimiser therefore changes \emph{when}
+the solution is reached, not \emph{what} is learned.
+
+\subsection*{Discussion}
+\label{sec:abs1-opt-discuss}
+
+\begin{enumerate}[label=\arabic*.]
+    \item \textbf{SGD ($\alpha=0.5$): effectively one big step, two logged epochs.}  
+        Because the loss has a full-rank quadratic Hessian $H = 2I$, a single Newton 
+        step (and therefore a single SGD update with $\eta = 0.5$) moves the parameters 
+        essentially onto the global minimum—provided the sign pattern is already correct.  
+        In our training loop, however, the loss is evaluated only \emph{after} an epoch 
+        completes.  During epoch 0 the weight update makes the Newton-sized jump, but the 
+        loss checked at the end of that epoch is still just above the $10^{-7}$ threshold.  
+        Epoch 1 then applies a numerically tiny corrective step, drops the loss below the 
+        threshold, and triggers early stopping.  Consequently each run with SGD($\eta = 0.5$) 
+        is logged as \emph{two} epochs even though all substantive optimisation happened in 
+        the very first parameter update.
+
+    \item \textbf{Small base rate = uniformly slow learning.}  
+          With \(\alpha=0.01\) the \textsc{Adam} update is simply too small to
+          reach the optimum quickly.  The per-parameter scaling
+          \(\smash{\sqrt{1-\beta_2^t}/(1-\beta_1^t)}\) is near~1 in early
+          iterations, so the effective step is essentially the base rate.
+          Hence convergence stretches into the hundreds of epochs.
+
+    \item \textbf{Large base rate: one big jump, then damping.}  
+          Raising the base rate to \(\alpha=0.5\) lets Adam take an
+          almost-Newton-sized first step, but the moving averages
+          (\(\beta_1{=}0.9,\beta_2{=}0.99\)) accumulate momentum and
+          cause a brief overshoot.  Subsequent iterations oscillate with
+          gradually shrinking amplitude until the loss threshold is met
+          (median $\approx$ 126 epochs).  In contrast, vanilla SGD with the same
+          \(\alpha=0.5\) has no momentum terms and lands on the optimum in a
+          single update, explaining its two-epoch convergence.
+
+
+    \item \textbf{Robust geometry, variable speed.}  
+          Despite large timing differences, every optimiser converges to
+          the same prototype surface.  This reinforces the finding from
+          the Initialisation Study: optimisation path length is sensitive to
+          scale and step-size, while the geometric endpoint is not.
+
+        \end{enumerate}
+
+\paragraph{Take-away.}
+The Abs-XOR problem is a \textit{frictionless spherical cow} for optimisation:
+its loss is quadratic, its optimum is known in closed form, and \emph{any}
+reasonable optimiser—whether adaptive or not—will find that optimum so long
+as it takes a step of roughly the correct scale.  Constant-step SGD with
+\(\eta = 0.5\) happens to match the inverse Hessian and therefore converges
+in essentially one update, but Adam and smaller step sizes reach the same
+prototype surface after a longer—yet still monotonic—trajectory.  The study
+thus illustrates a clear separation between \emph{speed} of optimisation
+(which depends on step size and momentum) and \emph{content} of the learned
+representation (which, for this well-conditioned toy, is invariant).

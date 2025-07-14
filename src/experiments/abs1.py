@@ -150,10 +150,16 @@ def config_abs1_xavier() -> ExperimentConfig:
 
 @experiment("abs1_kaiming_mse")
 def config_abs1_kaiming_mse() -> ExperimentConfig:
-    """Kaiming initialization variant of abs1."""
     config = get_experiment_config("abs1_kaiming")
     config.training.optimizer = torch.optim.SGD(config.model.parameters(), lr=0.5)
     config.description="Abs1 experiment with Kaiming weight initialization and SGD. Tests impact of optimzer on learning."
+    return config
+
+@experiment("abs1_kaiming_adam_high_gain")
+def config_abs1_kaiming_adam_high_gain() -> ExperimentConfig:
+    config = get_experiment_config("abs1_kaiming")
+    config.training.optimizer = torch.optim.Adam(config.model.parameters(), lr=0.5, betas=(0.9, 0.99))
+    config.description="Abs1 experiment with Kaiming weight initialization and Adam with lr=0.5. Tests impact of optimzer on learning."
     return config
 
 

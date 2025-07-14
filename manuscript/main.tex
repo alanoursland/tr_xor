@@ -1,6 +1,23 @@
 \documentclass[11pt]{book}
 
 \usepackage[backend=biber,refsection=chapter]{biblatex}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{listings}
+\usepackage{enumitem}
+\usepackage{multirow}
+
+% Define enumerate* as an inline version of enumerate
+\newlist{enumerate*}{enumerate}{1}
+\setlist[enumerate*]{
+  label=(\roman*),     % numbering style
+  itemjoin={{, }},     % separator between items
+  itemjoin*={{, and }},% final separator
+  before*=\unskip{},   % remove leading space
+  mode=unboxed         % removes vertical spacing
+}
+
 \addbibresource{bib/refs.bib} % global file shared by all chapters
 
 % --------------------------
@@ -20,6 +37,12 @@
 
 % Chapter: Abs1 Experiment Suite
 \input{abs1/abs1}
-\input{relu1/relu1}
+% \input{relu1/relu1}
+
+\chapter{Chapter Placeholder}
+\label{ch:placeholder}
+
+\section{Section Placeholder}
+\label{sec:placeholder}
 
 \end{document}

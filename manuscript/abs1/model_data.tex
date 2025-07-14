@@ -1,5 +1,126 @@
 ﻿% !TeX root = ../main.tex
-
 \section{Model \& Data}
+\label{sec:abs1-model-data}
 
-% TODO: Add content for model_data
+\subsection*{Dataset: Centered XOR}
+The canonical XOR points \((0,0),(0,1),(1,0),(1,1)\) are translated to
+\(\{-1,1\}^2\) so that \emph{each feature has zero mean}.  
+This centring
+
+\begin{enumerate*}[label=(\roman*)]
+  \item removes the need for an explicit bias term in the analytic optimum,
+  \item preserves rotational symmetry about the origin, and
+  \item follows the common machine–learning practice of zero-mean inputs.
+\end{enumerate*}
+
+\begin{table}[h]
+\centering
+\caption{Centered XOR dataset used throughout the chapter.}
+\label{tab:xor-data}
+\begin{tabular}{@{}cc|c@{}}\toprule
+$x_1$ & $x_2$ & Target $y$ \\ \midrule
+$-1$ & $-1$ & $0$ \\
+$-1$ & $\;\phantom{-}1$ & $1$ \\
+$\;\phantom{-}1$ & $-1$ & $1$ \\
+$\;\phantom{-}1$ & $\;\phantom{-}1$ & $0$ \\ \bottomrule
+\end{tabular}
+\end{table}
+
+\subsection*{Model Architecture}
+All experiments share the same \emph{single-unit} network shown in
+Figure~\ref{fig:model-graph} and expressed analytically as
+\begin{equation}
+    \hat y(x)
+    =\;
+    \bigl\lvert\,w^{\mathsf T}x + b\,\bigr\rvert,
+    \quad
+    w \in \mathbb{R}^{2},\;
+    b \in \mathbb{R}.
+    \label{eq:abs1}
+\end{equation}
+
+\begin{figure}[h]
+\centering
+\[
+    \text{Input }(2)
+    \;\xrightarrow{\;\,w,b\,\;}
+    \text{Linear}
+    \;\xrightarrow{\;|\cdot|\;}
+    \hat y
+\]
+\caption{Computational graph for the Abs1 model.}
+\label{fig:model-graph}
+\end{figure}
+
+\paragraph{Loss function.}
+We use the mean-squared error
+\begin{equation}
+    \mathcal{L}(w,b)
+    \;=\;
+    \frac{1}{4} \sum_{i=1}^{4} 
+    \bigl(\,\lvert w^{\mathsf T}x_i + b\rvert - y_i\bigr)^2,
+    \label{eq:mse-loss}
+\end{equation}
+whose Hessian is the constant matrix \(H = 2I\) once a sign pattern is
+fixed—an analyticity that allows an exact Newton step with learning-rate
+\(\eta = 0.5\).
+
+\paragraph{Analytic optimum and prototype surface.}
+Because the model contains only two weights and one bias, the mean-squared
+error can be written in closed form.  Substituting the centered XOR points into
+\eqref{eq:mse-loss} yields
+
+\[
+  L(w_1,w_2,b)\;=\;
+  4b^2 + 4w_1^2 + 4w_2^2
+  - 2\bigl|\,b-w_1+w_2\bigr|
+  - 2\bigl|\,b+w_1-w_2\bigr| + 2.
+  \tag{1}\label{eq:closed-loss}
+\]
+
+Minimising \eqref{eq:closed-loss} is straightforward:
+
+\begin{enumerate*}[label=(\roman*)]
+  \item The gradient with respect to \(b\) vanishes only when
+        \(b = 0\).
+  \item Setting \(b=0\) reduces the two absolute-value terms to
+        \(\lvert -w_1+w_2\rvert\) and \(\lvert w_1-w_2\rvert\),
+        forcing \(w_1 = -w_2\).
+  \item Writing \(w_1 = \alpha\) then makes both absolute terms
+        \(\lvert -2\alpha\rvert\).  Minimising the quadratic part
+        \(4\alpha^2 + 4\alpha^2\) subject to
+        \(\lvert -2\alpha\rvert = 1\) gives \(\alpha = \pm\tfrac12\).
+\end{enumerate*}
+
+Hence the global minima are the two sign-symmetric parameter sets
+
+\[
+  w^\star = \Bigl(\frac12,\,-\frac12\Bigr),\quad b^\star = 0,
+  \qquad\text{or}\qquad
+  \bigl(-w^\star,\,-b^\star\bigr).
+\]
+
+\paragraph{Geometric interpretation.}
+With \(w_1=-w_2\) and \(b=0\), the pre-activation
+\(f(x)=\tfrac12(x_1-x_2)\) defines the line \(x_1=x_2\).
+This line intersects the two \textbf{False} inputs
+\(({-}1,{-}1)\) and \((1,1)\); the network therefore assigns them an output
+of~0.  
+The remaining \textbf{True} inputs lie at a Euclidean distance
+\(\sqrt2\) from the line, giving them output~1 and driving the loss to zero.
+
+Crucially, the \emph{intersection itself} is what the model learns:  
+the defining feature is not a high-magnitude activation but the exact location
+where the affine form \(w^{\mathsf T}x+b\) vanishes.
+In Prototype–Surface Learning terms, the locus \(f(x)=0\) is the
+\emph{prototype surface} for the False class; parallel level sets
+\(f(x)=\pm\sqrt2\) through the True points form additional, implicit
+surfaces whose distance encodes class membership.
+Because those parallel surfaces never attain the reference value of zero,
+they are harder to isolate geometrically, yet they follow directly from the
+same learned parameters.
+
+Empirically, every successful run in the experiments that follow converges to
+one of the two sign-symmetric optima derived above, confirming that the model
+indeed learns by anchoring its surface to the False inputs and placing the
+True inputs on parallel offsets—exactly as the theory predicts.

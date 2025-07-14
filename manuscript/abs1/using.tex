@@ -1,5 +1,66 @@
 ﻿% !TeX root = ../main.tex
-
 \section{Using This Chapter}
+\label{sec:abs1-using}
 
-% TODO: Add content for using
+This chapter is written to serve two kinds of readers at once:
+
+\begin{enumerate}
+    \item \textbf{The survey reader} who wants the headline results and their
+          conceptual implications.
+    \item \textbf{The detail-oriented reader} who wishes to trace every number
+          back to its experimental source.
+\end{enumerate}
+
+\noindent
+The text therefore mixes concise “mini-reports” with pointers to richer
+artefacts placed in the appendix and in the digital supplement.%
+\footnote{The supplement contains scripts and raw outputs that reproduce every
+table and figure, but familiarity with them is \emph{not} required for
+understanding the narrative here.}
+
+\subsection*{Navigation Tips}
+
+\begin{itemize}
+    \item \textbf{Skim or dive}: Each numbered section opens with a boldface
+          paragraph that summarises its main message; the rest can be read
+          selectively.
+    \item \textbf{Cross-references}: When a statement relies on theory developed
+          elsewhere, we reference the relevant chapter or appendix section.  No
+          background beyond what is cited is assumed.
+    \item \textbf{Per-chapter bibliography}: References that appear in this
+          chapter are listed immediately after the chapter (see the end of the
+          document).  Citations from other chapters do not clutter this list.
+\end{itemize}
+
+\subsection*{Legend for Mini-Reports}
+
+Throughout Sections~\ref{sec:abs1-init} and~\ref{sec:abs1-optimizer} you will
+encounter standardized mini-reports.  Each follows the same template:
+
+\begin{description}
+  \item[Header] Experiment tag and one-sentence description.
+  \item[Convergence Table]   Five-quantile summary of epochs required to reach
+        an MSE below \(10^{-7}\).
+  \item[Geometry Summary]  Count of distinct hyperplane clusters and average
+        distance of class--1 points to the learned surface.
+\end{description}
+
+This uniform layout lets you compare variants at a glance, while fuller plots
+and diagnostic statistics reside in the appendix.
+
+\subsection*{Reproducibility Note}
+
+All numerical results and figures in this chapter are generated
+\emph{programmatically}.  The exact computational workflow—including data
+generation, model definitions, and analysis scripts—is archived with a fixed
+digital identifier and will build automatically on a standard \LaTeX\ tool
+chain plus a recent Python environment.  Readers interested in re-running the
+experiments may consult the short how-to guide provided in the digital
+supplement; the main text remains free of implementation details.
+
+\bigskip
+\noindent
+\textit{In short: browse the headlines, follow the cross-references as needed,
+and consult the appendix or supplement only when you wish to dive deeper into
+the numbers.  The chapter is designed to accommodate both quick intuition and
+full reproducibility without forcing either mode on the reader.}

@@ -1,5 +1,39 @@
 ﻿% !TeX root = ../main.tex
-
 \section{Why XOR + $\|\cdot\|$}
+\label{sec:abs1-motivation}
 
-% TODO: Add content for motivation
+The experiments in this chapter use a \emph{single} absolute-value neuron to solve the centered XOR task.  At first glance the pairing of such a minimal model with such a deceptively simple dataset might seem trivial, yet it serves three distinct purposes that make it the ideal sandbox for the \textit{prototype-surface} theory developed in Chapter~\ref{ch:placeholder}:
+
+\begin{enumerate}[leftmargin=*]
+
+\item \textbf{XOR is the smallest ``hard'' classification problem.}
+A single linear threshold unit cannot separate XOR’s labels, making it the canonical example in the study of perceptrons
+\cite{minsky1969perceptrons}.  Any model that solves XOR \emph{must} introduce—and subsequently learn—non-linear structure.
+
+\item \textbf{The absolute-value activation reveals geometry.}
+Writing the model as
+\[
+y = \lvert w^{\mathsf T}x + b \rvert
+\]
+turns the decision process into a signed distance calculation: the set $\{x \mid w^{\mathsf T}x + b = 0\}$ is a hyperplane that becomes the \emph{prototype surface} for class~$0$, while the magnitude $\lvert w^{\mathsf T}x + b\rvert$ encodes distance from that surface. In a two-dimensional input space this geometry is fully observable, letting us visualise how training moves the surface during learning.
+
+\item \textbf{Analytic tractability enables rigorous comparison.}
+With only two weights and one bias, the mean-squared error loss is a piecewise quadratic whose Hessian is a \emph{constant} multiple of the identity.  This yields a closed-form optimum and lets us analyse
+optimisers precisely; for example, Section~\ref{sec:placeholder} shows that vanilla gradient descent with learning-rate
+$\eta = 0.5$ is mathematically equivalent to a Newton step.
+
+\end{enumerate}
+
+Because this centered-XOR task paired with a single absolute-value neuron is both \emph{non-linearly separable} and \emph{geometrically transparent}, it provides the smallest non-trivial arena in which to test:
+
+\begin{itemize}
+
+\item whether the learned hyperplane matches the prototype-surface predictions of Prototype-Surface Learning.
+
+\item how different weight-initialisation scales affect convergence;
+
+\item how optimisers with and without adaptive steps (e.g.\ Adam versus SGD) behave when the analytic optimum is known;
+
+\end{itemize}
+
+The remainder of this chapter documents that investigation in a series of self-contained experiments, each differing only by its initialisation strategy and/or optimiser, while sharing the common training skeleton detailed in Section~\ref{sec:placeholder}.

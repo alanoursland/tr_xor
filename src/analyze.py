@@ -870,7 +870,7 @@ def plot_run_hyperplanes(run_results: List[Dict], config: ExperimentConfig, outp
         # Plot using the styled helper
         for name, module in model.named_modules():
             if isinstance(module, torch.nn.Linear):
-                layer_plot_path = plot_dir / f"hyperplanes_{name}.png"
+                layer_plot_path = plot_dir / f"hyperplanes_{name}.pdf"
                 plot_hyperplanes(
                     module.weight,
                     module.bias,

@@ -4,7 +4,7 @@
 \label{sec:abs1-init}
 
 \subsection*{Experimental Variants}
-We test five weight–initialisation schemes—\textsc{tiny}, \textsc{normal},
+We test five weight–initialization schemes—\textsc{tiny}, \textsc{normal},
 \textsc{xavier}, \textsc{kaiming}, and \textsc{large}—were evaluated under
 identical training conditions (Adam, $lr=0.01$, $50$ seeds, early–stop at
 $\mathcal L<10^{-7}$).  The following subsections present classification
@@ -36,7 +36,7 @@ Large   & 0 & 0 & 0 & 0 & 50 \\
 
 \textbf{Discussion.}  
 Because the analytic optimum is reachable from any orientation, every
-initialiser eventually yields perfect XOR classification.  The accuracy table
+initializer eventually yields perfect XOR classification.  The accuracy table
 will become more informative in later chapters where deeper models can stall
 at intermediate performance plateaus.
 
@@ -124,37 +124,28 @@ corrected.
 \label{sec:init-geometry}
 
 The analytic optimum (Section~\ref{sec:abs1-model-data}) predicts that learning
-should place the prototype surface on the two \textbf{False} points and leave
-the \textbf{True} points at distance $\sqrt2$.  
-To verify that outcome quantitatively we perform two post–training cluster
-analyses:
+should anchor the prototype surface to the two \textbf{False} points
+and place the \textbf{True} points at Euclidean distance~$\sqrt2$.
+We verify this in two complementary ways:
 
 \begin{enumerate}[label=(G\arabic*)]
     \item \textbf{Distance–pattern clustering} –  
-        For each run we compute two summary numbers:  
-        \(d_{\text{False}}\), the mean Euclidean distance of the two
-        class-False points to the learned surface, and  
-        \(d_{\text{True}}\), the mean distance of the two class-True points.
-        The pair \((d_{\text{False}}, d_{\text{True}})\) characterises the
-        run’s \emph{distance pattern}.  
-        We then apply DBSCAN in this two-dimensional space to group runs whose
-        distance patterns are (up to numerical tolerance) identical.
+          For each run we compute \((d_{\text{False}},d_{\text{True}})\),
+          the mean surface–to–point distance for each class.
+          Runs with (numerically) identical pairs are grouped via DBSCAN;
+          each group is a \emph{distance cluster}.
     \item \textbf{Weight–space clustering} –  
-          We apply DBSCAN to the parameter vectors $(w_1,w_2,b)$ of the 50
-          runs.  Each resulting group is a \emph{weight cluster}.  If two
-          clusters are identified they must be sign–symmetric because the
-          centred XOR data are symmetric under $(w,b)\!\mapsto\!(-w,-b)$.
+          The parameter triples \((w_1,w_2,b)\) are clustered with DBSCAN.
+          Because the centred XOR data are sign-symmetric, two clusters
+          \((w,b)\) and \((-w,-b)\) represent mirror-image solutions.
 \end{enumerate}
-
-\paragraph{Results.}
-Table~\ref{tab:init-geometry} summarises the outcome for all five
-initialisers.
 
 \begin{table}[h]
 \centering
-\caption{Geometry of the learned prototype surface across 50 runs per
-initialiser.  Distance values are mean$\pm$std.  The entry
-“2 (27/23)” means two weight clusters containing 27 and 23 runs, respectively.}
+\caption{Geometry of the learned prototype surface (50 runs per
+initializer).  Distance values are mean ± std.  The entry
+“2 (27/23)” means two weight clusters containing 27 and 23 runs,
+respectively.}
 \label{tab:init-geometry}
 \begin{tabular}{lcccc}
 \toprule
@@ -174,39 +165,54 @@ Large   & $0.00\pm0.00$ & $1.41\pm0.00$ & 1 & 2 (27/23) \\
 \end{tabular}
 \end{table}
 
+\begin{figure}[h]
+  \centering
+  \begin{subfigure}{0.46\textwidth}
+    \includegraphics[width=\linewidth]{abs1/figs/kaiming_run000.pdf}
+    \caption{Run 000}
+  \end{subfigure}\hfill
+  \begin{subfigure}{0.46\textwidth}
+    \includegraphics[width=\linewidth]{abs1/figs/kaiming_run001.pdf}
+    \caption{Run 001 (sign-flip)}
+  \end{subfigure}
+  \caption{Two mirror-symmetric prototype surfaces learned under the
+           \textsc{kaiming} initializer.  
+           Dashed line: \(f(x)=0\).  
+           \(\bullet\): class-False points (output = 0).  
+           \(\blacktriangle\): class-True points (output = 1).}
+  \label{fig:abs1-hyperplanes}
+\end{figure}
+
 \paragraph{Interpretation.}
 \begin{itemize}
-    \item \textbf{Distance pattern clusters.}  
-          Every initialiser produces a \emph{single} distance pattern:
-          class-0 points lie exactly on the surface
-          ($d_{\text{False}}\!=\!0$) and class-1 points lie exactly
-          $\sqrt2$ away.  This matches the analytic optimum and confirms that
-          the neuron encodes class identity via the \emph{location} of its
-          zero-level set rather than by maximising activation magnitude.
-    \item \textbf{Weight clusters.}  
-          DBSCAN consistently finds two parameter clusters whose centroids are
-          sign flips of one another
-          \(\bigl(\tfrac12,-\tfrac12,0\bigr)\) and
-          \(\bigl(-\tfrac12,\tfrac12,0\bigr)\).
-          Which cluster a run lands in is determined by the sign of its
-          initial weights, not by their scale, explaining why the counts
-          differ slightly across initialisers.
+  \item \textbf{Distance clusters.}  
+        All five initializers collapse to a single distance pattern:
+        the False points lie \emph{exactly} on the surface
+        ($d_{\text{False}}=0$) and the True points lie \(\sqrt2\) away.
+        This confirms that the neuron represents class identity via the
+        \emph{location} of its zero-level set rather than by large positive
+        activations.
+  \item \textbf{Weight clusters.}  
+        DBSCAN always discovers two parameter clusters whose centroids are
+        sign flips of one another,
+        \((\frac12,-\frac12,0)\) and \((-\frac12,\frac12,0)\).
+        Figure~\ref{fig:abs1-hyperplanes} visualises the corresponding
+        hyperplanes for two \textsc{kaiming} runs, illustrating the
+        mirror-image symmetry that stems from the centred XOR data.
 \end{itemize}
 
-\paragraph{Why this matters for Prototype Surface Learning.}
-Prototype Surface Learning asserts that a neuron represents a class by the
-surface where its pre-activation is zero.  
-The empirical geometry here shows exactly that behaviour: the learned
-hyperplane \emph{anchors} to the negative class and positions the positive
-class on parallel offsets.  
-Because the positive class never attains the reference value of zero, its
-parallel surfaces are implicit—but fully determined—once the prototype
-surface is in place.
+\paragraph{Why this matters for Prototype–Surface Learning.}
+Prototype–Surface Learning argues that a neuron’s meaning is anchored by
+where its pre-activation is zero.  The empirical geometry here shows exactly
+that behaviour: training \emph{locks} the surface onto the negative prototypes
+and positions the positive prototypes on parallel offsets.  Because those
+parallel offsets never cross zero, they are implicit but fully determined once
+the prototype surface is in place.
 
-In summary, the geometric analysis complements the convergence results: weight
-scale controls how quickly the optimiser reaches the optimum, whereas the
-final surface location—and thus the class representation—remains invariant
-across all initialisation schemes.
+Together with the convergence results, the geometry demonstrates that weight
+scale affects only the optimisation \emph{speed}; the final surface—and
+therefore the learned representation—remains invariant across all
+initialization schemes.
 
 % ------------------------------------------------------------------
 \subsection*{Conclusion}
@@ -214,7 +220,7 @@ across all initialisation schemes.
 Weight scale sets the pace; geometry remains invariant.  Tiny and Normal
 inits converge fastest because they start near the optimal norm; Large
 requires the optimiser to shrink weights by an order of magnitude before fine
-tuning.  Yet all initialisers reach the same two mirror solutions, achieve
+tuning.  Yet all initializers reach the same two mirror solutions, achieve
 $100\,\%$ accuracy, and reproduce the analytically optimal prototype surface.
 Future chapters will test whether this separation of \emph{speed} (scale) and
 \emph{destination} (geometry) generalises to deeper networks and more complex

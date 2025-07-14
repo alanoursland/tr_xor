@@ -11,7 +11,7 @@ implementation.
 
 \begin{itemize}
   \item \textbf{Runs per variant}: Each configuration is trained
-        on \textbf{50 independent initialisations} to expose variability due
+        on \textbf{50 independent initializations} to expose variability due
         to random weights.
   \item \textbf{Epoch budget}: A maximum of \textbf{1\,000 - 2000 epochs} is allowed, but training may
         terminate earlier by the following criterion.
@@ -22,20 +22,20 @@ implementation.
         be numerically insignificant for the analyses that follow.
 \end{itemize}
 
-\subsection*{Initialisation \& Optimiser Variants}
+\subsection*{initialization \& Optimiser Variants}
 
 All experiments share the model of Section~\ref{sec:model-data}.  
 A \emph{variant} is created by choosing
 
 \begin{enumerate}
-  \item one of five weight-initialisation schemes  
+  \item one of five weight-initialization schemes  
         (tiny, normal, large, Xavier, Kaiming), and
   \item either the \textbf{Adam} optimiser (learning rate \(0.01\))  
         or \textbf{SGD} with a fixed learning rate (typically \(0.5\); see
         Section~\ref{sec:optimizer-study}).
 \end{enumerate}
 
-Bias parameters are always initialised to zero, the data mean.
+Bias parameters are always initialized to zero, the data mean.
 
 \subsection*{Recorded Metrics}
 

@@ -4,11 +4,11 @@
 \label{sec:abs1-init}
 
 \subsection*{Experimental Variants}
-We test five weight–initialization schemes—\textsc{tiny}, \textsc{normal},
+We test five weight-initialization schemes—\textsc{tiny}, \textsc{normal},
 \textsc{Xavier}, \textsc{Kaiming}, and \textsc{large}—were evaluated under
-identical training conditions (Adam, $lr=0.01$, $50$ seeds, early–stop at
+identical training conditions (Adam, $lr=0.01$, $50$ seeds, early-stop at
 $\mathcal L<10^{-7}$).  The following subsections present classification
-accuracy, convergence timing, weight–space movement, and geometric outcomes.
+accuracy, convergence timing, weight-space movement, and geometric outcomes.
 
 % ------------------------------------------------------------------
 \subsection*{Classification Accuracy}
@@ -63,7 +63,7 @@ Large   & 154 & 527 & 671 & 878 & 1670 \\
 \textbf{Discussion.}  
 Convergence time grows monotonically with initial weight scale.  Tiny and
 Normal inits start close to the optimal norm and need mainly a small rotation,
-whereas Large must shrink by orders of magnitude before fine–tuning—the
+whereas Large must shrink by orders of magnitude before fine-tuning—the
 principal driver of its median $671$-epoch runtime.
 
 % ------------------------------------------------------------------
@@ -129,12 +129,12 @@ and place the \textbf{True} points at Euclidean distance~$\sqrt2$.
 We verify this in two complementary ways:
 
 \begin{enumerate}[label=(G\arabic*)]
-    \item \textbf{Distance–pattern clustering} –  
+    \item \textbf{Distance-pattern clustering} -  
           For each run we compute \((d_{\text{False}},d_{\text{True}})\),
-          the mean surface–to–point distance for each class.
+          the mean surface-to-point distance for each class.
           Runs with (numerically) identical pairs are grouped via DBSCAN;
           each group is a \emph{distance cluster}.
-    \item \textbf{Weight–space clustering} –  
+    \item \textbf{Weight-space clustering} -  
           The parameter triples \((w_1,w_2,b)\) are clustered with DBSCAN.
           Because the centred XOR data are sign-symmetric, two clusters
           \((w,b)\) and \((-w,-b)\) represent mirror-image solutions.
@@ -201,8 +201,8 @@ Large   & $0.00\pm0.00$ & $1.41\pm0.00$ & 1 & 2 (27/23) \\
         mirror-image symmetry that stems from the centred XOR data.
 \end{itemize}
 
-\paragraph{Why this matters for Prototype–Surface Learning.}
-Prototype–Surface Learning argues that a neuron’s meaning is anchored by
+\paragraph{Why this matters for Prototype-Surface Learning.}
+Prototype-Surface Learning argues that a neuron’s meaning is anchored by
 where its pre-activation is zero.  The empirical geometry here shows exactly
 that behaviour: training \emph{locks} the surface onto the negative prototypes
 and positions the positive prototypes on parallel offsets.  Because those

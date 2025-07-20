@@ -132,10 +132,10 @@ We verify this in two complementary ways:
     \item \textbf{Distance-pattern clustering} -  
           For each run we compute \((d_{\text{False}},d_{\text{True}})\),
           the mean surface-to-point distance for each class.
-          Runs with (numerically) identical pairs are grouped via DBSCAN;
+          Runs with (numerically) identical pairs are grouped via  DBSCAN ($eps = 0.1$, $min_samples = 2$);
           each group is a \emph{distance cluster}.
     \item \textbf{Weight-space clustering} -  
-          The parameter triples \((w_1,w_2,b)\) are clustered with DBSCAN.
+          The parameter triples \((w_1,w_2,b)\) are clustered with DBSCAN ($eps = 0.1$, $min_samples = 2$).
           Because the centred XOR data are sign-symmetric, two clusters
           \((w,b)\) and \((-w,-b)\) represent mirror-image solutions.
 \end{enumerate}
@@ -193,7 +193,7 @@ Large   & $0.00\pm0.00$ & $1.41\pm0.00$ & 1 & 2 (27/23) \\
         \emph{location} of its zero-level set rather than by large positive
         activations.
   \item \textbf{Weight clusters.}  
-        DBSCAN always discovers two parameter clusters whose centroids are
+        DBSCAN ($eps = 0.1$, $min_samples = 2$) always discovers two parameter clusters whose centroids are
         sign flips of one another,
         \((\frac12,-\frac12,0)\) and \((-\frac12,\frac12,0)\).
         Figure~\ref{fig:abs1-hyperplanes} visualises the corresponding

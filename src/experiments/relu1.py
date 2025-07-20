@@ -11,7 +11,7 @@ from data import xor_data_centered, xor_labels_T1, accuracy_binary_threshold
 
 @experiment("relu1_normal")
 def config_relu1_normal() -> ExperimentConfig:
-    """Factory function for ReLU XOR experiment."""
+    """Baseline: normal init, 2-ReLU sum XOR."""
     model = models.Model_ReLU1().init_normal()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.01, betas=(0.9, 0.99))
     loss_function = nn.MSELoss()
@@ -44,44 +44,44 @@ def config_relu1_normal() -> ExperimentConfig:
             plot_failure_angles=True,
         ),
         execution=ExecutionConfig(num_runs=50, skip_existing=False, random_seeds=[18]),
-        description="Centered XOR with two nodes, ReLU, sum, and normal init.",
+        description="Baseline ReLU XOR.",
         logging=LoggingConfig(train_epochs=50),
     )
 
 
 @experiment("relu1_kaiming")
 def config_relu1_kaiming() -> ExperimentConfig:
-    """Kaiming initialization variant of relu1."""
+    """Kaiming (He) weight initialization."""
     config = get_experiment_config("relu1_normal")
     config.model.init_kaiming()
-    config.description = "Centered XOR with single absolute value unit and kaiming init."
+    config.description = "Kaiming init."
     return config
 
 
 @experiment("relu1_reinit")
 def config_relu1_reinit() -> ExperimentConfig:
-    """Factory function for ReLU XOR experiment."""
+    """Auto-restart if any sample stays dead."""
     config = get_experiment_config("relu1_normal")
     config.model.reinit_dead_data(config.model.init_normal, config.data.x, 100)
     config.description = (
-        "Centered XOR with two nodes, ReLU, sum, and normal init. If dead data is detected, model is reinitialized."
+        "Auto-reinit on dead data."
     )
     return config
 
 
 @experiment("relu1_reinit_margin")
 def config_relu1_reinit_margin() -> ExperimentConfig:
-    """Factory function for ReLU XOR experiment."""
+    """Reinit on dead data with 0.3 margin."""
     config = get_experiment_config("relu1_normal")
     config.model.reinit_dead_data(config.model.init_normal, config.data.x, 100, min_threshold=0.3)
     config.execution.num_runs = 500
-    config.description = "Centered XOR with two nodes, ReLU, sum, and normal init. If dead data is detected, model is reinitialized with margin."
+    config.description = "Reinit on margin 0.3."
     return config
 
 
 @experiment("relu1_bhs")
 def config_relu1_bhs() -> ExperimentConfig:
-    """Factory function for ReLU XOR experiment."""
+    """Tangent-to-hypersphere init; all samples active."""
     config = get_experiment_config("relu1_normal")
     config.model.reinit_dead_data(
         lambda: config.model.init_bounded_hypersphere(config.model.init_normal, radius=1.4),
@@ -91,14 +91,14 @@ def config_relu1_bhs() -> ExperimentConfig:
     )
     config.training.epochs = 2000
     config.description = (
-        "Centered XOR with two nodes, ReLU, sum, and bounded hypersphere initialization with norm weights."
+        "Bounded-sphere init."
     )
     return config
 
 
 @experiment("relu1_monitor")
 def config_relu1_monitor() -> ExperimentConfig:
-    """Factory function for ReLU XOR experiment with early-failure monitor."""
+    """Runtime monitors fix dead samples / large norms"""
     config = get_experiment_config("relu1_normal")
     dataset_size = config.data.x.shape[0]  # == 4
     hook_manager = monitor.SharedHookManager(config.model)
@@ -110,80 +110,81 @@ def config_relu1_monitor() -> ExperimentConfig:
     )
     config.training.training_monitor = training_monitor
     config.description = (
-        ("Centered XOR with two nodes, ReLU, sum, normal init, " "and early-failure degeneracy detection."),
+        ("Runtime monitors."),
     )
     return config
 
 
 @experiment("relu1_mirror")
 def config_relu1_mirror() -> ExperimentConfig:
-    """Factory function for ReLU XOR experiment."""
+    """Mirror-symmetric weight vectors at start."""
     config = get_experiment_config("relu1_normal")
     config.model.init_mirror()
     config.execution.num_runs = 1000
-    config.description = "Centered XOR with two nodes, ReLU, sum, and mirrored normal init."
+    config.description = "Mirrored init."
     return config
 
-@experiment("relu1_leaky")
-def config_relu1_leaky() -> ExperimentConfig:
-    """Factory function for ReLU XOR experiment."""
+@experiment("relu1_leaky_1e-2")
+def config_relu1_leaky_1En2() -> ExperimentConfig:
+    """Standard LeakyReLU, slope 0.01."""
     config = get_experiment_config("relu1_normal")
 
     config.model = models.Model_ReLU1(activation=nn.LeakyReLU()).init_normal()
     config.training.optimizer = torch.optim.Adam(config.model.parameters(), lr=0.01, betas=(0.9, 0.99))
     config.analysis.plot_hyperplanes = True
-    config.description = "Centered XOR with two nodes, Leaky ReLU, sum, and normal init."
+    config.description = "LeakyReLU 0.01. "
     return config
 
-@experiment("abs1_leaky")
-def config_abs1_leaky() -> ExperimentConfig:
-    """Factory function for ReLU XOR experiment."""
+@experiment("relu1_leaky_-1e-2")
+def config_relu1_leaky_n1En2() -> ExperimentConfig:
+    """LeakyAbs: symmetric negative leak (≈|z|)."""
     config = get_experiment_config("relu1_normal")
 
     models.Model_ReLU1(activation=models.LeakyAbs()).init_normal()
     config.training.optimizer = torch.optim.Adam(config.model.parameters(), lr=0.01, betas=(0.9, 0.99))
     config.training.epochs = 5000
     config.analysis.plot_hyperplanes = True
-    config.description = "Centered XOR with two nodes, Leaky Abs, sum, and normal init."
+    config.description = "LeakyAbs 0.01."
     return config
 
 @experiment("relu1_biased")
 def config_relu1_biased() -> ExperimentConfig:
-    """Factory function for ReLU XOR experiment."""
+    """Positive hidden bias (μ = 0.1) to keep units alive."""
     config = get_experiment_config("relu1_normal")
     nn.init.normal_(config.model.linear1.bias, mean=0.1, std=0.01)
-    config.description = "Centered XOR with two nodes, ReLU activation, output sum, and normal weight/bias init. "
+    config.description = "Biased ReLU init."
     return config
 
 
 @experiment("relu1_elu")
 def config_relu1_elu() -> ExperimentConfig:
-    """Factory function for ELU XOR experiment."""
+    """ELU activation replaces ReLU."""
     config = get_experiment_config("relu1_normal")
 
     config.model = models.Model_ReLU1(activation=torch.nn.ELU())
     config.training.optimizer = torch.optim.Adam(config.model.parameters(), lr=0.01, betas=(0.9, 0.99))
     config.training.epochs = 5000
     config.analysis.plot_hyperplanes = True
-    config.description = "Centered XOR with two nodes, ELU, sum, and normal init."
+    config.description = "ELU activation."
     return config
 
 
 @experiment("relu1_prelu")
 def config_relu1_prelu() -> ExperimentConfig:
-    """Factory function for PReLU XOR experiment."""
+    """Trainable PReLU activation."""
     config = get_experiment_config("relu1_normal")
 
     config.model = models.Model_ReLU1(activation=torch.nn.PReLU())
     config.training.optimizer = torch.optim.Adam(config.model.parameters(), lr=0.01, betas=(0.9, 0.99))
     config.training.epochs = 5000
     config.analysis.plot_hyperplanes = True
-    config.description = "Centered XOR with two nodes, PReLU, sum, and normal init."
+    config.description = "PReLU activation."
     return config
 
 
 @experiment("relu1_anneal")
 def config_relu1_anneal() -> ExperimentConfig:
+    """Adds noise when entropy high (annealing rescue)."""
     config = get_experiment_config("relu1_normal")
 
     hook_manager = monitor.SharedHookManager(config.model)
@@ -199,122 +200,5 @@ def config_relu1_anneal() -> ExperimentConfig:
     # config.training.stop_training_loss_threshold = 1e-3
     # config.execution.num_runs = 1
     config.description = "Centered XOR with two nodes, ReLU activation, output sum, and error driven annealing. "
-    return config
-
-
-@experiment("relu1_init_dist")
-def config_relu1_init_dist() -> ExperimentConfig:
-    config = get_experiment_config("relu1_normal")
-    config.training.optimizer = torch.optim.SGD(config.model.parameters(), lr=0.0)
-    config.training.loss_change_patience = None
-    config.training.epochs = 0
-    config.execution.num_runs = 100
-
-    config.analysis.parameter_displacement=False
-    config.analysis.distance_to_hyperplanes=False
-    config.analysis.hyperplane_clustering=False
-    config.analysis.mirror_weight_detection=False
-    config.analysis.failure_angle_analysis=False
-    config.analysis.dead_data_analysis=False
-    config.analysis.plot_hyperplanes=False
-    config.analysis.plot_epoch_distribution=False
-    config.analysis.plot_parameter_displacement=False
-    config.analysis.plot_failure_angles=False
-
-    # config.training.stop_training_loss_threshold = 1e-3
-    # config.execution.num_runs = 1
-    config.description = "Samples initial loss of relu1_normal. "
-    return config
-
-@experiment("relu1_reinit_50th")
-def config_relu1_reinit_50th() -> ExperimentConfig:
-    """Factory function for ReLU XOR experiment."""
-    loss_threshold = 4.68e-01
-    config = get_experiment_config("relu1_normal")
-
-    x = config.data.x
-    y = config.data.y
-    loss_fn = config.training.loss_function
-
-    while True:
-        config.model.init_normal()
-        with torch.no_grad():
-            y_pred = config.model(x)
-            loss = loss_fn(y_pred, y).item()
-        if loss < loss_threshold:
-            break
-
-    config.description = (
-        "Centered XOR with two nodes, ReLU, sum, and normal init. Data is reinitialized until initial loss is less than 4.68e-01."
-    )
-    return config
-
-@experiment("relu1_reinit_25th")
-def config_relu1_reinit_25th() -> ExperimentConfig:
-    """Factory function for ReLU XOR experiment."""
-    loss_threshold = 3.25e-01
-    config = get_experiment_config("relu1_normal")
-
-    x = config.data.x
-    y = config.data.y
-    loss_fn = config.training.loss_function
-
-    while True:
-        config.model.init_normal()
-        with torch.no_grad():
-            y_pred = config.model(x)
-            loss = loss_fn(y_pred, y).item()
-        if loss < loss_threshold:
-            break
-
-    config.description = (
-        "Centered XOR with two nodes, ReLU, sum, and normal init. Data is reinitialized until initial loss is less than 3.25e-01."
-    )
-    return config
-
-@experiment("relu1_reinit_0th")
-def config_relu1_reinit_0th() -> ExperimentConfig:
-    """Factory function for ReLU XOR experiment."""
-    loss_threshold = 7.24e-02
-    config = get_experiment_config("relu1_normal")
-
-    x = config.data.x
-    y = config.data.y
-    loss_fn = config.training.loss_function
-
-    while True:
-        config.model.init_normal()
-        with torch.no_grad():
-            y_pred = config.model(x)
-            loss = loss_fn(y_pred, y).item()
-        if loss < loss_threshold:
-            break
-
-    config.description = (
-        "Centered XOR with two nodes, ReLU, sum, and normal init. Data is reinitialized until initial loss is less than 7.24e-02."
-    )
-    return config
-
-@experiment("relu1_reinit_50th_bad")
-def config_relu1_reinit_50th_bad() -> ExperimentConfig:
-    """Factory function for ReLU XOR experiment."""
-    loss_threshold = 4.68e-01
-    config = get_experiment_config("relu1_normal")
-
-    x = config.data.x
-    y = config.data.y
-    loss_fn = config.training.loss_function
-
-    while True:
-        config.model.init_normal()
-        with torch.no_grad():
-            y_pred = config.model(x)
-            loss = loss_fn(y_pred, y).item()
-        if loss > loss_threshold:
-            break
-
-    config.description = (
-        "Centered XOR with two nodes, ReLU, sum, and normal init. Data is reinitialized until initial loss is greater than 4.68e-01."
-    )
     return config
 

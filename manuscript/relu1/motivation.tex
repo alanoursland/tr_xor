@@ -2,28 +2,19 @@
 \section{Motivation}
 \label{sec:relu1-motivation}
 
-The previous chapter showed that a \emph{single} absolute--value unit
-\(
-  y=\lvert W x + b\rvert
-\)
-can learn the XOR problem almost deterministically, thanks to the
-identity
-\(
-  \lvert z\rvert=\operatorname{relu}(z)+\operatorname{relu}(-z)
-\)
-which hard-codes two symmetric half-spaces into the activation itself.
-In this chapter we take one deliberate step up in complexity while
-keeping the problem fully analyzable:
+The previous chapter showed that a \emph{single} absolute-value unit, \(y=\lvert w^{\mathsf T} x + b\rvert\), can solve the XOR problem almost deterministically. This success is rooted in the mathematical identity \(\lvert z\rvert=\operatorname{relu}(z)+\operatorname{relu}(-z)\), which hard-codes two symmetric half-spaces into the activation itself. In this chapter, we deconstruct this identity to explore a model that is one deliberate step up in complexity.
 
 \begin{itemize}
-  \item \textbf{Two learnable half-spaces.}
-        We replace the Abs unit by \emph{two} independent ReLUs and \emph{fix} the second layer to the simple sum \(y=[1\;1]\,\cdot\) (i.e.\ a row vector of ones with zero bias). Only the first-layer weights and biases move, giving the network just enough freedom to \emph{discover} the symmetry that the Abs unit had built in.
-  \item \textbf{A miniature laboratory for learning dynamics.}
-        Despite its tiny size, the model is rich enough to exhibit the hallmark behaviors of larger neural networks: sensitivity to weight initialization, dependence on activation smoothness, and occasional difficulty reaching perfect accuracy. Because the input space is two-dimensional we can still \emph{plot} every hyperplane and watch training unfold in real geometric space.
-  \item \textbf{Connecting geometry to prototype learning theory.}
-        By mapping where the two ReLU hyperplanes must land to solve XOR, we ground the abstract ``prototype surface'' concepts introduced earlier in concrete pictures. Observing how different training runs approach (or miss) those geometric targets sharpens our intuition for later, higher-dimensional chapters.
-  \item \textbf{Toward reliability.}
-        Starting from a plain Kaiming initialization, we first measure how often the model reaches $100\%$ accuracy. We then introduce a suite of lightweight interventions (different activations, re-initialising on ``dead'' data, margin-based restarts, geometry-aware bounded-sphere initialization, runtime monitors, and entropy-driven noise) to see which ones reduce variance and push the success rate toward certainty.
+    \item \textbf{Learning symmetric half-spaces.}
+        We replace the single Abs unit with \emph{two independent ReLU neurons}, whose outputs are then summed by a fixed, non-trainable linear layer. This gives the network just enough freedom to \emph{discover} the geometric symmetry that the Abs unit had built-in, forcing it to learn how to coordinate two independent components.
+
+    \item \textbf{A richer solution space.}
+        This architecture introduces a more complex learning challenge. While an ideal outcome is a solution \emph{functionally equivalent} to the Abs unit, the independent parameters allow for a \emph{family of solutions} that achieve this goal. However, this flexibility is also a vulnerability; the neurons can fail to coordinate, leading to suboptimal \textbf{local minima} far from the ideal geometry.
+
+    \item \textbf{A miniature laboratory for learning dynamics.}
+        This model strikes a deliberate balance; it is complex enough to fail in non-trivial ways, exhibiting sensitivity to initialization and convergence issues, yet simple enough for its internal state to be fully analyzed. The two-dimensional input space allows every learned hyperplane to be visually inspected. This provides a tractable environment to connect abstract failure modes to concrete geometry, letting us develop intuitions that may offer insight into similar challenges in larger, more opaque networks.
+    \item \textbf{Toward reliability.}
+        We will first establish a baseline to measure how often this more flexible model fails. We then introduce a suite of lightweight interventions—from geometry-aware initializations to runtime monitoring—to see which tactics can successfully guide the two neurons toward a coordinated solution and push the success rate toward certainty.
 \end{itemize}
 
-By the end of the chapter we will have a clearer view of how a network \emph{just complex enough to learn XOR but no more} behaves under different initial conditions and training aids---insight that will serve us well as we scale up in the chapters that follow.
+By the end of the chapter, we will have a clearer view of how a network \emph{just complex enough to learn XOR but no more} behaves, providing insight that will serve us well as we scale up in later work.

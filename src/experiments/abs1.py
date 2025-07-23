@@ -14,7 +14,7 @@ particular, it serves four research objectives:
    and sits √2 units from the class-1 points, confirming the analytic solution.
 
 2. **Learning-dynamics study**  
-   Measure how different weight-initialisation schemes (normal, tiny, large,
+   Measure how different weight-initialization schemes (normal, tiny, large,
    Xavier, Kaiming) affect convergence speed, weight rotation, and distance-
    field formation in this minimal setting.
 

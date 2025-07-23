@@ -952,7 +952,7 @@ class ConvergencePredictor:
         plt.suptitle(f"Partial Dependence Plots for {model_name}")
         plt.tight_layout(rect=[0, 0, 1, 0.96])
         # Create interpretation output directory
-        fig_path = output_dir / "partial_dependence_plots.png"
+        fig_path = output_dir / "partial_dependence_plots.pdf"
         plt.savefig(fig_path)
         plt.close()
         print(f"  Plots saved to {fig_path}")
@@ -972,7 +972,7 @@ class ConvergencePredictor:
 
         #     # Generate and save SHAP summary plot
         #     shap.summary_plot(shap_values, X_sample, feature_names=self.feature_names, show=False)
-        #     fig_path = output_dir / "shap_summary_plot.png"
+        #     fig_path = output_dir / "shap_summary_plot.pdf"
         #     plt.title(f"SHAP Feature Impact for {model_name}")
         #     plt.savefig(fig_path, bbox_inches='tight')
         #     plt.close()
@@ -1910,7 +1910,7 @@ def analyze_multiple_traces(registry: PathRegistry) -> Dict:
     # Generate plots
 
     os.makedirs(output_dir, exist_ok=True)
-    fig_path = registry.analysis / "multi_trace_convergence_analysis.png"
+    fig_path = registry.analysis / "multi_trace_convergence_analysis.pdf"
     predictor.visualize_results(save_path=fig_path)
     print(f"  Plots saved to: {fig_path}")
 

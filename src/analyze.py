@@ -889,7 +889,7 @@ def plot_run_hyperplanes(run_results: List[Dict], config: ExperimentConfig, outp
             # Plot using the same helper
             for name, module in initial_model.named_modules():
                 if isinstance(module, torch.nn.Linear):
-                    layer_plot_path = plot_dir / f"init_hyperplanes_{name}.png"
+                    layer_plot_path = plot_dir / f"init_hyperplanes_{name}.pdf"
                     plot_hyperplanes(
                         module.weight,
                         module.bias,
@@ -1079,7 +1079,7 @@ def main() -> int:
                 plot_failure_angle_histogram(
                     success_angles=success_angles,
                     failure_angles=failure_angles,
-                    output_path=results_dir / "plots" / f"{experiment_name}_{layer_name}_failure_angle_histogram.png",
+                    output_path=results_dir / "plots" / f"{experiment_name}_{layer_name}_failure_angle_histogram.pdf",
                     title=f"{experiment_name} – {layer_name}",
                 )
 

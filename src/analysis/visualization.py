@@ -173,7 +173,7 @@ def plot_weight_angle_and_magnitude_vs_epochs(
     ax_angle.set_ylabel("Epochs Completed")
     ax_angle.grid(True)
     plt.tight_layout()
-    angle_path = output_dir / f"{experiment_name}_{layer_name}_angle_vs_epochs.png"
+    angle_path = output_dir / f"{experiment_name}_{layer_name}_angle_vs_epochs.pdf"
     fig_angle.savefig(angle_path)
     plt.close(fig_angle)
 
@@ -185,7 +185,7 @@ def plot_weight_angle_and_magnitude_vs_epochs(
     ax_ratio.set_ylabel("Epochs Completed")
     ax_ratio.grid(True)
     plt.tight_layout()
-    ratio_path = output_dir / f"{experiment_name}_{layer_name}_normratio_vs_epochs.png"
+    ratio_path = output_dir / f"{experiment_name}_{layer_name}_normratio_vs_epochs.pdf"
     fig_ratio.savefig(ratio_path)
     plt.close(fig_ratio)
 

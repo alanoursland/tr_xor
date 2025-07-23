@@ -30,7 +30,7 @@ def config_relu1_normal() -> ExperimentConfig:
         analysis=AnalysisConfig(
             accuracy_fn=accuracy_binary_threshold,
             # Core analyses (default enabled)
-            parameter_displacement=True,
+            parameter_displacement=False,
             distance_to_hyperplanes=True,
             hyperplane_clustering=True,
             # Specialized analyses (default disabled)
@@ -38,7 +38,7 @@ def config_relu1_normal() -> ExperimentConfig:
             failure_angle_analysis=True,
             dead_data_analysis=True,
             # Visualizations (default disabled for speed)
-            plot_hyperplanes=False,
+            plot_hyperplanes=True,
             plot_epoch_distribution=True,
             plot_parameter_displacement=True,
             plot_failure_angles=True,
@@ -62,7 +62,7 @@ def config_relu1_kaiming() -> ExperimentConfig:
 def config_relu1_reinit() -> ExperimentConfig:
     """Auto-restart if any sample stays dead."""
     config = get_experiment_config("relu1_normal")
-    config.model.reinit_dead_data(config.model.init_normal, config.data.x, 100)
+    config.model.reinit_dead_data(config.model.init_kaiming, config.data.x, 100)
     config.description = (
         "Auto-reinit on dead data."
     )
@@ -73,7 +73,7 @@ def config_relu1_reinit() -> ExperimentConfig:
 def config_relu1_reinit_margin() -> ExperimentConfig:
     """Reinit on dead data with 0.3 margin."""
     config = get_experiment_config("relu1_normal")
-    config.model.reinit_dead_data(config.model.init_normal, config.data.x, 100, min_threshold=0.3)
+    config.model.reinit_dead_data(config.model.init_kaiming, config.data.x, 100, min_threshold=0.3)
     config.execution.num_runs = 500
     config.description = "Reinit on margin 0.3."
     return config
@@ -84,7 +84,7 @@ def config_relu1_bhs() -> ExperimentConfig:
     """Tangent-to-hypersphere init; all samples active."""
     config = get_experiment_config("relu1_normal")
     config.model.reinit_dead_data(
-        lambda: config.model.init_bounded_hypersphere(config.model.init_normal, radius=1.4),
+        lambda: config.model.init_bounded_hypersphere(config.model.init_kaiming, radius=1.4),
         config.data.x,
         100,
         min_threshold=0.3,
@@ -105,10 +105,12 @@ def config_relu1_monitor() -> ExperimentConfig:
     training_monitor = monitor.CompositeMonitor(
         [
             monitor.DeadSampleMonitor(hook_manager, dataset_size=dataset_size, patience=5, classifier_threshold=0.5),
-            monitor.BoundsMonitor(hook_manager, dataset_size=dataset_size, radius=1.5),
+            monitor.BoundsMonitor(hook_manager, dataset_size=dataset_size, radius=1.4),
         ]
     )
+    config.training.loss_change_threshold=None
     config.training.training_monitor = training_monitor
+    config.execution.num_runs = 500
     config.description = (
         ("Runtime monitors."),
     )
@@ -124,12 +126,34 @@ def config_relu1_mirror() -> ExperimentConfig:
     config.description = "Mirrored init."
     return config
 
+@experiment("relu1_leaky_8e-1")
+def config_relu1_leaky_8En1() -> ExperimentConfig:
+    """Standard LeakyReLU, slope 0.8."""
+    config = get_experiment_config("relu1_normal")
+
+    config.model = models.Model_ReLU1(activation=nn.LeakyReLU(negative_slope=0.8)).init_kaiming()
+    config.training.optimizer = torch.optim.Adam(config.model.parameters(), lr=0.01, betas=(0.9, 0.99))
+    config.analysis.plot_hyperplanes = True
+    config.description = "LeakyReLU 0.8. "
+    return config
+
+@experiment("relu1_leaky_1e-1")
+def config_relu1_leaky_1En1() -> ExperimentConfig:
+    """Standard LeakyReLU, slope 0.1."""
+    config = get_experiment_config("relu1_normal")
+
+    config.model = models.Model_ReLU1(activation=nn.LeakyReLU(negative_slope=0.1)).init_kaiming()
+    config.training.optimizer = torch.optim.Adam(config.model.parameters(), lr=0.01, betas=(0.9, 0.99))
+    config.analysis.plot_hyperplanes = True
+    config.description = "LeakyReLU 0.1. "
+    return config
+
 @experiment("relu1_leaky_1e-2")
 def config_relu1_leaky_1En2() -> ExperimentConfig:
     """Standard LeakyReLU, slope 0.01."""
     config = get_experiment_config("relu1_normal")
 
-    config.model = models.Model_ReLU1(activation=nn.LeakyReLU()).init_normal()
+    config.model = models.Model_ReLU1(activation=nn.LeakyReLU(negative_slope=0.01)).init_kaiming()
     config.training.optimizer = torch.optim.Adam(config.model.parameters(), lr=0.01, betas=(0.9, 0.99))
     config.analysis.plot_hyperplanes = True
     config.description = "LeakyReLU 0.01. "
@@ -140,11 +164,35 @@ def config_relu1_leaky_n1En2() -> ExperimentConfig:
     """LeakyAbs: symmetric negative leak (≈|z|)."""
     config = get_experiment_config("relu1_normal")
 
-    models.Model_ReLU1(activation=models.LeakyAbs()).init_normal()
+    config.model = models.Model_ReLU1(activation=nn.LeakyReLU(negative_slope=-0.01)).init_kaiming()
     config.training.optimizer = torch.optim.Adam(config.model.parameters(), lr=0.01, betas=(0.9, 0.99))
     config.training.epochs = 5000
     config.analysis.plot_hyperplanes = True
-    config.description = "LeakyAbs 0.01."
+    config.description = "LeakyAbs -0.01."
+    return config
+
+@experiment("relu1_leaky_-1e-1")
+def config_relu1_leaky_n1En1() -> ExperimentConfig:
+    """LeakyAbs: symmetric negative leak (≈|z|)."""
+    config = get_experiment_config("relu1_normal")
+
+    config.model = models.Model_ReLU1(activation=nn.LeakyReLU(negative_slope=-0.1)).init_kaiming()
+    config.training.optimizer = torch.optim.Adam(config.model.parameters(), lr=0.1, betas=(0.9, 0.99))
+    config.training.epochs = 5000
+    config.analysis.plot_hyperplanes = True
+    config.description = "LeakyAbs -0.1."
+    return config
+
+@experiment("relu1_leaky_-8e-1")
+def config_relu1_leaky_n8En1() -> ExperimentConfig:
+    """LeakyAbs: symmetric negative leak (≈|z|)."""
+    config = get_experiment_config("relu1_normal")
+
+    config.model = models.Model_ReLU1(activation=nn.LeakyReLU(negative_slope=-0.8)).init_kaiming()
+    config.training.optimizer = torch.optim.Adam(config.model.parameters(), lr=0.1, betas=(0.9, 0.99))
+    config.training.epochs = 5000
+    config.analysis.plot_hyperplanes = True
+    config.description = "LeakyAbs -0.8."
     return config
 
 @experiment("relu1_biased")

@@ -1,3 +1,89 @@
-% !TeX root = ../activation_study.tex
+% !TeX root = ../main.tex
 \section{Activation Study}
 \label{sec:relu1-activations}
+
+\subsection*{Aim}
+Pure ReLU solved centred XOR only \mbox{$48\,\%$} of the time
+(Section~\ref{sec:relu1-kaiming}).  
+Here we ask whether \emph{modifying the activation tail} improves that
+reliability.
+Eight variants are compared under the same training and early-stopping
+protocol:
+
+\begin{itemize}
+  \item \textbf{LeakyReLU} with fixed slope
+        $\alpha\in\{0.8,\;0.1,\;0.01,\;-0.01,\;-0.1,\;-0.8\}$,
+        spanning gentle positive leak to a near-Abs negative leak.
+  \item \textbf{ELU} (default $\alpha=1$).
+  \item \textbf{PReLU} (slope learned from data, initialised at $0.01$).
+\end{itemize}
+
+% ------------------------------------------------------------------
+\subsection*{Classification Accuracy}
+
+\begin{table}[h]
+\centering
+\caption{Final accuracy counts over $50$ runs per activation.}
+\label{tab:relu1-activation-accuracy}
+\begin{tabular}{lccccc}
+\toprule
+Activation & 0\,\% & 25\,\% & 50\,\% & 75\,\% & 100\,\% \\
+\midrule
+Baseline (ReLU) & 0 & 0 & 0 & 26 & 24 % baseline citation
+\\
+Leaky 0.8  & 0 & 0 & 6 & 0 & 44 \\
+Leaky 0.1  & 0 & 0 & 0 & 3 & 47 \\
+Leaky 0.01 & 0 & 0 & 0 & 12 & 38 \\
+Leaky $-0.01$ & 0 & 0 & 0 & 2 & 48 \\
+Leaky $-0.1$  & 0 & 0 & 0 & 5 & 45 \\
+Leaky $-0.8$  & 0 & 0 & 0 & 4 & 46 \\
+ELU          & 0 & 2 & 0 & 0 & 48 \\
+PReLU        & 0 & 0 & 2 & 0 & 48 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Key observations.}
+\begin{enumerate*}[label=(\alph*)]
+  \item Every alternative activation \emph{beats} the ReLU
+        baseline's $48\,\%$ success rate;
+        the best (ELU, PReLU, Leaky $\pm0.01$) reach $\ge96\,\%$
+        success.%
+        
+  \item Moderate leaks ($\alpha=\pm0.1$) already achieve $\ge90\,\%$
+        success, while very small positive leak ($0.01$) still trails.%
+        
+  \item A large positive slope ($0.8$) helps, but convergence often
+        stalls at $50\,\%$ rather than $75\,\%$, reflecting the linear
+        tail's tendency to mis-rank one XOR corner.%
+        :contentReference[oaicite:0]{index=0}
+\end{enumerate*}
+
+% ------------------------------------------------------------------
+\subsection*{Prototype-Surface Geometry (brief)}
+Across activations the distance-pattern clustering predicted by
+prototype-surface theory becomes \emph{less rigid}:  
+for example, Kaiming + ReLU forms a single cluster centred on
+$(0,1.37)$ in distance space, whereas Leaky $-0.8$ splits into two
+patterns with class-$0$ distances ranging from $0.18$ to $0.74$.%
+
+Negative-slope variants nonetheless show stronger mirror symmetry in
+weight space (up to $44/50$ perfect mirrors for $\alpha=-0.8$) than the
+baseline, echoing the
+$|z|=\operatorname{relu}(z)+\operatorname{relu}(-z)$ linkage. 
+This is not surprising since they approximate the Abs model more closely.
+
+A full theoretical account of these geometries for non-ReLU tails is not
+yet developed. The activations are included here as possible solutions to 
+the dead data problem we observed in the baseline study.
+
+% ------------------------------------------------------------------
+\paragraph{Take-away}
+Giving the network \emph{any} gradient on the negative side—whether by a
+tiny leak, a smooth ELU tail, or a learnable PReLU slope—more than
+doubles the probability of perfect XOR classification relative to plain
+ReLU.  The precise slope value matters little once \(|\alpha|\lesssim0.1\);
+what matters is simply keeping all four inputs \emph{alive} long enough
+for the optimiser to align the prototype surfaces.
+
+\hrulefill

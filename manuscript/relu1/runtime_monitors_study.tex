@@ -1,3 +1,103 @@
 % !TeX root = ../main.tex
 \section{Runtime Monitors Study}
 \label{sec:relu1-monitors}
+
+\subsection*{Aim}
+Rather than rejecting bad initialisations, we attach two \emph{online
+monitors} that watch training in real time:
+
+\begin{description}[leftmargin=2em,style=sameline]
+  \item[DeadSampleMonitor] flags any input that is both misclassified
+        and receives \emph{zero} gradient flow for more than five epochs,
+        then nudges the closest hyperplane toward that sample.
+  \item[BoundsMonitor] keeps every hyperplane within a radius
+        $r = 1.4$ of the data mean; if a boundary drifts outside, its
+        bias is reset to pass through the origin.
+\end{description}
+
+Early-stopping by ``loss change $\!\!<\!10^{-24}$'' is \emph{disabled}
+so the monitors may act throughout all $800$ training epochs.
+We ran \textbf{500} independent seeds to obtain a tight estimate of
+reliability.
+
+% ------------------------------------------------------------------
+\subsection*{Classification Accuracy}
+
+\begin{table}[h]
+\centering
+\caption{Final accuracy with runtime monitors ($500$ runs).}
+\label{tab:relu1-monitor-accuracy}
+\begin{tabular}{lccccc}
+\toprule
+Accuracy & 0\,\% & 25\,\% & 50\,\% & 75\,\% & 100\,\% \\
+\midrule
+Runs & 0 & 0 & 0 & 4 & 496 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Success rises to \textbf{99.2\,\%}, matching the re-init\,+\,margin
+strategy but \emph{during} training rather than before it.
+
+% ------------------------------------------------------------------
+\subsection*{Convergence Timing}
+
+\begin{table}[h]
+\centering
+\caption{Epochs to $\mathcal L<10^{-7}$ (successful runs).}
+\label{tab:relu1-monitor-epochs}
+\begin{tabular}{lccccc}
+\toprule
+Percentile & 0\,\% & 25\,\% & 50\,\% & 75\,\% & 100\,\% \\ \midrule
+Epochs & 49 & 133 & 160 & 192 & 800 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Median time is comparable to the baseline; the long tail reflects runs
+that linger near the loss threshold while the monitors make repeated
+corrections.
+
+% ------------------------------------------------------------------
+\subsection*{Prototype-Surface Geometry}
+
+\begin{description}[leftmargin=2em]
+  \item[Distance clusters]
+        992 hyperplanes fall into \textbf{two} patterns; the dominant
+        one ($990$ members) matches $(d_{0},d_{1})\!=\!(0.10,1.41)$,
+        indicating the surface anchors close to the False points while
+        retaining the expected $\sqrt2$ gap to the True points.
+  \item[Weight clusters]
+        DBSCAN ($\varepsilon=0.1$) finds \textbf{two} sign-symmetric
+        weight clusters with only four noise points—
+        a tighter grouping than any previous method.
+  \item[Mirror symmetry]
+        Mirror pairs are detected in $487/500$ runs; $238$ are
+        \emph{perfect} (cosine $\approx-1$).
+\end{description}
+
+Thus the monitors do not disturb the prototype geometry; if anything,
+they strengthen the expected mirror structure.
+
+% ------------------------------------------------------------------
+\subsection*{Dead-Data Recovery}
+Despite beginning with \textbf{dead inputs} in 360 runs, the monitors
+revived almost all of them:
+
+\begin{itemize}
+  \item $360$ / $364$ runs with dead inputs ultimately reached
+        100\,\% accuracy,
+  \item only $4$ such runs stalled at 75\,\%.
+\end{itemize}
+
+% ------------------------------------------------------------------
+\paragraph{Discussion}
+\begin{itemize}
+  \item Runtime correction achieves the same reliability as
+        margin-based re-initialisation \emph{without} repeated weight
+        sampling, at the expense of longer training time.
+  \item Prototype-surface theory is \emph{reinforced}: a single distance
+        pattern and two mirror weight clusters dominate.
+\end{itemize}
+
+\hrulefill

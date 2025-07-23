@@ -1,36 +1,36 @@
-% relu1/using.tex
+% !TeX root = ../main.tex
 \section{Using This Chapter}
-\label{sec:relu1_using}
+\label{sec:relu1-using}
 
 This chapter can be read in two different modes:
 
 \begin{description}
   \item[Survey\,/\,quick-skim]
         \begin{enumerate}
-          \item Jump to \textbf{Sec.~\ref{sec:relu1_motivation}} for the one-page conceptual recap of why we revisit XOR with two unconstrained ReLU gates.
-          \item Glance at the headline numbers and geometry snapshots in \textbf{Sec.~\ref{sec:relu1_baseline}} (the Kaiming baseline) to see \emph{why} the model needs help.
-          \item Skip directly to the bullet \emph{Take-aways} in \textbf{Sec.~\ref{sec:relu1_takeaways}} for a concise list of what worked and why.
+          \item Jump to \textbf{Sec.~\ref{sec:relu1-motivation}} for the one-page conceptual recap of why we revisit XOR with two unconstrained ReLU gates.
+          \item Glance at the headline numbers and geometry snapshots in \textbf{Sec.~\ref{sec:relu1-kaiming}} (the Kaiming baseline) to see \emph{why} the model needs help.
+          \item Skip directly to the bullet \emph{Take-aways} in \textbf{Sec.~\ref{sec:relu1-conclusions}} for a concise list of what worked and why.
         \end{enumerate}
 
   \item[Deep-dive]
         \begin{enumerate}
-          \item Read Sections \ref{sec:relu1_model_data} and \ref{sec:relu1_framework} first.  
+          \item Read Sections \ref{sec:relu1-model-data} and \ref{sec:relu1-framework} first.  
                 They repeat the centred-XOR dataset and experimental protocol from \emph{Chapter~Abs1} so you do \textbf{not} need to flip back, but feel free to skim if you remember the details.
           \item Work through the studies in the order they appear:
                 \begin{itemize}
-                    \item \textbf{Baseline} (\ref{sec:relu1_baseline})  
+                    \item \textbf{Baseline} (\ref{sec:relu1-kaiming})  
                           — establishes failure modes.
-                    \item \textbf{Activation survey} (\ref{sec:relu1_activation})  
+                    \item \textbf{Activation survey} (\ref{sec:relu1-activations})  
                           — Leaky/ELU/PReLU variants.
-                    \item \textbf{Re-initialisation tactics} (\ref{sec:relu1_reinit})  
+                    \item \textbf{Re-initialization tactics} (\ref{sec:relu1-reinit})  
                           — simple vs.\ margin-based dead-data restarts.
-                    \item \textbf{Bounded-hypersphere init} (\ref{sec:relu1_bhs})  
+                    \item \textbf{Bounded-hypersphere init} (\ref{sec:relu1-bounded-hypersphere})  
                           — geometry-aware weight sampling.
-                    \item \textbf{Runtime monitors} (\ref{sec:relu1_runtime})  
+                    \item \textbf{Runtime monitors} (\ref{sec:relu1-monitors})  
                           — early detection of dead data or runaway weights.
-                    \item \textbf{Loss-entropy annealing} (\ref{sec:relu1_anneal})  
+                    \item \textbf{Loss-entropy annealing} (\ref{sec:relu1-annealing})  
                           — noise injection rescue.
-                    \item \textbf{Mirror init} (\ref{sec:relu1_mirror})  
+                    \item \textbf{Mirror init} (\ref{sec:relu1-mirror})  
                           — hard-wiring symmetry.
                 \end{itemize}
           \item Use the shaded “Result” boxes in each study for at-a-glance statistics; full plots and tables are in the accompanying figure panels.

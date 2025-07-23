@@ -1,3 +1,39 @@
-% !TeX root = ../model_data.tex
+% !TeX root = ../main.tex
 \section{Model \& Data}
 \label{sec:relu1-model-data}
+
+\subsection*{Dataset: Centered XOR (Repeated for Convenience)}
+For continuity with Chapter~\textit{Abs1}, we use the \emph{same} zero-mean XOR points \(({-}1,{-}1),\;({-}1,1),\;(1,{-}1),\;(1,1)\) and binary targets \(y\in\{0,1\}\).
+
+\subsection*{Model Architecture}
+Our network consists of \textbf{two} affine half-spaces gated by ReLU, followed by a fixed sum:
+
+\begin{equation}
+    \hat y(x)
+    \;=\;
+    \operatorname{relu}\!\bigl(w^{(0)\!\top}x + b^{(0)}\bigr)
+    \;+\;
+    \operatorname{relu}\!\bigl(w^{(1)\!\top}x + b^{(1)}\bigr),
+    \quad
+    w^{(k)}\!\in\mathbb{R}^{2},\;
+    b^{(k)}\!\in\mathbb{R}.
+    \label{eq:relu1-model}
+\end{equation}
+
+\paragraph{Connection to the Abs model.}
+An absolute-value unit satisfies \(|z|=\operatorname{relu}(z)+\operatorname{relu}(-z).\) If one sets \(w^{(1)}=-\,w^{(0)}\) and \(b^{(1)}=-\,b^{(0)}\), Equation~\eqref{eq:relu1-model} reduces exactly to the Abs1 architecture studied earlier. Thus the present model is a \emph{loosely constrained} extension: it can reproduce the analytic Abs solution but is also free to explore other weight configurations, making it an ideal micro-laboratory for learning dynamics.
+
+\subsection*{Loss Function}
+We retain the mean-squared error used throughout Chapter~\textit{Abs1}:
+\begin{equation}
+    \mathcal{L}
+    \;=\;
+    \frac14
+    \sum_{i=1}^{4}
+    \bigl(\hat y(x_i) - y_i\bigr)^2.
+    \label{eq:relu1-loss}
+\end{equation}
+All optimisation settings (early-stopping tolerance, epoch cap, random-seed protocol) follow the \textbf{common framework} recapped in Section~\ref{sec:relu1-framework} and defined fully in the Abs1 chapter.
+
+\paragraph{Geometric viewpoint.}
+Each ReLU defines a half-plane boundary \(\{x\mid w^{(k)\!\top}x+b^{(k)}=0\}\). A successful network must place these two lines so that their activated regions cover the two \textbf{True} points while suppressing the \textbf{False} points. Prototype-surface theory (Sec.~\ref{sec:abs1-model-data}) therefore predicts \emph{pairs of sign-symmetric solutions}; we will revisit this geometry after analysing the baseline run in Section~\ref{sec:relu1-kaiming}.

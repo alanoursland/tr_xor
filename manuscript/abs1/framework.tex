@@ -24,7 +24,7 @@ implementation.
 
 \subsection*{initialization \& Optimiser Variants}
 
-All experiments share the model of Section~\ref{sec:model-data}.  
+All experiments share the model of Section~\ref{sec:abs1-model-data}.  
 A \emph{variant} is created by choosing
 
 \begin{enumerate}
@@ -32,7 +32,7 @@ A \emph{variant} is created by choosing
         (tiny, normal, large, Xavier, Kaiming), and
   \item either the \textbf{Adam} optimiser (learning rate \(0.01\))  
         or \textbf{SGD} with a fixed learning rate (typically \(0.5\); see
-        Section~\ref{sec:optimizer-study}).
+        Section~\ref{sec:abs1-optim}).
 \end{enumerate}
 
 Bias parameters are always initialized to zero, the data mean.

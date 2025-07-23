@@ -1,3 +1,98 @@
-% relu1/takeways.tex
+% !TeX root = ../main.tex
 \section{Conclusions}
 \label{sec:relu1-conclusions}
+
+\subsection*{1.  From \textit{Abs1} to \textit{ReLU1}}
+Replacing the hard-wired symmetry of an \emph{Abs} unit with two free
+ReLUs adds only three degrees of freedom, yet drops the naïve Kaiming
+success rate to $\approx 48\,\%$ (Sec.~\ref{sec:relu1-kaiming}).  
+The experiment suite shows that what looks like a “minimal” change
+introduces a surprisingly rich optimisation landscape.
+
+\subsection*{2.  Failure Modes in Hierarchical Order}
+\begin{enumerate}[label=(F\arabic*)]
+  \item \textbf{Dead data} — at least one XOR point inactive for every
+        neuron \(\Rightarrow\) gradient $=0$ and loss plateau at
+        $75\,\%$ accuracy.
+  \item \textbf{Vanishing margin} — early updates push a sample just
+        below the hinge; it stays dormant thereafter.
+  \item \textbf{Perpendicular trap} — a hyperplane initialised nearly
+        $90^{\circ}$ from any optimum converges to a distant local
+        minimum (Sec.~\ref{sec:relu1-reinit}\,ff.).
+\end{enumerate}
+
+\subsection*{3.  How the Static Fixes Rank}
+\begin{table}[h]
+\centering
+\caption{Single-shot remedies sorted by reliability (50-1000 seeds each).}
+\label{tab:relu1-static-summary}
+\begin{tabular}{lccc}
+\toprule
+Method & Success (\%) & Median epochs & Notes\\
+\midrule
+\textbf{Mirror init} & 98.4 & 96 & Fastest; zero dead data\\
+Leaky/ELU/PReLU ($|\alpha|\!\le\!0.1$) & $\ge96$ & 120-180 & Small code change only\\
+Re-init + margin 0.3 & 99.4 & 190 & Extra sampling loop\\
+Dead-data re-init & 90 & 168 & No margin check\\
+Bounded-sphere $r=1.4$ & 78 & 666 & Slow; still fails\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection*{4.  Dynamic (Runtime) Remedies}
+\begin{itemize}
+  \item \textbf{Monitors} (dead-sample \& bounds) reach $99.2\,\%$
+        success over 500 runs while \emph{preserving} geometry
+        (Sec.~\ref{sec:relu1-monitors}).
+  \item \textbf{Error-entropy annealing} attains $98\,\%$ success by
+        injecting temperature-scaled noise; one long-tail run shows
+        cost-of-insurance (Sec.~\ref{sec:relu1-annealing}).
+\end{itemize}
+Dynamic fixes remove the need for re-sampling at the price of longer
+training tails.
+
+\subsection*{5.  Geometry Survives Every Intervention}
+Across all \emph{successful} runs:
+\begin{enumerate*}[label=(\roman*)]
+  \item distance patterns converge to $(d_{0},d_{1})\approx(0,\,\sqrt2)$,
+  \item two sign-flip weight clusters dominate,
+  \item mirror symmetry emerges even when not enforced.
+\end{enumerate*}
+Prototype-surface learning (Ch.~\ref{sec:placeholder}) therefore
+appears to be an \emph{attractor}; our interventions merely raise the
+probability of reaching it.
+
+\subsection*{6.  Design Lessons}
+\begin{itemize}
+  \item \textbf{Keep inputs alive} — via mirror init, margin screening,
+        or live monitors.
+  \item \textbf{Maintain a safety buffer} — small positive margin or
+        bounds check prevents early deactivation.
+  \item \textbf{Symmetry helps, but orientation matters} — mirroring
+        removes half the variance; monitors/noise handle the rest.
+  \item \textbf{Noise as last resort} — entropy-gated perturbations can
+        rescue rare plateaus without discarding progress.
+\end{itemize}
+
+\subsection*{7.  Limitations \& Next Steps}
+\begin{itemize}
+  \item Percentile-based re-initialisation and deeper angle-norm
+        statistics are reserved for the next chapter.
+  \item All studies are in 2-D; scalability to higher dimensions remains
+        to be verified.
+  \item Rare non-mirror successes hint at alternative solution families
+        worth analysing.
+\end{itemize}
+
+\subsection*{8.  Bridge Forward}
+The forthcoming chapter extends prototype-surface analysis
+to deeper, wider networks.  Armed with the remedies catalogued here, we
+can ask which scales gracefully and which buckle under high-dimensional
+complexity.
+
+\medskip
+\begin{center}
+\emph{A single Abs unit solved XOR by construction; two ReLUs can match
+that robustness—but only when geometry is shepherded by thoughtful
+initialisation, vigilant monitoring, or both.}
+\end{center}

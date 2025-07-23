@@ -1,3 +1,29 @@
-% !TeX root = ../motivation.tex
+% !TeX root = ../main.tex
 \section{Motivation}
 \label{sec:relu1-motivation}
+
+The previous chapter showed that a \emph{single} absolute--value unit
+\(
+  y=\lvert W x + b\rvert
+\)
+can learn the XOR problem almost deterministically, thanks to the
+identity
+\(
+  \lvert z\rvert=\operatorname{relu}(z)+\operatorname{relu}(-z)
+\)
+which hard-codes two symmetric half-spaces into the activation itself.
+In this chapter we take one deliberate step up in complexity while
+keeping the problem fully analyzable:
+
+\begin{itemize}
+  \item \textbf{Two learnable half-spaces.}
+        We replace the Abs unit by \emph{two} independent ReLUs and \emph{fix} the second layer to the simple sum \(y=[1\;1]\,\cdot\) (i.e.\ a row vector of ones with zero bias). Only the first-layer weights and biases move, giving the network just enough freedom to \emph{discover} the symmetry that the Abs unit had built in.
+  \item \textbf{A miniature laboratory for learning dynamics.}
+        Despite its tiny size, the model is rich enough to exhibit the hallmark behaviors of larger neural networks: sensitivity to weight initialization, dependence on activation smoothness, and occasional difficulty reaching perfect accuracy. Because the input space is two-dimensional we can still \emph{plot} every hyperplane and watch training unfold in real geometric space.
+  \item \textbf{Connecting geometry to prototype learning theory.}
+        By mapping where the two ReLU hyperplanes must land to solve XOR, we ground the abstract ``prototype surface'' concepts introduced earlier in concrete pictures. Observing how different training runs approach (or miss) those geometric targets sharpens our intuition for later, higher-dimensional chapters.
+  \item \textbf{Toward reliability.}
+        Starting from a plain Kaiming initialization, we first measure how often the model reaches $100\%$ accuracy. We then introduce a suite of lightweight interventions (different activations, re-initialising on ``dead'' data, margin-based restarts, geometry-aware bounded-sphere initialization, runtime monitors, and entropy-driven noise) to see which ones reduce variance and push the success rate toward certainty.
+\end{itemize}
+
+By the end of the chapter we will have a clearer view of how a network \emph{just complex enough to learn XOR but no more} behaves under different initial conditions and training aids---insight that will serve us well as we scale up in the chapters that follow.

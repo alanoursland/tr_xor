@@ -1,3 +1,90 @@
-% !TeX root = ../bounded_hypersphere_study.tex
+% !TeX root = ../main.tex
 \section{Bounded Hypersphere Initialization Study}
 \label{sec:relu1-bounded-hypersphere}
+
+\subsection*{Motivation}
+Dead-data re-initialisation (previous section) \emph{rejects} bad weight
+draws until every input is active.  
+Bounded-hypersphere (BHS) initialisation tries to achieve the same goal
+\emph{constructively}: each hidden hyperplane is placed
+\emph{tangent} to a hypersphere of radius $r=1.4$
+centred on the data mean, with its normal pointing inward.
+All four XOR points therefore start on the positive side of
+\(\operatorname{ReLU}(w\!\cdot\!x+b)\) and provide non-zero gradients
+from the first step onward.
+
+% ------------------------------------------------------------------
+\subsection*{Classification Accuracy}
+
+\begin{table}[h]
+\centering
+\caption{Accuracy over 50 runs with BHS ($r=1.4$).}
+\label{tab:relu1-bhs-accuracy}
+\begin{tabular}{lccccc}
+\toprule
+Accuracy & 0\,\% & 25\,\% & 50\,\% & 75\,\% & 100\,\% \\
+\midrule
+Runs & 0 & 1 & 10 & 0 & 39 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Outcome.}
+Success falls from the ReLU baseline's $48\,\%$ to $38\,\%$..
+
+% ------------------------------------------------------------------
+\subsection*{Convergence Timing}
+
+\begin{table}[h]
+\centering
+\caption{Epochs to early-stop for the 39 successful runs.}
+\label{tab:relu1-bhs-epochs}
+\begin{tabular}{lccccc}
+\toprule
+Percentile & 0\,\% & 25\,\% & 50\,\% & 75\,\% & 100\,\% \\
+\midrule
+Epochs & 258 & 571 & 666 & 763 & 965\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+BHS slows convergence by roughly a factor of four compared with the
+baseline (median 166 → 666 epochs), reflecting the need for each
+hyperplane to \emph{shrink inward} before it can carve useful regions.
+
+% ------------------------------------------------------------------
+\subsection*{Prototype-Surface Geometry}
+
+\begin{description}[leftmargin=2em]
+  \item[Distance clusters]
+        All 78 hyperplanes extracted from successful runs fall into
+        \emph{one} distance pattern,
+        \((d_{0},d_{1})\!=\!(0,1.41)\),
+        exactly matching the prototype-surface prediction.
+  \item[Weight clusters]
+        DBSCAN ($\varepsilon=0.1$) finds \textbf{two}
+        sign-symmetric clusters whose centroids are
+        $\pm(0.501,-0.501)$.%
+  \item[Mirror symmetry]
+        Every successful run contains a perfect mirror pair
+        (cosine $\approx -1$).%
+\end{description}
+
+Thus, when BHS \emph{does} converge, it lands on the
+same geometric prototype surfaces as earlier successful methods.
+
+% ------------------------------------------------------------------
+\paragraph{Discussion}
+\begin{itemize}
+  \item BHS eliminates dead inputs \emph{by construction} but improves
+        accuracy only marginally and slows learning.
+  \item Geometry of the successful runs is pristine—single distance
+        cluster, perfect mirror symmetry—yet the uniform outward
+        placement leaves the network prone to an orientation trap that
+        rejection sampling rarely encounters.
+  \item Given its heavier compute cost (longer epochs) and lower success
+        than margin-based re-init, we regard BHS as a negative result and
+        do not pursue it further in subsequent chapters.
+\end{itemize}
+
+\hrulefill

@@ -1,3 +1,90 @@
-% !TeX root = ../mirror_study.tex
+% !TeX root = ../main.tex
 \section{Mirror Initialization Study}
 \label{sec:relu1-mirror}
+
+\subsection*{Motivation}
+Because \(|z| = \operatorname{relu}(z) + \operatorname{relu}(-z)\), a
+\emph{two-ReLU} network can in principle emulate the single-Abs model if
+its two hidden weight vectors begin as perfect negatives of one another.
+The \texttt{init\_mirror} routine therefore samples one weight-bias pair
+from \(\mathcal N(0,1)\) and assigns its exact negation to the second
+neuron, guaranteeing mirror symmetry from the first step.
+
+% ------------------------------------------------------------------
+\subsection*{Classification Accuracy}
+
+\begin{table}[h]
+\centering
+\caption{Final accuracy across $1000$ mirrored initialisations.}
+\label{tab:relu1-mirror-accuracy}
+\begin{tabular}{lccccc}
+\toprule
+Accuracy & 0\,\% & 25\,\% & 50\,\% & 75\,\% & 100\,\% \\
+\midrule
+Runs & 0 & 0 & 16 & 0 & 984 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Mirror seeding yields a \textbf{98.4\,\%} success rate—the highest of
+all single-shot initialisation schemes.
+
+% ------------------------------------------------------------------
+\subsection*{Convergence Timing}
+
+\begin{table}[h]
+\centering
+\caption{Epochs to $\mathcal L<10^{-7}$ for the 984 successful runs.}
+\label{tab:relu1-mirror-epochs}
+\begin{tabular}{lcccccc}
+\toprule
+Percentile & 0\,\% & 10\,\% & 25\,\% & 50\,\% & 75\,\% & 100\,\% \\ \midrule
+Epochs & 6 & 39 & 62 & 96 & 138 & 316 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Median runtime (96 epochs) beats every previous variant except the tiny
+positive-leak activations.
+
+% ------------------------------------------------------------------
+\subsection*{Prototype-Surface Geometry}
+
+\begin{description}[leftmargin=2em]
+  \item[Distance clusters]  
+        All 1968 hyperplanes from successful runs collapse to a single
+        pattern, \((d_{0},d_{1})=(0.10,1.41)\); the prototype surface
+        sits nearly on the False points and \(\sqrt2\) from the True
+        points. :contentReference[oaicite:2]{index=2}
+  \item[Weight clusters]  
+        DBSCAN finds exactly \textbf{two} sign-symmetric clusters, each
+        containing 984 weights whose centroids are \(\pm(0.54,-0.55)\). :contentReference[oaicite:3]{index=3}
+  \item[Mirror symmetry]  
+        Every successful run maintains a perfect mirror pair (cosine
+        \(=-1\)). :contentReference[oaicite:4]{index=4}
+\end{description}
+
+% ------------------------------------------------------------------
+\subsection*{Failure Analysis}
+The remaining 16 runs all stall at 50 \% accuracy.  Hyperplane-angle
+statistics show their initial mirrors are
+\(\approx\!90^{\circ}\) from any optimum and never rotate far enough
+before the companion plane minimises loss locally—a reprise of the
+"perpendicular trap" seen earlier. :contentReference[oaicite:5]{index=5}
+
+% ------------------------------------------------------------------
+\paragraph{Discussion}
+\begin{itemize}
+  \item Mirrored weights almost eliminate dead-data and orientation
+        variance in one shot, giving the best reliability-speed trade-off
+        among static inits.
+  \item Geometry is pristine: a single distance pattern, two perfect
+        weight clusters, and universal mirror symmetry—strong empirical
+        support for prototype-surface theory.
+  \item The residual 1.6 \% failures highlight a limitation: mirroring
+        enforces symmetry but cannot guarantee a \emph{useful} initial
+        orientation.  Runtime monitors or annealing remain valuable
+        safety nets.
+\end{itemize}
+
+\hrulefill

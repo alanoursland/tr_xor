@@ -1,3 +1,91 @@
-% !TeX root = ../loss_entropy_annealing_study.tex
+% !TeX root = ../main.tex
 \section{Loss-Entropy Annealing Study}
 \label{sec:relu1-annealing}
+
+\subsection*{Aim}
+Previous monitors corrected specific, observable pathologies (dead inputs,
+out-of-bounds planes).  
+Here we test a softer strategy: \textbf{error-driven annealing}.
+An \emph{AnnealingMonitor} tracks the per-example MSE distribution,
+computes a "temperature"
+\(T = \lVert\!L\!\rVert_2 \times \bigl(\!\tfrac{H_{\max}-H}{H_{\max}}\bigr)^2\),
+and injects Gaussian noise scaled by \(T\) whenever
+\(T > 0.1\).
+The idea is to jolt the optimiser out of sharp local minima
+(e.g.\ the 75 \% trap) without pre-specifying what caused them.
+
+% ------------------------------------------------------------------
+\subsection*{Classification Accuracy}
+
+\begin{table}[h]
+\centering
+\caption{Accuracy over 50 runs with error-driven annealing.}
+\label{tab:relu1-anneal-accuracy}
+\begin{tabular}{lccccc}
+\toprule
+Accuracy & 0\,\% & 25\,\% & 50\,\% & 75\,\% & 100\,\% \\
+\midrule
+Runs & 0 & 0 & 0 & 1 & 49 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The monitor rescues \textbf{98 \%} of runs—comparable to
+re-init\,+\,margin and runtime monitors—but with only \emph{one} extra
+failed run out of 50.
+
+% ------------------------------------------------------------------
+\subsection*{Convergence Timing}
+
+\begin{table}[h]
+\centering
+\caption{Epochs to $\mathcal L<10^{-7}$ (successful runs).}
+\label{tab:relu1-anneal-epochs}
+\begin{tabular}{lcccccc}
+\toprule
+Percentile & 0\,\% & 10\,\% & 25\,\% & 50\,\% & 75\,\% & 100\,\% \\ \midrule
+Epochs & 103 & 121 & 134 & 181 & 275 & 5000 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Median runtime (181 epochs) is modestly higher than the baseline; the
+single long-tail run shows that, when noise keeps firing, convergence
+can stretch to the full 5000-epoch budget.
+
+% ------------------------------------------------------------------
+\subsection*{Prototype-Surface Geometry}
+
+\begin{description}[leftmargin=2em]
+  \item[Distance clusters]
+        98 trained hyperplanes group into \textbf{three} patterns;  
+        87 lie in the canonical cluster
+        \((d_{0},d_{1})\!=\!(0.16,1.41)\) predicted by prototype-surface
+        theory.%
+  \item[Weight clusters]
+        DBSCAN finds \textbf{four} clusters; two large, sign-symmetric
+        centroids capture 74 weights, mirroring the
+        $|z|=\operatorname{relu}(z)+\operatorname{relu}(-z)$ identity.%
+  \item[Mirror symmetry]
+        Mirror pairs appear in 41 runs; 18 are perfect (cos $\approx -1$).%
+\end{description}
+
+Thus the stochastic kicks do not destroy the geometric prototype
+structure; they merely help the optimiser \emph{reach} it.
+
+% ------------------------------------------------------------------
+\paragraph{Discussion}
+\begin{itemize}
+  \item Error-entropy annealing boosts success to 98 \% by detecting a
+        "spiky" error distribution and adding temperature-scaled noise.
+  \item Unlike hard resets, it keeps the same weights and so incurs only
+        a mild slowdown.
+  \item Prototype-surface clusters remain intact, supporting the thesis
+        that these surfaces are attractors once all inputs regain
+        gradient flow.
+  \item The lone failure suggests rare cases where noise cannot overcome
+        a perpendicular-hyperplane trap; future work could combine
+        annealing with the bounds monitor to close this gap.
+\end{itemize}
+
+\hrulefill

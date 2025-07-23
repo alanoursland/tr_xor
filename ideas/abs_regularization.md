@@ -1,0 +1,1 @@
+What if we did a regularization function r = Sum(Abs(Wx+b))? Basically, make each linear layer try to minimize the sum of its "distances" to points. It would cause ReLU conditioned nodes to move towards their negative side. It might help recover dead ndoes. It might also result in more stable hyperplane clusters.

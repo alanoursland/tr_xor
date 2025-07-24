@@ -52,7 +52,7 @@ Figure~\ref{fig:model-graph} and expressed analytically as
 \label{fig:model-graph}
 \end{figure}
 
-\paragraph{Loss function.}
+\paragraph{Loss function}
 We use the mean-squared error
 \begin{equation}
     \mathcal{L}(w,b)
@@ -65,7 +65,7 @@ whose Hessian is the constant matrix \(H = 2I\) once a sign pattern is
 fixed—an analyticity that allows an exact Newton step with learning-rate
 \(\eta = 0.5\).
 
-\paragraph{Analytic optimum and prototype surface.}
+\paragraph{Analytic optimum and prototype surface}
 Because the model contains only two weights and one bias, the mean-squared
 error can be written in closed form.  Substituting the centered XOR points into
 \eqref{eq:mse-loss} yields
@@ -100,7 +100,7 @@ Hence the global minima are the two sign-symmetric parameter sets
   \bigl(-w^\star,\,-b^\star\bigr).
 \]
 
-\paragraph{Geometric interpretation.}
+\paragraph{Geometric interpretation}
 With \(w_1=-w_2\) and \(b=0\), the pre-activation
 \(f(x)=\tfrac12(x_1-x_2)\) defines the line \(x_1=x_2\).
 This line intersects the two \textbf{False} inputs

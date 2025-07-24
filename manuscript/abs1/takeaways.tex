@@ -26,14 +26,14 @@ vanishes, not by the magnitude of its positive outputs.
 \subsection*{Key Takeaways}
 
 \begin{itemize}
-    \item \textbf{Surface before scale.}  
+    \item \textbf{Surface before scale}  
           All runs learn the correct surface; weight scale only governs how
           \emph{fast} they arrive.
-    \item \textbf{SGD(0.5) $\boldsymbol{\approx}$ Newton.}  
+    \item \textbf{SGD(0.5) $\boldsymbol{\approx}$ Newton}  
           A constant step equal to the inverse Hessian eigenvalue solves the
           problem in essentially one update; adaptive methods converge more
           slowly but to the same geometry.
-    \item \textbf{Invariant representation.}  
+    \item \textbf{Invariant representation}  
           Whether initial variance is $0.1$ or $4.0$, the prototype surface
           always intersects the negative class and offsets the positive class
           by $\sqrt2$—underscoring that representation depends on surface
@@ -43,20 +43,20 @@ vanishes, not by the magnitude of its positive outputs.
 \subsection*{Open Questions}
 
 \begin{itemize}
-    \item \textbf{Predicting convergence.}  
+    \item \textbf{Predicting convergence}  
           Our results hint at a correlation between geometric displacement
           (e.g.\ norm ratio or distance to the prototype surface) and the
           number of epochs to convergence.  Can we define an invariant metric
           on the \emph{initial-final} state pair that reliably predicts
           training time across initialisers and optimisers?
 
-    \item \textbf{Multi-output extension.}  
+    \item \textbf{Multi-output extension}  
           The Abs-XOR neuron uses a single scalar output to indicate class
           membership.  What geometric behaviour emerges if we switch to a
           one-hot output vector—one distance channel per class—instead of a
           single distance-to-surface scalar?
 
-    \item \textbf{From $\lvert\cdot\rvert$ to ReLU + ReLU.}  
+    \item \textbf{From $\lvert\cdot\rvert$ to ReLU + ReLU}  
           The next chapter decomposes the absolute value into two half-space
           ReLUs:  
           \[

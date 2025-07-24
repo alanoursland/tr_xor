@@ -34,7 +34,7 @@ Large   & 0 & 0 & 0 & 0 & 50 \\
 \end{tabular}
 \end{table}
 
-\textbf{Discussion.}  
+\textbf{Discussion}  
 Because the analytic optimum is reachable from any orientation, every
 initializer eventually yields perfect XOR classification.  The accuracy table
 will become more informative in later chapters where deeper models can stall
@@ -60,7 +60,7 @@ Large   & 154 & 527 & 671 & 878 & 1670 \\
 \end{tabular}
 \end{table}
 
-\textbf{Discussion.}  
+\textbf{Discussion}  
 Convergence time grows monotonically with initial weight scale.  Tiny and
 Normal inits start close to the optimal norm and need mainly a small rotation,
 whereas Large must shrink by orders of magnitude before fine-tuning—the
@@ -87,7 +87,7 @@ Large   & 22.0 & 6.54 \\
 \end{tabular}
 \end{table}
 
-\textbf{Discussion.}  
+\textbf{Discussion}  
 Median angle is remarkably stable ($\sim22^\circ$) across inits, indicating
 that orientation correction happens early and is largely independent of scale.
 Norm ratio, by contrast, expands linearly with $\sigma$; for the Large init,
@@ -183,16 +183,16 @@ Large   & $0.00\pm0.00$ & $1.41\pm0.00$ & 1 & 2 (27/23) \\
   \label{fig:abs1-hyperplanes}
 \end{figure}
 
-\paragraph{Interpretation.}
+\paragraph{Interpretation}
 \begin{itemize}
-  \item \textbf{Distance clusters.}  
+  \item \textbf{Distance clusters}  
         All five initializers collapse to a single distance pattern:
         the False points lie \emph{exactly} on the surface
         ($d_{\text{False}}=0$) and the True points lie \(\sqrt2\) away.
         This confirms that the neuron represents class identity via the
         \emph{location} of its zero-level set rather than by large positive
         activations.
-  \item \textbf{Weight clusters.}  
+  \item \textbf{Weight clusters}  
         DBSCAN ($eps = 0.1$, $min_samples = 2$) always discovers two parameter clusters whose centroids are
         sign flips of one another,
         \((\frac12,-\frac12,0)\) and \((-\frac12,\frac12,0)\).
@@ -202,7 +202,7 @@ Large   & $0.00\pm0.00$ & $1.41\pm0.00$ & 1 & 2 (27/23) \\
 \end{itemize}
 
 \paragraph{Why this matters for Prototype-Surface Learning.}
-Prototype-Surface Learning argues that a neuron’s meaning is anchored by
+Prototype-Surface Learning argues that a neuron's meaning is anchored by
 where its pre-activation is zero.  The empirical geometry here shows exactly
 that behaviour: training \emph{locks} the surface onto the negative prototypes
 and positions the positive prototypes on parallel offsets.  Because those

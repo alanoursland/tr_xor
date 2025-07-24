@@ -5,7 +5,7 @@
 \subsection*{Motivation}
 
 The \textsc{abs1} architecture admits a closed-form optimum (Section~\ref{sec:abs1-model-data}).  
-Once the gradient points exactly toward that optimum a single ``perfect’’ step can solve the problem.  
+Once the gradient points exactly toward that optimum a single "perfect" step can solve the problem.  
 This section asks:
 
 \begin{itemize}
@@ -13,15 +13,15 @@ This section asks:
     \item How does the adaptive-moment strategy of \textsc{Adam} interact with that optimization?
 \end{itemize}
 
-\subsection*{SGD and Newton’s Method}
+\subsection*{SGD and Newton's Method}
 \label{sec:sgd-newton}
 
 For this model the loss surface is locally \emph{exactly quadratic} once the
 sign pattern of $w^{\mathsf T}x+b$ is fixed.  That property lets us show that
 stochastic gradient descent with learning-rate $\eta=0.5$ performs the same
-parameter update as one step of Newton’s method.
+parameter update as one step of Newton's method.
 
-\paragraph{Gradient and Hessian.}
+\paragraph{Gradient and Hessian}
 With $b=0$ and $w_1=-w_2=\alpha$ the centred XOR inputs yield the loss
 \eqref{eq:closed-loss}; more generally, taking derivatives of
 \eqref{eq:mse-loss} for a fixed sign pattern gives
@@ -32,8 +32,8 @@ With $b=0$ and $w_1=-w_2=\alpha$ the centred XOR inputs yield the loss
 \]
 Thus the Hessian is constant and isotropic: \(H = 2I\).
 
-\paragraph{Newton update.}
-Newton’s method proposes the step
+\paragraph{Newton update}
+Newton's method proposes the step
 \[
     \Delta\theta_{\text{Newt}}
     \;=\;
@@ -46,7 +46,7 @@ so the updated parameters are
     \theta^{+} = \theta - \tfrac12 \nabla\! \mathcal L.
 \)
 
-\paragraph{SGD update.}
+\paragraph{SGD update}
 Plain SGD with a constant learning-rate $\eta$ performs
 \[
     \Delta\theta_{\text{SGD}}
@@ -90,7 +90,7 @@ Adam, 0.50 & 94  & 118 & 126 & 137 & 154 \\
 \end{tabular}
 \end{table}
 
-\paragraph{Accuracy and geometry.}
+\paragraph{Accuracy and geometry}
 All three settings achieve 100 \% XOR accuracy and reproduce the same two
 sign-symmetric prototype surfaces reported in
 Section~\ref{sec:abs1-init}.  The optimiser therefore changes \emph{when}

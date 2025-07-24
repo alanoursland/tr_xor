@@ -6,8 +6,8 @@ The experiments in this chapter use a \emph{single} absolute-value neuron to sol
 
 \begin{enumerate}[leftmargin=*]
 
-\item \textbf{XOR is the smallest ``hard'' classification problem.}
-A single linear threshold unit cannot separate XOR’s labels, making it the canonical example in the study of perceptrons
+\item \textbf{XOR is the smallest "hard" classification problem.}
+A single linear threshold unit cannot separate XOR's labels, making it the canonical example in the study of perceptrons
 \cite{minsky1969perceptrons}.  Any model that solves XOR \emph{must} introduce—and subsequently learn—non-linear structure.
 
 \item \textbf{The absolute-value activation reveals geometry.}
@@ -17,7 +17,7 @@ y = \lvert w^{\mathsf T}x + b \rvert
 \]
 turns the decision process into a signed distance calculation: the set $\{x \mid w^{\mathsf T}x + b = 0\}$ is a hyperplane that becomes the \emph{prototype surface} for class~$0$, while the magnitude $\lvert w^{\mathsf T}x + b\rvert$ encodes distance from that surface. In a two-dimensional input space this geometry is fully observable, letting us visualise how training moves the surface during learning.
 
-\item \textbf{Analytic tractability enables rigorous comparison.}
+\item \textbf{Analytic tractability enables rigorous comparison}
 With only two weights and one bias, the mean-squared error loss is a piecewise quadratic whose Hessian is a \emph{constant} multiple of the identity.  This yields a closed-form optimum and lets us analyse
 optimisers precisely; for example, Section~\ref{sec:placeholder} shows that vanilla gradient descent with learning-rate
 $\eta = 0.5$ is mathematically equivalent to a Newton step.

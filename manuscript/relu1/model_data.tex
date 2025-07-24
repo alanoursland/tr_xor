@@ -20,7 +20,7 @@ Our network consists of \textbf{two} affine half-spaces gated by ReLU, followed 
     \label{eq:relu1-model}
 \end{equation}
 
-\paragraph{Connection to the Abs model.}
+\paragraph{Connection to the Abs model}
 An absolute-value unit satisfies \(|z|=\operatorname{relu}(z)+\operatorname{relu}(-z).\) If one sets \(w^{(1)}=-\,w^{(0)}\) and \(b^{(1)}=-\,b^{(0)}\), Equation~\eqref{eq:relu1-model} reduces exactly to the Abs1 architecture studied earlier. Thus the present model is a \emph{loosely constrained} extension: it can reproduce the analytic Abs solution but is also free to explore other weight configurations, making it an ideal micro-laboratory for learning dynamics.
 
 \subsection*{Symbolic Analysis and Geometric Viewpoint}
@@ -41,7 +41,7 @@ This reduces the architecture to the `Abs1` model, for which the optimal paramet
 
 However, this optimal factorization is not unique. Symmetries such as neuron swapping (\(w^{(0)} \leftrightarrow w^{(1)}\), \(b^{(0)} \leftrightarrow b^{(1)}\)) and sign-flipping (\((w^{(0)}, b^{(0)}) \to (-w^{(0)}, -b^{(0)})\), similarly for the other neuron) preserve the function. Additionally, small perturbations that keep inactive regions non-positive on the data points yield equivalent outputs, forming a continuous manifold of global minima—contrasting with the isolated optima of the Abs model.
 
-\paragraph{Richer Suboptimal Landscape.}
+\paragraph{Richer Suboptimal Landscape}
 Beyond global minima, the landscape features degenerate regions. For instance, if both neurons are inactive on all points (\(w^{(j)\!\top}x_i + b^{(j)} \leq 0\) for all \(i,j\)), then \(\hat{y} \equiv 0\) and \(\mathcal{L} = 0.5\), creating an infinite-volume plateau. Similarly, one neuron "dead" reduces to a single-ReLU fit with positive loss, again on a continuum.
 
 \paragraph{Failure Mode: The Dying-ReLU Trap.}
@@ -96,5 +96,5 @@ We retain the mean-squared error used throughout Chapter~\textit{Abs1}:
 \end{equation}
 All optimisation settings (early-stopping tolerance, epoch cap, random-seed protocol) follow the \textbf{common framework} recapped in Section~\ref{sec:relu1-framework} and defined fully in the Abs1 chapter.
 
-\paragraph{Geometric viewpoint.}
+\paragraph{Geometric viewpoint}
 Each ReLU defines a half-plane boundary \(\{x\mid w^{(k)\!\top}x+b^{(k)}=0\}\). A successful network must place these two lines so that their activated regions cover the two \textbf{True} points while suppressing the \textbf{False} points. Prototype-surface theory (Sec.~\ref{sec:abs1-model-data}) therefore predicts \emph{pairs of sign-symmetric solutions}; we will revisit this geometry after analysing the baseline run in Section~\ref{sec:relu1-kaiming}.

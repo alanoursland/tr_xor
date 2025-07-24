@@ -11,12 +11,12 @@ introduces a surprisingly rich optimisation landscape.
 
 \subsection*{2.  Failure Modes in Hierarchical Order}
 \begin{enumerate}[label=(F\arabic*)]
-  \item \textbf{Dead data} — at least one XOR point inactive for every
+  \item \textbf{Dead data} - at least one XOR point inactive for every
         neuron \(\Rightarrow\) gradient $=0$ and loss plateau at
         $75\,\%$ accuracy.
-  \item \textbf{Vanishing margin} — early updates push a sample just
+  \item \textbf{Vanishing margin} - early updates push a sample just
         below the hinge; it stays dormant thereafter.
-  \item \textbf{Perpendicular trap} — a hyperplane initialised nearly
+  \item \textbf{Perpendicular trap} - a hyperplane initialised nearly
         $90^{\circ}$ from any optimum converges to a distant local
         minimum (Sec.~\ref{sec:relu1-reinit}\,ff.).
 \end{enumerate}
@@ -64,13 +64,13 @@ probability of reaching it.
 
 \subsection*{6.  Design Lessons}
 \begin{itemize}
-  \item \textbf{Keep inputs alive} — via mirror init, margin screening,
+  \item \textbf{Keep inputs alive} - via mirror init, margin screening,
         or live monitors.
-  \item \textbf{Maintain a safety buffer} — small positive margin or
+  \item \textbf{Maintain a safety buffer} - small positive margin or
         bounds check prevents early deactivation.
-  \item \textbf{Symmetry helps, but orientation matters} — mirroring
+  \item \textbf{Symmetry helps, but orientation matters} - mirroring
         removes half the variance; monitors/noise handle the rest.
-  \item \textbf{Noise as last resort} — entropy-gated perturbations can
+  \item \textbf{Noise as last resort} - entropy-gated perturbations can
         rescue rare plateaus without discarding progress.
 \end{itemize}
 
@@ -91,6 +91,6 @@ complexity.
 \medskip
 \begin{center}
 \emph{A single Abs unit solved XOR by construction; two ReLUs can match
-that robustness—but only when geometry is shepherded by thoughtful
+that robustness-but only when geometry is shepherded by thoughtful
 initialisation, vigilant monitoring, or both.}
 \end{center}

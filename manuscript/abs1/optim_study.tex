@@ -59,14 +59,14 @@ Setting \(\eta=\tfrac12\) makes \(\Delta\theta_{\text{SGD}} =
 
 \subsection*{Experimental setup}
 \begin{itemize}
-    \item \textbf{Weights} — Kaiming normal ($\mathcal N(0,2/n_\text{in})$).
-    \item \textbf{Loss} — mean-squared error, $\varepsilon=10^{-7}$ stop criterion.
-    \item \textbf{Runs} — $50$ independent seeds in each condition.
+    \item \textbf{Weights} - Kaiming normal ($\mathcal N(0,2/n_\text{in})$).
+    \item \textbf{Loss} - mean-squared error, $\varepsilon=10^{-7}$ stop criterion.
+    \item \textbf{Runs} - $50$ independent seeds in each condition.
     \item \textbf{Optimisers}  
         \begin{enumerate}
-            \item \textbf{SGD, lr = 0.50} — optimal learning rate for SGD.
-            \item \textbf{Adam, lr = 0.01} — conventional setting from Section~\ref{sec:abs1-init}.
-            \item \textbf{Adam, lr = 0.50} — high-gain to rate to contrast with optimal SGD.
+            \item \textbf{SGD, lr = 0.50} - optimal learning rate for SGD.
+            \item \textbf{Adam, lr = 0.01} - conventional setting from Section~\ref{sec:abs1-init}.
+            \item \textbf{Adam, lr = 0.50} - high-gain to rate to contrast with optimal SGD.
         \end{enumerate}
 \end{itemize}
 
@@ -103,7 +103,7 @@ the solution is reached, not \emph{what} is learned.
     \item \textbf{SGD ($\alpha=0.5$): effectively one big step, two logged epochs.}  
         Because the loss has a full-rank quadratic Hessian $H = 2I$, a single Newton 
         step (and therefore a single SGD update with $\eta = 0.5$) moves the parameters 
-        essentially onto the global minimum—provided the sign pattern is already correct.  
+        essentially onto the global minimum-provided the sign pattern is already correct.  
         In our training loop, however, the loss is evaluated only \emph{after} an epoch 
         completes.  During epoch 0 the weight update makes the Newton-sized jump, but the 
         loss checked at the end of that epoch is still just above the $10^{-7}$ threshold.  
@@ -141,11 +141,11 @@ the solution is reached, not \emph{what} is learned.
 \paragraph{Take-away.}
 The Abs-XOR problem is a \textit{frictionless spherical cow} for optimisation:
 its loss is quadratic, its optimum is known in closed form, and \emph{any}
-reasonable optimiser—whether adaptive or not—will find that optimum so long
+reasonable optimiser-whether adaptive or not-will find that optimum so long
 as it takes a step of roughly the correct scale.  Constant-step SGD with
 \(\eta = 0.5\) happens to match the inverse Hessian and therefore converges
 in essentially one update, but Adam and smaller step sizes reach the same
-prototype surface after a longer—yet still monotonic—trajectory.  The study
+prototype surface after a longer-yet still monotonic-trajectory.  The study
 thus illustrates a clear separation between \emph{speed} of optimisation
 (which depends on step size and momentum) and \emph{content} of the learned
 representation (which, for this well-conditioned toy, is invariant).

@@ -4,8 +4,8 @@
 \label{sec:abs1-init}
 
 \subsection*{Experimental Variants}
-We test five weight-initialization schemes—\textsc{tiny}, \textsc{normal},
-\textsc{Xavier}, \textsc{Kaiming}, and \textsc{large}—were evaluated under
+We test five weight-initialization schemes-\textsc{tiny}, \textsc{normal},
+\textsc{Xavier}, \textsc{Kaiming}, and \textsc{large}-were evaluated under
 identical training conditions (Adam, $lr=0.01$, $50$ seeds, early-stop at
 $\mathcal L<10^{-7}$).  The following subsections present classification
 accuracy, convergence timing, weight-space movement, and geometric outcomes.
@@ -63,7 +63,7 @@ Large   & 154 & 527 & 671 & 878 & 1670 \\
 \textbf{Discussion}  
 Convergence time grows monotonically with initial weight scale.  Tiny and
 Normal inits start close to the optimal norm and need mainly a small rotation,
-whereas Large must shrink by orders of magnitude before fine-tuning—the
+whereas Large must shrink by orders of magnitude before fine-tuning-the
 principal driver of its median $671$-epoch runtime.
 
 % ------------------------------------------------------------------
@@ -210,8 +210,8 @@ parallel offsets never cross zero, they are implicit but fully determined once
 the prototype surface is in place.
 
 Together with the convergence results, the geometry demonstrates that weight
-scale affects only the optimisation \emph{speed}; the final surface—and
-therefore the learned representation—remains invariant across all
+scale affects only the optimisation \emph{speed}; the final surface-and
+therefore the learned representation-remains invariant across all
 initialization schemes.
 
 % ------------------------------------------------------------------

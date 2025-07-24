@@ -39,7 +39,7 @@ Under these constraints, the model becomes:
 \]
 This reduces the architecture to the `Abs1` model, for which the optimal parameters are \(w^{(0)\star} = (\pm\tfrac12, \mp\tfrac12)\) and \(b^{(0)\star}=0\). The geometry of this solution consists of two opposing hyperplanes that are perfectly coincident, forming a single prototype surface \(x_1 - x_2 = 0\) that passes through the two \textbf{False} points.
 
-However, this optimal factorization is not unique. Symmetries such as neuron swapping (\(w^{(0)} \leftrightarrow w^{(1)}\), \(b^{(0)} \leftrightarrow b^{(1)}\)) and sign-flipping (\((w^{(0)}, b^{(0)}) \to (-w^{(0)}, -b^{(0)})\), similarly for the other neuron) preserve the function. Additionally, small perturbations that keep inactive regions non-positive on the data points yield equivalent outputs, forming a continuous manifold of global minima—contrasting with the isolated optima of the Abs model.
+However, this optimal factorization is not unique. Symmetries such as neuron swapping (\(w^{(0)} \leftrightarrow w^{(1)}\), \(b^{(0)} \leftrightarrow b^{(1)}\)) and sign-flipping (\((w^{(0)}, b^{(0)}) \to (-w^{(0)}, -b^{(0)})\), similarly for the other neuron) preserve the function. Additionally, small perturbations that keep inactive regions non-positive on the data points yield equivalent outputs, forming a continuous manifold of global minima-contrasting with the isolated optima of the Abs model.
 
 \paragraph{Richer Suboptimal Landscape}
 Beyond global minima, the landscape features degenerate regions. For instance, if both neurons are inactive on all points (\(w^{(j)\!\top}x_i + b^{(j)} \leq 0\) for all \(i,j\)), then \(\hat{y} \equiv 0\) and \(\mathcal{L} = 0.5\), creating an infinite-volume plateau. Similarly, one neuron "dead" reduces to a single-ReLU fit with positive loss, again on a continuum.
@@ -53,11 +53,11 @@ In the "pre-death" regime where the neuron is active only at \(x_2=(1,1)\) (\(z_
 \[
     z_2^{\,\text{new}} = z_2 \left(1-\frac{3}{2}\eta\right).
 \]
-For \(0 < \eta < 2/3\), \(z_2\) decays exponentially to zero. Once non-positive, the neuron deactivates everywhere, gradients vanish, and it remains "dead." This geometric trap—driven by imbalance in active points—is a key failure mode observable in experiments.
+For \(0 < \eta < 2/3\), \(z_2\) decays exponentially to zero. Once non-positive, the neuron deactivates everywhere, gradients vanish, and it remains "dead." This geometric trap-driven by imbalance in active points-is a key failure mode observable in experiments.
 
 \subsection*{Prototype Surface Interpretation of the Optimal Solution}
 
-To connect the symbolic analysis above with the broader Prototype Surface Learning Theory (detailed in Section~\ref{sec:placeholder}), we reinterpret the optimal "V-shaped" solution through the lens of prototype surfaces. Label the centered XOR points as follows for clarity:
+To connect the symbolic analysis above with the broader prototype surface theory (detailed in Section~\ref{sec:placeholder}), we reinterpret the optimal "V-shaped" solution through the lens of prototype surfaces. Label the centered XOR points as follows for clarity:
 
 \begin{itemize}
     \item A: $(-1, -1) \to 0$

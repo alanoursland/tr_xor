@@ -9,10 +9,10 @@ Fifty independent training runs of the two-ReLU model were launched with
 ($lr=0.01$, $\beta=(0.9,0.99)$) and a hard cap of $800$ epochs.
 Training stopped under either of two conditions:
 \begin{enumerate*}[label=(\roman*)]
-    \item \textbf{Convergence} — loss fails to improve by
+    \item \textbf{Convergence} - loss fails to improve by
           $10^{-24}$ for ten consecutive epochs
           (e.g.\ epoch 367 in one run);
-    \item \textbf{Accuracy threshold} — mean-squared error
+    \item \textbf{Accuracy threshold} - mean-squared error
           $\mathcal L\le10^{-7}$ (e.g.\ epoch 247).
 \end{enumerate*}
 All further chapters inherit this protocol unless stated otherwise.
@@ -121,8 +121,8 @@ This statistic motivates the detection and re-initialisation tactics explored in
 \paragraph{Discussion}
 \begin{itemize}
   \item Bare Kaiming achieves perfect XOR only \textbf{48\,\%} of the time.
-  \item Successful runs agree with prototype-surface theory—two sign-symmetric
-        distance patterns—but the clusters are fuzzier than in Abs1 because
+  \item Successful runs agree with prototype-surface theory-two sign-symmetric
+        distance patterns-but the clusters are fuzzier than in Abs1 because
         the ReLU's inactive half-space allows more slack.
   \item The prevalence of early dead inputs and the bimodal loss histogram
         make Kaiming an ideal baseline for testing activation variants,

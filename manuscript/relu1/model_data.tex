@@ -23,6 +23,67 @@ Our network consists of \textbf{two} affine half-spaces gated by ReLU, followed 
 \paragraph{Connection to the Abs model.}
 An absolute-value unit satisfies \(|z|=\operatorname{relu}(z)+\operatorname{relu}(-z).\) If one sets \(w^{(1)}=-\,w^{(0)}\) and \(b^{(1)}=-\,b^{(0)}\), Equation~\eqref{eq:relu1-model} reduces exactly to the Abs1 architecture studied earlier. Thus the present model is a \emph{loosely constrained} extension: it can reproduce the analytic Abs solution but is also free to explore other weight configurations, making it an ideal micro-laboratory for learning dynamics.
 
+\subsection*{Symbolic Analysis and Geometric Viewpoint}
+\label{sec:relu1-analysis}
+
+The two-ReLU model introduces a more complex loss landscape than its single-unit Abs counterpart. While a full symbolic minimization over the six free parameters remains challenging due to the piecewise nature of the loss, the finite dataset allows enumeration of activation patterns for targeted analysis of critical points and failure modes.
+
+\paragraph{Optimal "V-Shaped" Solution.}
+A global minimum (\(\mathcal{L}=0\)) is achieved when the network learns to reproduce the absolute-value function. This occurs if the parameters for the two ReLU neurons are sign-symmetric:
+\[
+    w^{(1)} = -w^{(0)} \qquad \text{and} \qquad b^{(1)} = -b^{(0)}.
+\]
+Under these constraints, the model becomes:
+\[
+    \hat y(x) = \operatorname{relu}(w^{(0)\!\top}x + b^{(0)}) + \operatorname{relu}(-w^{(0)\!\top}x - b^{(0)}) = \lvert w^{(0)\!\top}x + b^{(0)} \rvert.
+\]
+This reduces the architecture to the `Abs1` model, for which the optimal parameters are \(w^{(0)\star} = (\pm\tfrac12, \mp\tfrac12)\) and \(b^{(0)\star}=0\). The geometry of this solution consists of two opposing hyperplanes that are perfectly coincident, forming a single prototype surface \(x_1 - x_2 = 0\) that passes through the two \textbf{False} points.
+
+However, this optimal factorization is not unique. Symmetries such as neuron swapping (\(w^{(0)} \leftrightarrow w^{(1)}\), \(b^{(0)} \leftrightarrow b^{(1)}\)) and sign-flipping (\((w^{(0)}, b^{(0)}) \to (-w^{(0)}, -b^{(0)})\), similarly for the other neuron) preserve the function. Additionally, small perturbations that keep inactive regions non-positive on the data points yield equivalent outputs, forming a continuous manifold of global minima—contrasting with the isolated optima of the Abs model.
+
+\paragraph{Richer Suboptimal Landscape.}
+Beyond global minima, the landscape features degenerate regions. For instance, if both neurons are inactive on all points (\(w^{(j)\!\top}x_i + b^{(j)} \leq 0\) for all \(i,j\)), then \(\hat{y} \equiv 0\) and \(\mathcal{L} = 0.5\), creating an infinite-volume plateau. Similarly, one neuron "dead" reduces to a single-ReLU fit with positive loss, again on a continuum.
+
+\paragraph{Failure Mode: The Dying-ReLU Trap.}
+A prominent suboptimal trap is the "dying-ReLU" phenomenon, where a neuron's gradient vanishes irreversibly. Consider a single neuron \((w,b)\) whose weight vector is (nearly) perpendicular to the ideal XOR direction, e.g., \(w = \alpha (1, 1)/\sqrt{2}\) for scalar \(\alpha\). The pre-activations \(z_i = w^{\mathsf T}x_i + b\) on the four XOR points are:
+\[
+    z_1 = -\alpha\sqrt{2}+b, \quad z_2=\alpha\sqrt{2}+b, \quad z_3=b, \quad z_4=b.
+\]
+In the "pre-death" regime where the neuron is active only at \(x_2=(1,1)\) (\(z_2 > 0\), others \(\leq 0\)), and assuming the other neuron handles the rest perfectly, the gradient descent update shrinks \(z_2\):
+\[
+    z_2^{\,\text{new}} = z_2 \left(1-\frac{3}{2}\eta\right).
+\]
+For \(0 < \eta < 2/3\), \(z_2\) decays exponentially to zero. Once non-positive, the neuron deactivates everywhere, gradients vanish, and it remains "dead." This geometric trap—driven by imbalance in active points—is a key failure mode observable in experiments.
+
+\subsection*{Prototype Surface Interpretation of the Optimal Solution}
+
+To connect the symbolic analysis above with the broader Prototype Surface Learning Theory (detailed in Section~\ref{sec:placeholder}), we reinterpret the optimal "V-shaped" solution through the lens of prototype surfaces. Label the centered XOR points as follows for clarity:
+
+\begin{itemize}
+    \item A: $(-1, -1) \to 0$
+    \item B: $(-1, +1) \to 1$
+    \item C: $(+1, -1) \to 1$
+    \item D: $(+1, +1) \to 0$
+\end{itemize}
+
+In the optimal configuration with $w^{(0)\star} = (\frac{1}{2}, -\frac{1}{2})$, $b^{(0)\star}=0$, and $w^{(1)\star} = -w^{(0)\star}$, $b^{(1)\star}=0$, each ReLU defines a one-sided extension of the shared prototype surface $x_1 - x_2 = 0$ (passing through A and D).
+
+The first ReLU "recognizes" (outputs zero for) the set $\{A, B, D\}$, extending the surface to include the negative half-space that captures B. The second ReLU recognizes $\{A, C, D\}$, extending to the positive half-space that includes C. The sum of activations is zero precisely at the intersection $\{A, B, D\} \cap \{A, C, D\} = \{A, D\}$, which are the XOR-false points (targets 0). For B and C (XOR-true), the sum is positive (1), reflecting exclusion from at least one prototype region.
+
+In the theory's primary viewpoint---where zero activation signals inclusion in the prototype region (a half-space)---the addition acts as a set-theoretic AND operation on the prototype sets. An input is "fully recognized" (sum=0) only if it belongs to both extended prototype regions, solving XOR by identifying the same-sign points $\{A, D\}$ as the joint prototype intersection.
+
+An alternative interpretation, aligning with the conventional "activation-as-presence" view, treats zero as non-membership (inactivity). Here, the first ReLU recognizes (positive output for) $\{C\}$, and the second recognizes $\{B\}$. The sum then acts as an OR: positive for $\{B\} \cup \{C\}$ (XOR-true points), and zero elsewhere.
+
+These dual views are equivalent via DeMorgan's theorem:
+
+\[
+    \neg(\{A, B, D\} \cap \{A, C, D\}) = \neg\{A, B, D\} \cup \neg\{A, C, D\} = \{C\} \cup \{B\}.
+\]
+
+The AND interpretation fits the prototype theory more naturally: zeros are meaningful inclusion signals, and positive magnitudes are largely irrelevant deviation scores. In contrast, the OR view relies on activation magnitudes for detection strength, but addition mixes them in ways that complicate interpretation (e.g., uneven scales would blur the union semantics).
+
+This XOR example illustrates how ReLUs serve as one-sided prototype extenders (generalizing the surface $\{A, D\}$ to half-spaces), with their sum emulating the absolute-value's two-sided distance field. The network aggregates these evaluations hierarchically, composing simple geometric prototypes to resolve nonlinear separability without architectural changes.
+
 \subsection*{Loss Function}
 We retain the mean-squared error used throughout Chapter~\textit{Abs1}:
 \begin{equation}

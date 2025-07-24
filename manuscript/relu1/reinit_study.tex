@@ -5,8 +5,10 @@
 \subsection*{Aim}
 The baseline showed that plain Kaiming weights often leave at least one
 XOR point \emph{inactive} for every neuron.  
-Here we test a simple remedy: \textbf{re-initialise the network until all
-four inputs produce a positive pre-activation in \emph{each} ReLU.}
+Here we test a simple remedy: \textbf{re-initialise the network up to 100 times 
+until all four inputs produce a positive pre-activation in \emph{each} ReLU}, 
+using Kaiming-normal initialization with weights \(\sim \mathcal{N}(0, \sigma)\) and bias \(0\), as in Section~\ref{sec:relu1-kaiming}.
+The reinitialization ensure that the network begins training without any dead data.
 A second variant tightens the criterion by requiring a \emph{margin}
 of $0.3$ in activation space.
 
@@ -106,9 +108,8 @@ It is not clear how the initial state relates to this basin.
   \item Prototype-surface geometry tightens: mirror solutions dominate
         and distance clusters homogenise, reinforcing the theory's
         prediction that symmetry emerges once every input is alive.
-  \item The remaining errors stem from a distinct ``perpendicular
-        hyperplane'' trap, which motivates the runtime monitors discussed
-        next.
+  \item The remaining errors stem from a distinct ``dying-ReLU'' 
+        trap, which motivates the runtime monitors discussed next.
 \end{itemize}
 
 \hrulefill

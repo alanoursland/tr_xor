@@ -30,7 +30,7 @@ Runs & 0 & 1 & 10 & 0 & 39 \\
 \end{table}
 
 \textbf{Outcome.}
-Success falls from the ReLU baseline's $48\,\%$ to $38\,\%$..
+Success improves from the ReLU baseline's $48\,\%$ to $78\,\%$ (39 of 50 runs).
 
 % ------------------------------------------------------------------
 \subsection*{Convergence Timing}
@@ -76,15 +76,19 @@ same geometric prototype surfaces as earlier successful methods.
 % ------------------------------------------------------------------
 \paragraph{Discussion}
 \begin{itemize}
-  \item BHS eliminates dead inputs \emph{by construction} but improves
-        accuracy only marginally and slows learning.
+  \item BHS eliminates dead inputs \emph{by construction} and, while 
+      it substantially improves accuracy over the baseline, its $78\,\%$ 
+      success rate is lower than that of margin-based re-initialisation.
   \item Geometry of the successful runs is pristine—single distance
-        cluster, perfect mirror symmetry—yet the uniform outward
-        placement leaves the network prone to an orientation trap that
-        rejection sampling rarely encounters.
-  \item Given its heavier compute cost (longer epochs) and lower success
-        than margin-based re-init, we regard BHS as a negative result and
-        do not pursue it further in subsequent chapters.
+      cluster, perfect mirror symmetry—yet the uniform outward
+      placement leaves the network prone to an orientation trap that
+      rejection sampling rarely encounters.
+  \item BHS initialization presents a compelling trade-off. Although 
+      its convergence is slower and its 78\,\% success rate is lower than 
+      margin-based re-initialisation, it is unique in producing geometrically 
+      pristine, perfect mirror-symmetric solutions. Its well-defined failure 
+      mode—the orientation trap—makes it a valuable and interpretable technique 
+      worthy of further investigation.
 \end{itemize}
 
 \hrulefill

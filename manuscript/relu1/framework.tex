@@ -1,3 +1,21 @@
 % !TeX root = ../main.tex
 \section{Experimental Framework}
 \label{sec:relu1-framework}
+
+This chapter's experimental protocol inherits the core principles of data handling, metric collection, and post-training analysis from the framework defined in Chapter~\textit{Abs1} (Section~\ref{sec:abs1-framework}). This section summarises the key configurations and differences specific to the two-ReLU model.
+
+\subsection*{Model and Training Protocol}
+All experiments use the two-ReLU model defined in Section~\ref{sec:relu1-model-data} on the centered XOR dataset. Unless specified otherwise, each variant is trained on 50 or more independent seeds using the Adam optimizer ($\text{lr}=0.01$) and MSE loss.
+
+The baseline runs employ a dual early-stopping criterion, halting if either the MSE drops below \(\varepsilon=10^{-7}\) or the loss fails to improve for 10 consecutive epochs. Specific interventions, such as the runtime monitors, may modify these rules or the total epoch budget.
+
+\subsection*{Experimental Variants}
+Unlike the previous chapter, which focused on standard initializers, this chapter evaluates a suite of interventions designed to improve the baseline model's 48\,\% success rate. The primary variants tested include:
+\begin{itemize}
+    \item \textbf{Activation functions:} Leaky ReLU with various slopes, ELU, and PReLU.
+    \item \textbf{Static initialisation schemes:} Re-initialisation based on "live" data (with and without a margin), bounded-hypersphere initialization, and mirror-symmetric initialization.
+    \item \textbf{Dynamic runtime interventions:} Online monitors that detect and correct dead data or out-of-bounds weights, and an error-entropy annealing schedule that injects noise to escape local minima.
+\end{itemize}
+
+\subsection*{Analysis}
+The post-training analyses of convergence, accuracy, and geometry follow the same methods as the previous chapter. Additional diagnostics specific to this model were added, including robust mirror-weight symmetry detection and failure mode analysis.

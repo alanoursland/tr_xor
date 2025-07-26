@@ -2,77 +2,94 @@
 \section{Optimizer Study}
 \label{sec:abs1-optim}
 
-\subsection*{Motivation}
+% ------------------------------------------------------------------
 
-The \textsc{abs1} architecture admits a closed-form optimum (Section~\ref{sec:abs1-model-data}).  
-Once the gradient points exactly toward that optimum a single "perfect" step can solve the problem.  
-This section asks:
+\subsection*{Study Motivation}
 
+The \textsc{abs1} architecture admits a closed-form optimum (Section~\ref{sec:abs1-model-data}), creating a unique opportunity to study optimizer behavior when the theoretical ideal is known. Once the gradient points exactly toward that optimum, a single "perfect" step can solve the problem. This section investigates how different optimizers approach this theoretical ideal and what their behavior reveals about optimization dynamics more generally.
+
+The loss surface for this model is locally \emph{exactly quadratic} once the sign pattern of $w^{\mathsf T}x+b$ is fixed, enabling a direct mathematical connection between first-order methods and Newton's method. Taking derivatives of the MSE loss \eqref{eq:mse-loss} for a fixed sign pattern gives:
+\[
+   \nabla\! \mathcal L(w,b) \;=\; 2\begin{bmatrix}w_1\\ w_2\\ b\end{bmatrix},
+   \qquad
+   \nabla^2\! \mathcal L(w,b) \;=\; 2I_{3\times3}.
+\]
+The constant, isotropic Hessian $H = 2I$ means Newton's method proposes the update:
+\[
+   \Delta\theta_{\text{Newt}} = -H^{-1}\nabla\! \mathcal L = -\tfrac12\,\nabla\! \mathcal L.
+\]
+Plain SGD with learning rate $\eta$ performs $\Delta\theta_{\text{SGD}} = -\eta\,\nabla\! \mathcal L$. Setting $\eta=\tfrac12$ makes $\Delta\theta_{\text{SGD}} = \Delta\theta_{\text{Newt}}$, meaning each SGD step with $\eta=0.5$ coincides \emph{exactly} with a Newton step.
+
+This mathematical equivalence allows us to test two key questions:
 \begin{itemize}
-    \item How close does a first-order optimiser get to that ideal?
-    \item How does the adaptive-moment strategy of \textsc{Adam} interact with that optimization?
+   \item How close does SGD with the theoretically optimal learning rate get to ideal single-step convergence?
+   \item How does Adam's adaptive-moment strategy interact with this well-conditioned optimization landscape?
 \end{itemize}
 
-\subsection*{SGD and Newton's Method}
-\label{sec:sgd-newton}
+Beyond the immediate practical insights, this experiment serves as a controlled study of pure optimizer characteristics. Since the destination is mathematically determined, any differences in behavior isolate the effects of momentum, adaptive scaling, and step-size selection—knowledge that will prove valuable when tackling more complex architectures where Newton steps are unavailable.
 
-For this model the loss surface is locally \emph{exactly quadratic} once the
-sign pattern of $w^{\mathsf T}x+b$ is fixed.  That property lets us show that
-stochastic gradient descent with learning-rate $\eta=0.5$ performs the same
-parameter update as one step of Newton's method.
+% ------------------------------------------------------------------
 
-\paragraph{Gradient and Hessian}
-With $b=0$ and $w_1=-w_2=\alpha$ the centred XOR inputs yield the loss
-\eqref{eq:closed-loss}; more generally, taking derivatives of
-\eqref{eq:mse-loss} for a fixed sign pattern gives
-\[
-    \nabla\! \mathcal L(w,b) \;=\; 2\begin{bmatrix}w_1\\ w_2\\ b\end{bmatrix},
-    \qquad
-    \nabla^2\! \mathcal L(w,b) \;=\; 2I_{3\times3}.
-\]
-Thus the Hessian is constant and isotropic: \(H = 2I\).
+\subsection*{Study Design}
 
-\paragraph{Newton update}
-Newton's method proposes the step
-\[
-    \Delta\theta_{\text{Newt}}
-    \;=\;
-    -H^{-1}\nabla\! \mathcal L
-    \;=\;
-    -\tfrac12\,\nabla\! \mathcal L,
-\]
-so the updated parameters are
-\(
-    \theta^{+} = \theta - \tfrac12 \nabla\! \mathcal L.
-\)
+\paragraph{Model and Data}
+All experiments use the single absolute-value neuron architecture $\hat{y}(x) = |w^{\mathsf{T}}x + b|$ on the centered XOR dataset with MSE loss, maintaining consistency with the initialization study (Section~\ref{sec:abs1-init}).
 
-\paragraph{SGD update}
-Plain SGD with a constant learning-rate $\eta$ performs
-\[
-    \Delta\theta_{\text{SGD}}
-    \;=\;
-    -\eta\,\nabla\! \mathcal L.
-\]
-Setting \(\eta=\tfrac12\) makes \(\Delta\theta_{\text{SGD}} =
-\Delta\theta_{\text{Newt}}\).  Hence each SGD step with
-\(\eta=0.5\) coincides \emph{exactly} with a Newton step.
+\paragraph{Optimizer Variants}
+We test three optimizer configurations, each trained on 50 independent runs with Kaiming normal initialization ($\mathcal{N}(0, 2/n_{\text{in}})$) and early stopping at $\mathcal{L} < 10^{-7}$:
 
-\subsection*{Experimental setup}
-\begin{itemize}
-    \item \textbf{Weights} - Kaiming normal ($\mathcal N(0,2/n_\text{in})$).
-    \item \textbf{Loss} - mean-squared error, $\varepsilon=10^{-7}$ stop criterion.
-    \item \textbf{Runs} - $50$ independent seeds in each condition.
-    \item \textbf{Optimisers}  
-        \begin{enumerate}
-            \item \textbf{SGD, lr = 0.50} - optimal learning rate for SGD.
-            \item \textbf{Adam, lr = 0.01} - conventional setting from Section~\ref{sec:abs1-init}.
-            \item \textbf{Adam, lr = 0.50} - high-gain to rate to contrast with optimal SGD.
-        \end{enumerate}
-\end{itemize}
+\begin{enumerate}
+   \item \textbf{SGD, lr = 0.50} -- Theoretically optimal learning rate that equals Newton steps
+   \item \textbf{Adam, lr = 0.01} -- Standard setting from the initialization study for comparison
+   \item \textbf{Adam, lr = 0.50} -- High-gain Adam to contrast with optimal SGD behavior
+\end{enumerate}
 
-\subsection*{Convergence Timing}
+The Adam variants use default momentum parameters ($\beta_1=0.9$, $\beta_2=0.99$) to isolate the effects of learning rate scaling versus the adaptive moment estimation strategy.
 
-\begin{table}[h]
+\paragraph{Experimental Hypothesis}
+Based on the mathematical equivalence derived above, we predict that SGD with $\eta=0.5$ should converge in essentially one substantive parameter update (logged as 2 epochs due to our training loop structure). Adam optimizers should reach the same geometric solution but via different trajectories: Adam(0.01) through many small steps, and Adam(0.5) through initial overshooting followed by momentum-damped oscillations.
+
+% ------------------------------------------------------------------
+
+\subsection*{Success Metrics}
+
+\begin{table}[ht]
+\centering
+\caption{Classification accuracy across optimizer variants (50 runs each). All optimizers achieve perfect XOR classification.}
+\label{tab:abs1-opt-accuracy}
+\begin{tabular}{lc}
+\toprule
+Optimizer & Success Rate \\
+\midrule
+SGD, lr = 0.50 & 50/50 (100\%) \\
+Adam, lr = 0.01 & 50/50 (100\%) \\
+Adam, lr = 0.50 & 50/50 (100\%) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[ht]
+\centering
+\caption{Final loss statistics across optimizer variants.}
+\label{tab:abs1-opt-loss}
+\begin{tabular}{lccc}
+\toprule
+Optimizer & Mean & Min & Max \\
+\midrule
+SGD, lr = 0.50 & $0.00 \times 10^{0}$ & $0.00 \times 10^{0}$ & $0.00 \times 10^{0}$ \\
+Adam, lr = 0.01 & $7.06 \times 10^{-8}$ & $3.08 \times 10^{-10}$ & $1.00 \times 10^{-6}$ \\
+Adam, lr = 0.50 & $1.90 \times 10^{-6}$ & $2.11 \times 10^{-8}$ & $1.75 \times 10^{-5}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+All optimizer variants achieve universal classification success, consistent with the initialization study results. The robust accuracy across optimizers confirms that the single absolute-value architecture eliminates convergence failures regardless of the optimization strategy employed.
+
+% ------------------------------------------------------------------
+
+\subsection*{Learning Dynamics}
+
+\begin{table}[ht]
 \centering
 \caption{Epochs to reach $\mathcal{L}\le10^{-7}$ (percentiles over 50 runs).}
 \label{tab:abs1-opt-conv}
@@ -81,7 +98,7 @@ Setting \(\eta=\tfrac12\) makes \(\Delta\theta_{\text{SGD}} =
 \multirow{2}{*}{Optimiser} &
 \multicolumn{5}{c}{Epoch percentile} \\
 \cmidrule(lr){2-6}
- & 0\,\% & 25\,\% & 50\,\% & 75\,\% & 100\,\% \\
+& 0\,\% & 25\,\% & 50\,\% & 75\,\% & 100\,\% \\
 \midrule
 SGD,  0.50 & 2   & 2   & 2   & 2   & 2   \\ 
 Adam, 0.01 & 61  & 139 & 198 & 266 & 548 \\
@@ -90,62 +107,42 @@ Adam, 0.50 & 94  & 118 & 126 & 137 & 154 \\
 \end{tabular}
 \end{table}
 
-\paragraph{Accuracy and geometry}
-All three settings achieve 100 \% XOR accuracy and reproduce the same two
-sign-symmetric prototype surfaces reported in
-Section~\ref{sec:abs1-init}.  The optimiser therefore changes \emph{when}
-the solution is reached, not \emph{what} is learned.
+The convergence timing reveals three distinct optimization regimes, spanning nearly two orders of magnitude in training time. SGD with the theoretically optimal learning rate demonstrates the predicted Newton-step behavior, while the Adam variants illustrate different aspects of adaptive optimization dynamics.
 
-\subsection*{Discussion}
-\label{sec:abs1-opt-discuss}
+\paragraph{SGD(0.50): Near-Instantaneous Convergence}
+SGD with $\eta=0.5$ achieves the theoretical ideal, converging in exactly 2 epochs across all runs. This uniform timing reflects the Newton-step equivalence: the first epoch applies the optimal parameter update, bringing the loss nearly to zero, while the second epoch applies a numerically tiny correction that triggers the stopping criterion. The complete independence from initial geometry—evident in the raw data where all angle and norm ranges yield identical 2.0-epoch convergence—confirms that the optimizer makes the perfect step regardless of starting conditions.
 
-\begin{enumerate}[label=\arabic*.]
-    \item \textbf{SGD ($\alpha=0.5$): effectively one big step, two logged epochs.}  
-        Because the loss has a full-rank quadratic Hessian $H = 2I$, a single Newton 
-        step (and therefore a single SGD update with $\eta = 0.5$) moves the parameters 
-        essentially onto the global minimum-provided the sign pattern is already correct.  
-        In our training loop, however, the loss is evaluated only \emph{after} an epoch 
-        completes.  During epoch 0 the weight update makes the Newton-sized jump, but the 
-        loss checked at the end of that epoch is still just above the $10^{-7}$ threshold.  
-        Epoch 1 then applies a numerically tiny corrective step, drops the loss below the 
-        threshold, and triggers early stopping.  Consequently each run with SGD($\eta = 0.5$) 
-        is logged as \emph{two} epochs even though all substantive optimisation happened in 
-        the very first parameter update.
+\paragraph{Adam(0.01): Gradual Convergence}
+The standard Adam configuration exhibits the expected behavior for conservative learning rates. With a base rate of $0.01$, the effective step size remains too small for rapid convergence, requiring hundreds of epochs to reach the optimum. The convergence timing shows sensitivity to initialization geometry similar to the patterns observed in the initialization study, with norm ratios correlating with training duration (124 epochs for small adjustments vs. 448 epochs for large magnitude changes).
 
-    \item \textbf{Small base rate = uniformly slow learning.}  
-          With \(\alpha=0.01\) the \textsc{Adam} update is simply too small to
-          reach the optimum quickly.  The per-parameter scaling
-          \(\smash{\sqrt{1-\beta_2^t}/(1-\beta_1^t)}\) is near~1 in early
-          iterations, so the effective step is essentially the base rate.
-          Hence convergence stretches into the hundreds of epochs.
+\paragraph{Adam(0.50): Momentum-Induced Oscillations}
+High-gain Adam demonstrates the interaction between adaptive learning and momentum accumulation. Despite the Newton-optimal base rate, the momentum terms ($\beta_1=0.9$, $\beta_2=0.99$) cause overshooting and subsequent oscillations around the optimum. The median 126-epoch convergence reflects this oscillatory decay, contrasting sharply with SGD's direct approach using the same learning rate. The tighter convergence distribution (94-154 epochs) compared to Adam(0.01) shows that the larger step size dominates over initialization effects.
 
-    \item \textbf{Large base rate: one big jump, then damping.}  
-          Raising the base rate to \(\alpha=0.5\) lets Adam take an
-          almost-Newton-sized first step, but the moving averages
-          (\(\beta_1{=}0.9,\beta_2{=}0.99\)) accumulate momentum and
-          cause a brief overshoot.  Subsequent iterations oscillate with
-          gradually shrinking amplitude until the loss threshold is met
-          (median $\approx$ 126 epochs).  In contrast, vanilla SGD with the same
-          \(\alpha=0.5\) has no momentum terms and lands on the optimum in a
-          single update, explaining its two-epoch convergence.
+\paragraph{Geometric Consistency}
+All three optimizers achieve 100\% XOR accuracy and reproduce the same two sign-symmetric prototype surfaces reported in Section~\ref{sec:abs1-init}. The hyperplane clustering analysis reveals identical distance patterns (Class 0: 0.00±0.00, Class 1: 1.41±0.00) and weight clusters (centroids at $(\pm0.5, \mp0.5, 0)$) across all optimization strategies. This geometric invariance demonstrates that optimizer choice affects \emph{when} the solution is reached, not \emph{what} is learned, reinforcing the fundamental separation between optimization dynamics and learned representations.
 
+% ------------------------------------------------------------------
 
-    \item \textbf{Robust geometry, variable speed.}  
-          Despite large timing differences, every optimiser converges to
-          the same prototype surface.  This reinforces the finding from
-          the Initialisation Study: optimisation path length is sensitive to
-          scale and step-size, while the geometric endpoint is not.
+\subsection*{Study Discussion}
 
-        \end{enumerate}
+This experiment provides rare empirical validation of optimization theory under controlled conditions. With the analytical optimum known and the loss surface exactly quadratic, we can isolate pure optimizer effects and test theoretical predictions directly.
 
-\paragraph{Take-away.}
-The Abs-XOR problem is a \textit{frictionless spherical cow} for optimisation:
-its loss is quadratic, its optimum is known in closed form, and \emph{any}
-reasonable optimiser-whether adaptive or not-will find that optimum so long
-as it takes a step of roughly the correct scale.  Constant-step SGD with
-\(\eta = 0.5\) happens to match the inverse Hessian and therefore converges
-in essentially one update, but Adam and smaller step sizes reach the same
-prototype surface after a longer-yet still monotonic-trajectory.  The study
-thus illustrates a clear separation between \emph{speed} of optimisation
-(which depends on step size and momentum) and \emph{content} of the learned
-representation (which, for this well-conditioned toy, is invariant).
+\paragraph{Theoretical Validation}
+SGD with $\eta=0.5$ achieves the theoretical ideal, confirming that the Newton-step equivalence derived in the motivation holds empirically. The universal 2-epoch convergence across all initialization geometries demonstrates that when the Hessian is constant and isotropic ($H = 2I$), a single properly-scaled gradient step suffices for optimization. This validates both the mathematical analysis and the practical value of leveraging problem structure when available.
+
+The loss evaluation timing explains the "2-epoch phenomenon": the first epoch applies the Newton-sized parameter update, bringing the loss nearly to zero but just above the $10^{-7}$ threshold, while the second epoch applies a numerically tiny correction that triggers early stopping. This technical detail highlights how training loop implementation can obscure the underlying optimization dynamics.
+
+\paragraph{Adaptive Optimization Limitations}
+The Adam variants reveal how adaptive methods can introduce unnecessary complexity for well-conditioned problems. Adam(0.01) converges slowly because the base learning rate is simply too conservative, requiring hundreds of small steps to traverse the same distance SGD covers in one. Adam(0.50) demonstrates the momentum interaction problem: despite using the optimal base rate, the accumulated momentum ($\beta_1=0.9$, $\beta_2=0.99$) causes overshooting and oscillatory decay that extends convergence to over 100 epochs.
+
+This illustrates a fundamental limitation of adaptive methods: they optimize for robustness across diverse loss landscapes at the cost of efficiency on well-behaved surfaces. When problem structure is known and exploitable, simpler methods can dramatically outperform sophisticated alternatives.
+
+\paragraph{Speed and Content Separation}
+The geometric analysis confirms that optimization choice affects the trajectory but not the destination. All optimizers converge to identical prototype surface structures, with the same distance patterns (Class 0: 0.00±0.00, Class 1: 1.41±0.00) and mirror-symmetric weight clusters. This reinforces the fundamental finding from the initialization study: learned representations emerge from the problem structure and model architecture, not from optimization dynamics.
+
+This separation has profound implications for understanding neural networks. If prototype surface learning represents a fundamental mechanism, then the geometric insights gained here should generalize to complex architectures where optimal solutions are unknown and Newton steps are unavailable.
+
+\paragraph{Implications for Complex Models}
+While this "frictionless" optimization problem represents an idealized case, the insights inform practical deep learning. The study demonstrates the value of theoretical analysis for algorithm selection and highlights scenarios where simpler optimizers may outperform adaptive methods. For subsequent experiments with multi-neuron architectures, we will use Adam(0.01) as a reasonable default that balances robustness with computational efficiency, informed by this understanding of its behavior characteristics.
+
+The controlled nature of this experiment—with known optimal solutions and exact loss surface properties—provides a rare opportunity to validate optimization theory empirically. As we transition to more complex models where such analytical tractability is lost, these baseline insights about the relationship between optimization dynamics and learned representations will prove invaluable for interpreting emergent behaviors.

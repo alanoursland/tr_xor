@@ -2,37 +2,22 @@
 \section{Experimental Framework}
 \label{sec:abs1-framework}
 
-This section summarises the \emph{protocol} that governs every experiment in
-the chapter.  The goal is to describe the procedure at a level that can be
-replicated in any deep-learning environment, independent of our PyTorch
-implementation.
+This section summarises the \emph{protocol} that governs every experiment in the chapter.  The goal is to describe the procedure at a level that can be replicated in any deep-learning environment, independent of our PyTorch implementation.
 
 \subsection*{Training Schedule}
 
 \begin{itemize}
-  \item \textbf{Runs per variant}: Each configuration is trained
-        on \textbf{50 independent initializations} to expose variability due
-        to random weights.
-  \item \textbf{Epoch budget}: A maximum of \textbf{1\,000 - 2000 epochs} is allowed, but training may
-        terminate earlier by the following criterion.
-  \item \textbf{Early stopping}: Optimization halts as soon as the
-        mean-squared error drops below
-        \(\displaystyle\varepsilon = 10^{-7}\).
-        This threshold is tight enough that subsequent parameter changes would
-        be numerically insignificant for the analyses that follow.
+  \item \textbf{Runs per variant}: Each configuration is trained on \textbf{50 independent initializations} to expose variability due to random weights. \item \textbf{Epoch budget}: A maximum of \textbf{1\,000 - 2000 epochs} is allowed, but training may terminate earlier by the following criterion.
+  \item \textbf{Early stopping}: Optimization halts as soon as the mean-squared error drops below \(\displaystyle\varepsilon = 10^{-7}\). This threshold is tight enough that subsequent parameter changes would be numerically insignificant for the analyses that follow.
 \end{itemize}
 
 \subsection*{initialization \& Optimiser Variants}
 
-All experiments share the model of Section~\ref{sec:abs1-model-data}.  
-A \emph{variant} is created by choosing
+All experiments share the model of Section~\ref{sec:abs1-model-data}.  A \emph{variant} is created by choosing
 
 \begin{enumerate}
-  \item one of five weight-initialization schemes  
-        (tiny, normal, large, Xavier, Kaiming), and
-  \item either the \textbf{Adam} optimiser (learning rate \(0.01\))  
-        or \textbf{SGD} with a fixed learning rate (typically \(0.5\); see
-        Section~\ref{sec:abs1-optim}).
+  \item one of five weight-initialization schemes (tiny, normal, large, Xavier, Kaiming), and
+  \item either the \textbf{Adam} optimiser (learning rate \(0.01\)) or \textbf{SGD} with a fixed learning rate (typically \(0.5\); see Section~\ref{sec:abs1-optim}).
 \end{enumerate}
 
 Bias parameters are always initialized to zero, the data mean.
@@ -49,48 +34,30 @@ The intial and final parameter set and total epoch count are retained for post-a
 
 \subsection*{Post-Training Analyses}
 
-When all runs for a variant have terminated we perform an \emph{offline}
-analysis that quantifies both optimization performance and geometric
-behaviour.  The key quantities are:
+When all runs for a variant have terminated we perform an \emph{offline} analysis that quantifies both optimization performance and geometric behaviour.  The key quantities are:
 
 \begin{enumerate}[label=(A\arabic*)]
     \item \textbf{Binary accuracy} -  
-          For each run the model output on every data point is compared to the
-          two target values \(\{0,1\}\); a prediction is deemed correct if it
-          is \emph{closer} to the true label than to the false one.
-          Aggregating over the four inputs yields run-level accuracy, whose
-          distribution across 50 runs is then reported.
+          For each run the model output on every data point is compared to the two target values \(\{0,1\}\); a prediction is deemed correct if it is \emph{closer} to the true label than to the false one. Aggregating over the four inputs yields run-level accuracy, whose distribution across 50 runs is then reported.
     \item \textbf{Final-loss distribution} -  
-          Mean, variance, and extreme values of the terminating loss; provides
-          a stability check beyond the binary accuracy metric.
+          Mean, variance, and extreme values of the terminating loss; provides a stability check beyond the binary accuracy metric.
     \item \textbf{Convergence statistics} -  
-          Five-quantile summary (0\,\%, 25\,\%, 50\,\%, 75\,\%, 100\,\%) of
-          the number of epochs required to satisfy the stopping criterion
-          \(\mathcal{L}<\varepsilon\).
+          Five-quantile summary (0\,\%, 25\,\%, 50\,\%, 75\,\%, 100\,\%) of the number of epochs required to satisfy the stopping criterion \(\mathcal{L}<\varepsilon\).
     \item \textbf{Parameter displacement} -  
-          Euclidean distance
-          \(\lVert\theta_{\text{final}}-\theta_{\text{init}}\rVert_2\); gauges
-          how far the optimiser travels in weight space.
+          Euclidean distance \(\lVert\theta_{\text{final}}-\theta_{\text{init}}\rVert_2\); gauges how far the optimiser travels in weight space. 
     \item \textbf{Weight orientation} -  
-          Angle between initial and final weight vectors; reveals whether
-          learning is driven mainly by rotation or by rescaling.
+          Angle between initial and final weight vectors; reveals whether learning is driven mainly by rotation or by rescaling.
     \item \textbf{Hyperplane geometry} -  
-          (i) Distance of each input to the learned prototype surface
-          \(f(x)=0\);  
-          (ii) clustering of the resulting hyperplanes across runs to detect
-          symmetry-related solutions.
+          (i) Distance of each input to the learned prototype surface \(f(x)=0\);  
+          (ii) clustering of the resulting hyperplanes across runs to detect symmetry-related solutions.
 \end{enumerate}
 
-Each experiment's \emph{mini-report} presents a distilled subset of these
-results-typically (A1) convergence percentiles, (A2) accuracy, and (A3)
-parameter displacement-so that variants can be compared at a glance.  The full
-set, including geometric diagnostics and plots, is discussed in the appendix
-and referenced where relevant in the per-experiment commentary.
+Each experiment's \emph{mini-report} presents a distilled subset of these results-typically (A1) convergence percentiles, (A2) accuracy, and (A3) parameter displacement-so that variants can be compared at a glance.  The full set, including geometric diagnostics and plots, is discussed in the appendix and referenced where relevant in the per-experiment commentary.
 
 \subsection*{The Importance of Hyperplane Geometry Analysis}
 \label{sec:analysis-importance-abs1}
 
-The hyperplane geometry analysis is the primary tool used in this research to move beyond simple accuracy metrics and directly test the core claims of the Prototype Surface Learning theory. By quantifying the geometric properties of the learned neuron, this analysis provides the crucial bridge between the model's analytical theory and its empirical performance.
+The hyperplane geometry analysis is the primary tool used in this research to move beyond simple accuracy metrics and directly test the core claims of our protype surface theory. By quantifying the geometric properties of the learned neuron, this analysis provides the crucial bridge between the model's analytical theory and its empirical performance.
 
 The analysis provides a direct, empirical validation of the theory's central mechanism. The consistent finding of near-zero distances between the learned hyperplane and the "False" class data points offers strong evidence that the network learns by \textbf{intersecting feature prototypes}, just as the theory posits. This process can also be understood from a representation learning perspective, where the linear layer learns a projection into a \textbf{latent space} where the data classes become effectively clustered and separable.
 

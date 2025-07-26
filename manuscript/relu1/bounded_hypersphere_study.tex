@@ -2,7 +2,7 @@
 \section{Bounded Hypersphere Initialization Study}
 \label{sec:relu1-bounded-hypersphere}
 
-\subsection*{Motivation}
+\subsection*{Study Motivation}
 Dead-data re-initialisation (previous section) \emph{rejects} bad weight
 draws until every input is active.  
 Bounded-hypersphere (BHS) initialisation tries to achieve the same goal
@@ -16,7 +16,7 @@ from the first step onward.
 % ------------------------------------------------------------------
 \subsection*{Classification Accuracy}
 
-\begin{table}[h]
+\begin{table}[ht]
 \centering
 \caption{Accuracy over 50 runs with BHS ($r=1.4$).}
 \label{tab:relu1-bhs-accuracy}
@@ -35,7 +35,7 @@ Success improves from the ReLU baseline's $48\,\%$ to $78\,\%$ (39 of 50 runs).
 % ------------------------------------------------------------------
 \subsection*{Convergence Timing}
 
-\begin{table}[h]
+\begin{table}[ht]
 \centering
 \caption{Epochs to early-stop for the 39 successful runs.}
 \label{tab:relu1-bhs-epochs}

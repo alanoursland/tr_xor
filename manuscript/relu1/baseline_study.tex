@@ -3,131 +3,157 @@
 \section{Baseline: Kaiming Initialization Study}
 \label{sec:relu1-kaiming}
 
-\subsection*{Experimental Setup}
-Fifty independent training runs of the two-ReLU model were launched with
-\emph{Kaiming-normal} weights, bias $0$, Adam
-($lr=0.01$, $\beta=(0.9,0.99)$) and a hard cap of $800$ epochs.
-Training stopped under either of two conditions:
-\begin{enumerate*}[label=(\roman*)]
-    \item \textbf{Convergence} - loss fails to improve by
-          $10^{-24}$ for ten consecutive epochs
-          (e.g.\ epoch 367 in one run);
-    \item \textbf{Accuracy threshold} - mean-squared error
-          $\mathcal L\le10^{-7}$ (e.g.\ epoch 247).
-\end{enumerate*}
-All further chapters inherit this protocol unless stated otherwise.
+% ------------------------------------------------------------------
+
+\subsection*{Study Motivation}
+
+This experiment represents the minimal possible step up in complexity from the previous chapter's single absolute-value neuron. Where the earlier model achieved deterministic XOR success through the hard-coded symmetry of $y = |w^{\top}x + b|$, we now decompose this operation into its constituent parts: $y = \operatorname{ReLU}(w^{(0)\top}x + b^{(0)}) + \operatorname{ReLU}(w^{(1)\top}x + b^{(1)})$. This architectural change increases the parameter count from 3 to 6 while maintaining the same theoretical target—the network must learn to reproduce the absolute value function by discovering the relationship $w^{(1)} = -w^{(0)}$ and $b^{(1)} = -b^{(0)}$.
+
+The research question is fundamental: What happens when we replace built-in symmetry with learned coordination? The mathematical identity $|z| = \operatorname{ReLU}(z) + \operatorname{ReLU}(-z)$ guarantees that perfect coordination yields identical results to the previous model. However, the optimization must now discover this relationship from data rather than having it encoded in the activation function itself.
+
+This represents a controlled test of coordination challenges in neural networks. The two hyperplanes must learn complementary orientations—one detecting the positive half-space, the other the negative half-space—and their sum must reproduce the distance-based classification mechanism of prototype surface learning. When this coordination succeeds, we expect identical geometric outcomes to the previous chapter. When it fails, we gain insight into the fundamental challenges of learned symmetry.
+
+The baseline serves multiple critical purposes: quantifying the reliability cost of removing architectural constraints, identifying the primary failure modes that emerge when networks must coordinate independent components, and validating that prototype surface learning principles remain invariant across different implementations. The results will establish a reference point for evaluating intervention strategies and provide the foundation for understanding coordination challenges in progressively more complex architectures.
 
 % ------------------------------------------------------------------
-\subsection*{Classification Accuracy}
 
-\begin{table}[h]
+\subsection*{Study Design}
+
+\paragraph{Model Architecture}
+The experimental model decomposes the absolute value operation into learnable components: $\hat{y}(x) = \operatorname{ReLU}(w^{(0)\top}x + b^{(0)}) + \operatorname{ReLU}(w^{(1)\top}x + b^{(1)})$. The architecture consists of a Linear(2→2) layer generating two independent affine transformations, followed by element-wise ReLU activation and a fixed summation operation. This creates 6 trainable parameters (4 weights + 2 biases) compared to the 3 parameters of the previous single-neuron model.
+
+\paragraph{Training Protocol}
+Each experiment trains 50 independent runs using Kaiming normal weight initialization and zero bias initialization, maintaining consistency with ReLU network best practices. The Adam optimizer (lr=0.01, $\beta = (0.9, 0.99)$) provides the same optimization strategy used in the previous chapter. Training employs dual early-stopping criteria: termination when MSE drops below $10^{-7}$ or when loss fails to improve by at least $10^{-24}$ over 10 consecutive epochs, with a maximum budget of 800 epochs.
+
+\paragraph{Baseline Comparison}
+Direct comparison with the previous chapter's Kaiming initialization results provides the reference standard. We measure success rate deviation from the previous 100\% reliability, convergence timing for successful coordination, and geometric consistency of learned solutions. The identical centered XOR dataset ensures that differences reflect architectural rather than data effects.
+
+\paragraph{Analysis Framework}
+The experimental analysis inherits distance clustering and hyperplane clustering methods from the previous framework, adapted for the two-hyperplane structure. Coordination-specific diagnostics include mirror weight symmetry detection via cosine similarity between the learned weight vectors, dead data analysis identifying input points inactive across both ReLU units, and weight clustering in the 6-dimensional parameter space. Additional visualizations capture hyperplane pairs and their geometric relationships.
+
+\paragraph{Success Criteria}
+Optimal performance requires discovering the mirror-symmetric relationship $w^{(1)} = -w^{(0)}$ and $b^{(1)} = -b^{(0)}$ that reproduces the absolute value function. Successful runs should demonstrate identical prototype surface geometry to the previous chapter, with hyperplanes anchored to the False class and True class positioned at the predicted distance. The baseline will quantify coordination failure rates and characterize suboptimal solutions for subsequent intervention development.
+
+% ------------------------------------------------------------------
+
+\subsection*{Success Metrics}
+
+\begin{table}[ht]
 \centering
-\caption{Final accuracy counts over $50$ runs.}
-\label{tab:relu1-kaiming-accuracy}
-\begin{tabular}{lccccc}
+\caption{Classification accuracy comparison across architectures (50 runs each).}
+\label{tab:relu1-baseline-accuracy}
+\begin{tabular}{lcc}
 \toprule
-Accuracy & 0\,\% & 25\,\% & 50\,\% & 75\,\% & 100\,\% \\ \midrule
-Runs & 0 & 0 & 0 & 26 & 24 \\ \bottomrule
+Architecture & Success Rate & Accuracy Distribution \\
+\midrule
+Single abs neuron & 50/50 (100\%) & All runs: 100\% \\
+Two ReLU baseline & 24/50 (48\%) & 24 runs: 100\%, 26 runs: 75\% \\
+\bottomrule
 \end{tabular}
 \end{table}
 
-\textbf{Observation}  
-Bare Kaiming succeeds \emph{less than half} the time; the rest stall at
-$75\,\%$ (three of four XOR points correct).
-
-% ------------------------------------------------------------------
-\subsection*{Convergence Timing}
-
-\begin{table}[h]
+\begin{table}[ht]
 \centering
-\caption{Epochs to early-stop (percentiles over successful runs).}
-\label{tab:relu1-kaiming-epochs}
-\begin{tabular}{lccccc}
+\caption{Final loss distribution across successful and failed runs.}
+\label{tab:relu1-baseline-loss}
+\begin{tabular}{lccc}
 \toprule
-Percentile & 0\,\% & 25\,\% & 50\,\% & 75\,\% & 100\,\% \\ \midrule
-Epochs & 32 & 98 & 164 & 242 & 368 \\ \bottomrule
+Run Type & Count & Mean Loss & Loss Range \\
+\midrule
+Successful & 24 & $\sim10^{-8}$ & $1.76 \times 10^{-9}$ to $6.79 \times 10^{-8}$ \\
+Failed & 26 & $\sim0.25$ & $2.50 \times 10^{-1}$ to $2.51 \times 10^{-1}$ \\
+\bottomrule
 \end{tabular}
 \end{table}
 
-The spread spans an order of magnitude, hinting at widely differing
-initial geometries.
+The transition from hard-coded to learned symmetry produces a dramatic decline in reliability, with success rates dropping from 100\% to 48\%. This represents the fundamental cost of removing architectural constraints: the network must now discover the required coordination rather than having it built into the activation function.
+
+The accuracy distribution reveals a stark binary pattern. Successful runs achieve perfect 100\% XOR classification with final losses comparable to the previous chapter (~$10^{-8}$), demonstrating that when coordination succeeds, it matches the precision of the hard-coded approach. Failed runs converge to a stable 75\% accuracy plateau with loss values tightly clustered around 0.25, indicating three of four XOR points classified correctly.
+
+Critically, all runs reach stable convergent solutions—this is not an optimization failure but a solution quality problem. The 26 failed runs do not wander or fail to converge; instead, they find stable local minima that represent genuine alternative attractors in the loss landscape. The clean separation between success (~$10^{-8}$) and failure (~0.25) loss values confirms that the network learns discrete solution types rather than a continuum of partial successes.
+
+This baseline establishes the core challenge for learned coordination: mathematical equivalence does not guarantee practical equivalence. While the identity $|z| = \operatorname{ReLU}(z) + \operatorname{ReLU}(-z)$ ensures that perfect coordination yields identical results, the optimization process must navigate a richer loss landscape containing both optimal and suboptimal attractors. The 48\% success rate provides a clear reference point for evaluating the effectiveness of intervention strategies designed to guide the network toward successful coordination.
 
 % ------------------------------------------------------------------
-\subsection*{Final Loss Distribution}
 
-Two tight clusters emerge:
-\begin{itemize}
-  \item $\mathbf{24}$ successful runs finish near
-        $\mathcal L\!\approx\!10^{-8}$,
-  \item $\mathbf{26}$ stalled runs concentrate at
-        $\mathcal L\!\approx\!2.5\times10^{-1}$.
-\end{itemize}
-No run terminates in intermediate territory, reflecting the discrete
-accuracy split of Table~\ref{tab:relu1-kaiming-accuracy}.
+\subsection*{Learning Dynamics}
 
-% ------------------------------------------------------------------
-\subsection*{Hyperplane Geometry}
-\label{sec:relu1-hyperplane-geometry}
+\begin{table}[ht]
+\centering
+\caption{Convergence timing comparison across architectures and success levels (epochs to MSE < $10^{-7}$).}
+\label{tab:relu1-baseline-timing}
+\begin{tabular}{lccccc}
+\toprule
+\multirow{2}{*}{Run Type} &
+\multicolumn{5}{c}{Epoch percentile} \\
+\cmidrule(lr){2-6}
+ & 0\,\% & 25\,\% & 50\,\% & 75\,\% & 100\,\% \\
+\midrule
+Single abs neuron (all successful) & 61 & 139 & 198 & 266 & 548 \\
+Two ReLU: 100\% accuracy (n=24) & 53 & 126 & 190 & 251 & 336 \\
+Two ReLU: 75\% accuracy (n=26) & 32 & 92 & 145 & 243 & 368 \\
+\bottomrule
+\end{tabular}
+\end{table}
 
-We replicate the two geometric analyses from
-Section~\ref{sec:abs1-init}:
+All runs converge efficiently regardless of final accuracy level, revealing that the coordination challenge is not about optimization difficulty but about attractor selection. Failed runs that achieve only 75\% accuracy actually converge faster (median 145 epochs) than successful runs (median 190 epochs), demonstrating that the network efficiently finds stable solutions—they're simply the wrong solutions.
 
-\begin{enumerate}[label=(G\arabic*)]
-    \item \textbf{Distance-pattern clustering} –  
-          Each run yields the pair
-          $(d_{0},d_{1})$ of mean distances from the hyperplane~$f(x)=0$
-          to the \textbf{False} and \textbf{True} inputs.
-          DBSCAN ($\varepsilon=0.2$) discovers \textbf{three} clusters:  
-          one dominant group matching the prototype-surface prediction
-          $(0,\sqrt2)$ and two looser satellites produced by the runs that
-          stalled at $75\,\%$.
-    \item \textbf{Weight-space clustering} –  
-          Clustering the parameter quadruples
-          $(w^{(0)},b^{(0)},w^{(1)},b^{(1)})$
-          with $\varepsilon=0.2$ returns
-          nine small clusters plus ten singleton “noise” points.
-          Although less tight than in Abs1, the two largest clusters are
-          near-mirror centroids, echoing the
-          $|z|=\operatorname{relu}(z)+\operatorname{relu}(-z)$ identity.
-\end{enumerate}
+Successful coordination in the two-ReLU model achieves comparable timing to the single absolute-value neuron (median 190 vs 198 epochs), indicating that when the required mirror symmetry is discovered, learning proceeds as efficiently as the hard-coded approach. The faster convergence of failed runs suggests that suboptimal local minima may be more easily accessible than the optimal coordination pattern.
 
-\begin{figure}[h]
-  \centering
-  \begin{subfigure}{0.30\textwidth}
-    \includegraphics[width=\linewidth]{relu1/figs/success_mirror.pdf}
-    \caption{Run 006 (success)}
-  \end{subfigure}\hfill
-  \begin{subfigure}{0.30\textwidth}
-    \includegraphics[width=\linewidth]{relu1/figs/success_no_mirror.pdf}
-    \caption{Run 019 (initial)}
-  \end{subfigure}\hfill
-  \caption{Representative hyperplanes.  Dashed lines: $f_k(x)=0$ for each
-           neuron; arrows show normal directions.  \(\bullet\): class-0,
-           \(\blacktriangle\): class-1.}
-  \label{fig:relu1-kaiming-planes}
-\end{figure}
-
-\paragraph{Interpretation}
-Figure~\ref{fig:relu1-kaiming-planes} illustrates two 100\% accuracy results. Run 006 converges to the anticipated pair of almost-mirror hyperplanes, while Run 010 uses the leeway afforded by ReLU to learn hyperplanes oriented about 50 degrees from each other.
+This timing pattern reinforces that the architectural change introduces a solution quality challenge rather than an optimization challenge. The network reliably converges within reasonable time bounds, but the richer loss landscape created by independent parameters contains multiple stable attractors. The coordination requirement determines which type of solution the network discovers, not whether it converges at all.
 
 % ------------------------------------------------------------------
-\subsection*{Activation Coverage Snapshot}
 
-Across all 50 runs, \textbf{39} begin with at least one XOR point inactive (\(\operatorname{relu}(z)=0\) for both neurons). 
-Among these, 14 still reach 100\,\% accuracy, showing that dead inputs \emph{can} revive but not invariably.
-This statistic motivates the detection and re-initialisation tactics explored in Section~\ref{sec:relu1-reinit}.
+\subsection*{Geometric Analysis}
+
+The geometric analysis validates that successful coordination reproduces the prototype surface learning patterns observed in the previous chapter, while revealing the additional solution diversity enabled by the ReLU activation's flexibility.
+
+\paragraph{Distance Pattern Analysis}
+Successful runs converge to a single distance pattern: Class 0 (False points) at 0.32±0.21 from the hyperplanes, Class 1 (True points) at 1.37±0.05. While this differs from the previous chapter's exact hyperplane intersection (0.00±0.00), the pattern confirms the same fundamental mechanism. The ReLU activation allows greater flexibility in hyperplane positioning since any negative pre-activation yields zero output, creating a wider set of functionally equivalent solutions compared to the absolute value's precise zero-crossing requirement.
+
+\paragraph{Weight Space Clustering Analysis}
+DBSCAN clustering of the 6-dimensional parameter space reveals significantly more complexity than the previous chapter's clean two-cluster structure. The analysis identifies 9 distinct clusters plus 10 noise points, reflecting the increased degrees of freedom in the coordination problem. However, the two largest clusters contain 11 runs each and exhibit near-mirror centroids, directly echoing the $|z| = \operatorname{ReLU}(z) + \operatorname{ReLU}(-z)$ identity. This demonstrates that while the solution space is richer, the same fundamental sign-symmetric patterns emerge when coordination succeeds.
+
+\paragraph{Mirror Weight Symmetry Detection}
+Direct analysis of the learned weight relationships reveals that 16 of 50 runs discover mirror-symmetric coordination, with cosine similarities near -1.0 between the two weight vectors. Three runs achieve nearly perfect mirror symmetry, confirming the theoretical prediction that optimal coordination requires $w^{(1)} = -w^{(0)}$. The remaining successful runs achieve functional equivalence through alternative geometric arrangements enabled by the ReLU's half-space properties.
+
+\paragraph{Solution Diversity and Consistency}
+The geometric analysis reveals that while successful coordination can take multiple forms, all variants maintain the core prototype surface relationship: anchoring near the False class and positioning the True class at the calibrated distance. This demonstrates the robustness of prototype surface learning principles across different implementation mechanisms. Whether achieved through perfect mirror symmetry or alternative ReLU-enabled configurations, successful solutions converge to geometrically consistent distance patterns that validate the theoretical framework.
+
+The increased geometric diversity compared to the previous chapter reflects the coordination challenge's solution space richness while confirming that the fundamental learning mechanism—positioning hyperplanes to define prototype surfaces—remains invariant across architectural implementations.
 
 % ------------------------------------------------------------------
-\paragraph{Discussion}
-\begin{itemize}
-  \item Bare Kaiming achieves perfect XOR only \textbf{48\,\%} of the time.
-  \item Successful runs agree with prototype-surface theory-two sign-symmetric
-        distance patterns-but the clusters are fuzzier than in Abs1 because
-        the ReLU's inactive half-space allows more slack.
-  \item The prevalence of early dead inputs and the bimodal loss histogram
-        make Kaiming an ideal baseline for testing activation variants,
-        re-initialisation rules, and runtime monitors in the sections that
-        follow.
-\end{itemize}
 
-\hrulefill
+\subsection*{Failure Mode Analysis}
+
+Investigation of the failed coordination attempts reveals a primary failure mechanism: dead data points that cannot contribute gradient signals for error correction. This analysis tests the hypothesis that most coordination failures stem from True class points becoming inactive across both ReLU units, creating an asymmetric learning environment that prevents discovery of the required mirror symmetry.
+
+\paragraph{Dead Data Hypothesis}
+The core failure mechanism occurs when a True class point has negative pre-activation for both neurons, yielding zero output from both ReLU units. Since the target for True points is 1 but the network output is 0, a significant error exists. However, because both neurons are inactive for this input, no gradient signal propagates back to adjust the weights. This creates a "dead data" scenario—the dual of a dead neuron problem. While a dead neuron is inactive for all data points, dead data represents a data point that is inactive for all neurons, eliminating its ability to influence learning.
+
+\paragraph{Empirical Validation}
+Statistical analysis confirms a strong correlation between initial dead inputs and final coordination failure. Of the 50 runs, 39 begin with at least one XOR point inactive across both neurons. The success rates differ dramatically based on initialization state: clean-start runs (no initial dead inputs) achieve 82\% success (9/11), while dead-start runs achieve only 38\% success (15/39). This nearly 2:1 difference in success probability demonstrates the significant impact of gradient availability on coordination learning.
+
+The dead data analysis reveals class-specific patterns in both occurrence and recovery. Among runs with dead inputs, 15 achieve 100\% accuracy despite the initial disadvantage, showing that dead inputs can sometimes be revived during training. However, 24 failed runs correlate with persistent dead input problems, suggesting that once certain geometric configurations develop, gradient flow cannot be restored to enable proper coordination.
+
+\paragraph{Coordination Impact}
+Dead inputs disrupt the balanced parameter updates required for mirror symmetry discovery. When one or more data points cannot contribute gradients, the learning process becomes asymmetric, biasing the network toward local minima that satisfy the active points while ignoring the inactive ones. This gradient asymmetry prevents the coordinated exploration of parameter space necessary to discover the $w^{(1)} = -w^{(0)}$ relationship, trapping the optimization in configurations that achieve partial but not complete XOR classification.
+
+The 75\% accuracy plateau observed in failed runs reflects this asymmetric learning pattern. The network successfully coordinates to classify three of four XOR points, but the fourth point—often a True class point that initiated dead—remains misclassified because it never contributed to the learning process. This creates a stable local minimum where further optimization cannot improve the solution.
+
+\paragraph{Intervention Implications}
+The dead data analysis identifies clear targets for intervention strategies. Primary approaches must ensure gradient flow from all data points, either through initialization procedures that avoid dead configurations or runtime monitoring that detects and corrects emerging dead data situations. The strong correlation between initial dead inputs and final failure suggests that addressing this single failure mode could significantly improve coordination success rates, motivating the re-initialization and monitoring tactics explored in subsequent studies.
+
+% ------------------------------------------------------------------
+
+\subsection*{Discussion}
+
+This baseline study quantifies the fundamental challenge introduced by replacing hard-coded architectural constraints with learned coordination. The transition from a single absolute-value neuron to two independent ReLU units—a minimal increase from 3 to 6 parameters—produces a dramatic decline in reliability from 100\% to 48\% success. This demonstrates that mathematical equivalence does not guarantee practical equivalence: while the identity $|z| = \operatorname{ReLU}(z) + \operatorname{ReLU}(-z)$ ensures that perfect coordination yields identical results, the optimization process must navigate a richer loss landscape containing both optimal and suboptimal attractors.
+
+The failure analysis reveals that this is fundamentally a solution quality challenge rather than an optimization difficulty. All runs converge efficiently to stable solutions within reasonable time bounds, but 52\% settle into local minima that achieve only 75\% XOR accuracy. These suboptimal solutions represent genuine alternative attractors in the loss landscape, not optimization failures. The network reliably finds stable coordination patterns—they are simply the wrong patterns for perfect XOR classification.
+
+When coordination succeeds, the geometric analysis confirms that prototype surface learning principles remain intact across architectural implementations. Successful runs reproduce the expected distance patterns with the False class positioned near the learned hyperplanes and the True class at the calibrated distance, validating the theoretical framework's robustness. The increased solution diversity enabled by ReLU's half-space flexibility does not compromise the fundamental learning mechanism but rather demonstrates its adaptability to different geometric configurations.
+
+The dead data analysis identifies the primary failure mode: True class points that become inactive across both ReLU units cannot contribute gradient signals for error correction. This creates asymmetric learning that prevents discovery of the required mirror symmetry, with 39 of 50 runs beginning with such problematic configurations. The strong correlation between initial dead inputs and final coordination failure (82\% success for clean starts vs 38\% for dead starts) provides both mechanistic understanding and clear intervention targets.
+
+This baseline establishes the 48\% success rate as a reference point for evaluating intervention strategies while confirming that successful coordination achieves the same representational quality as the hard-coded approach. The systematic failure mode analysis demonstrates that even minimal coordination challenges reveal fundamental issues about multi-component learning that will become increasingly important as architectures scale in complexity. The dead data problem and its gradient flow implications provide a concrete foundation for developing the re-initialization, monitoring, and architectural interventions explored in subsequent studies.

@@ -22,7 +22,7 @@ Both use the same optimiser and early-stop rules as previous sections.
 % ------------------------------------------------------------------
 \subsection*{Classification Accuracy}
 
-\begin{table}[h]
+\begin{table}[ht]
 \centering
 \caption{Final accuracy across runs.}
 \label{tab:relu1-reinit-accuracy}
@@ -45,7 +45,7 @@ adding the $0.3$ margin pushes reliability to \(\approx99\,\%\).
 % ------------------------------------------------------------------
 \subsection*{Convergence Timing}
 
-\begin{table}[h]
+\begin{table}[ht]
 \centering
 \caption{Epochs to early-stop (successful runs only).}
 \label{tab:relu1-reinit-epochs}
@@ -89,7 +89,7 @@ These runs account for the residual $75\,\%$ accuracies in both tables.
 We notice that this hyperplane is also dead and does not intersect the data space.
 It is not clear how the initial state relates to this basin.
 
-\begin{figure}[h]
+\begin{figure}[ht]
   \centering
   \includegraphics[width=0.38\textwidth]{relu1/figs/reinit_bad_example.pdf}
   \caption{Illustration of the "perpendicular" failure: the left dashed

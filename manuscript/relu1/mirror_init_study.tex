@@ -2,7 +2,7 @@
 \section{Mirror Initialization Study}
 \label{sec:relu1-mirror}
 
-\subsection*{Motivation}
+\subsection*{Study Motivation}
 Because \(|z| = \operatorname{relu}(z) + \operatorname{relu}(-z)\), a
 \emph{two-ReLU} network can in principle emulate the single-Abs model if
 its two hidden weight vectors begin as perfect negatives of one another.
@@ -13,7 +13,7 @@ neuron, guaranteeing mirror symmetry from the first step.
 % ------------------------------------------------------------------
 \subsection*{Classification Accuracy}
 
-\begin{table}[h]
+\begin{table}[ht]
 \centering
 \caption{Final accuracy across $1000$ mirrored initialisations.}
 \label{tab:relu1-mirror-accuracy}
@@ -32,7 +32,7 @@ all single-shot initialisation schemes.
 % ------------------------------------------------------------------
 \subsection*{Convergence Timing}
 
-\begin{table}[h]
+\begin{table}[ht]
 \centering
 \caption{Epochs to $\mathcal L<10^{-7}$ for the 984 successful runs.}
 \label{tab:relu1-mirror-epochs}

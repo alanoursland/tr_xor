@@ -1,6 +1,12 @@
-Sure! Here's a plain section you can drop right into your `README.md`:
 
----
+### 📚 Building the document
+
+```
+pdflatex main.tex
+biber main
+pdflatex main.tex
+pdflatex main.tex
+```
 
 ### 📚 VSCode Setup for LaTeX Workshop
 

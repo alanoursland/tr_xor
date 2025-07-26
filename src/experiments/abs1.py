@@ -38,14 +38,14 @@ learning dynamics.
 Shared Experimental Skeleton
 ----------------------------
 * **Model** : Input(2) → Linear(2 → 1) → Abs() → Squeeze → Output(1)  
-    (analytically : y = | w·x + b |)
+    (analytically : y = | w·x + b |)
 * **Loss**   : Mean-squared error on binary targets
 * **Dataset**: Centered XOR {(-1,-1),( 1, 1) → 0; (-1, 1),( 1,-1) → 1}
 * **Early stop** : loss < 1 × 10⁻⁷ (max 1000 epochs unless noted)
 * **Initialisers** : normal(0,0.5), tiny, large, Xavier, Kaiming
 * **Optimizers**  :  
-    – Adam (lr = 0.01, β = 0.9/0.99)   *default*  
-    – SGD (lr ∈ {0.1, 0.4–0.9})        *`abs1_*_mse` variants*
+    - Adam (lr = 0.01, β = 0.9/0.99)   *default*  
+    - SGD (lr ∈ {0.1, 0.4-0.9})        *`abs1_*_mse` variants*
 
 Each experiment is registered with `@experiment(...)`; all hyper-parameters
 except the chosen initialiser/optimizer are inherited from the `abs1_normal`

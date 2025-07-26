@@ -56,21 +56,35 @@ def generate_accuracy_section(distributions, total_runs) -> str:
 
 
 def generate_convergence_section(convergence_timing, config) -> str:
-    """Generate the convergence timing section."""
+    """Generate the convergence timing section broken down by accuracy tier."""
     report = "## ⏱️ Convergence Timing (Epochs to MSE < 1e-7)\n\n"
-    report += "| Percentile | Epochs |\n| ---------- | ------ |\n"
 
-    percentiles = convergence_timing.get("percentiles", {})
+    def format_table(title: str, timing_data: dict) -> str:
+        section = f"### {title}\n\n"
+        section += f"**Number of runs:** {timing_data.get('count', 0)}\n\n"
+        section += "| Percentile | Epochs |\n| ---------- | ------ |\n"
 
-    if percentiles:
+        percentiles = timing_data.get("percentiles", {})
         labels = ["0th", "10th", "25th", "50th", "75th", "90th", "100th"]
-        for label in labels:
-            value = percentiles.get(label, "N/A")
-            report += f"| {label:<10} | {value}     |\n"
-    else:
-        report += "| N/A        | No convergence data available |\n"
 
-    report += "\n---\n\n"
+        if percentiles:
+            for label in labels:
+                value = percentiles.get(label, "N/A")
+                section += f"| {label:<10} | {value}     |\n"
+        else:
+            section += "| N/A        | No data available |\n"
+
+        section += "\n"
+        return section
+
+    if convergence_timing:
+        report += format_table("✅ All Runs", convergence_timing.get("all_runs", {}))
+        report += format_table("🌟 Perfect Accuracy (100%)", convergence_timing.get("perfect_accuracy", {}))
+        report += format_table("⚠️ Sub-Perfect Accuracy (<100%)", convergence_timing.get("subperfect_accuracy", {}))
+    else:
+        report += "No convergence data available.\n"
+
+    report += "---\n\n"
     return report
 
 

@@ -1010,20 +1010,53 @@ def main() -> int:
         # Convergence timing analysis
         if True:  # Add this to your analysis plan
             print("⏱️ Analyzing convergence timing...")
-            convergence_epochs = [run_data.get("epochs_completed", None) for run_data in run_results]
-            percentiles_data = {
-                "0th": int(np.percentile(convergence_epochs, 0)),
-                "10th": int(np.percentile(convergence_epochs, 10)),
-                "25th": int(np.percentile(convergence_epochs, 25)),
-                "50th": int(np.percentile(convergence_epochs, 50)),
-                "75th": int(np.percentile(convergence_epochs, 75)),
-                "90th": int(np.percentile(convergence_epochs, 90)),
-                "100th": int(np.percentile(convergence_epochs, 100)),
-            }
+
+            # Initialize groups
+            epochs_all = []
+            epochs_perfect = []
+            epochs_subperfect = []
+
+            for run_data in run_results:
+                epochs = run_data.get("epochs_completed", None)
+                acc = run_data.get("accuracy", 0.0)
+
+                if epochs is None:
+                    continue  # Skip incomplete data
+
+                epochs_all.append(epochs)
+                if acc >= 1.0:
+                    epochs_perfect.append(epochs)
+                else:
+                    epochs_subperfect.append(epochs)
+
+            def compute_percentiles(values):
+                if not values:
+                    return {}
+                return {
+                    "0th": int(np.percentile(values, 0)),
+                    "10th": int(np.percentile(values, 10)),
+                    "25th": int(np.percentile(values, 25)),
+                    "50th": int(np.percentile(values, 50)),
+                    "75th": int(np.percentile(values, 75)),
+                    "90th": int(np.percentile(values, 90)),
+                    "100th": int(np.percentile(values, 100)),
+                }
+
             analysis_results["convergence_timing"] = {
-                "epochs_list": convergence_epochs,
-                "percentiles": percentiles_data,
+                "all_runs": {
+                    "count": len(epochs_all),
+                    "percentiles": compute_percentiles(epochs_all),
+                },
+                "perfect_accuracy": {
+                    "count": len(epochs_perfect),
+                    "percentiles": compute_percentiles(epochs_perfect),
+                },
+                "subperfect_accuracy": {
+                    "count": len(epochs_subperfect),
+                    "percentiles": compute_percentiles(epochs_subperfect),
+                },
             }
+
             print("  ✓ Convergence timing analysis completed")
 
         # Weight reorientation analysis

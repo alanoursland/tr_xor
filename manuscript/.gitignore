@@ -16,9 +16,6 @@
 *.snm
 *-SAVE-ERROR
 
-# PDF output
-*.pdf
-
 # Editor/IDE specific
 *.swp
 *.swo

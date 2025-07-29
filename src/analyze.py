@@ -336,7 +336,7 @@ def analyze_failure_angles(run_results: List[Dict[str, Any]]) -> Dict[str, Any]:
 
                 if acc >= 0.99:
                     layer_results[layer_name]["success"].append(angle)
-                elif abs(acc - 0.5) < 1e-3:
+                elif acc < 0.99:
                     layer_results[layer_name]["failure"].append(angle)
 
     # Add summary stats per layer

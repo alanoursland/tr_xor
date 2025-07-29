@@ -178,14 +178,12 @@ PReLU & 19/48 & 16 & 16 & 22 \\
 
 The distance pattern analysis confirms that successful coordination maintains the core prototype surface relationship across activation variants, with False class points positioned near learned hyperplanes and True class points at distances around $\sqrt{2}$. Negative leak variants show increased geometric diversity, producing multiple distance clusters that represent different valid coordination strategies.
 
-The mirror weight symmetry analysis reveals the most striking activation-dependent pattern. Large positive leaks (LeakyReLU 0.8) and ELU achieve near-perfect mirror symmetry detection (44/44 and 42/48 perfect mirrors), strongly biasing networks toward the theoretical $w^{(1)} = -w^{(0)}$ relationship. Conversely, negative leak variants show surprisingly low mirror detection rates despite high success rates, indicating they enable alternative coordination mechanisms that achieve functional equivalence without perfect parameter symmetry.
+The mirror weight symmetry analysis reveals the most striking activation-dependent pattern. Large positive leaks (LeakyReLU 0.8) and ELU achieve near-perfect mirror symmetry detection (44/44 and 42/48 perfect mirrors), strongly biasing networks toward the theoretical $w^{(1)} = -w^{(0)}$ relationship. Conversely, negative leak variants show surprisingly low mirror detection rates despite high success rates. Their absolute value approximation enables alternative solutions without perfect parameter symmetry.
 
 This divergence highlights a key finding: successful coordination can emerge through multiple geometric pathways. Some activations promote convergence to the theoretical mirror-symmetric ideal, while others enable diverse but equally effective coordination strategies. The activation choice determines not only success rates but also the interpretability of the learned solution—piecewise-linear activations maintain clear geometric relationships between parameters and prototype surfaces, while smooth activations like ELU achieve coordination through mechanisms that are less directly interpretable from the model weights alone.
 
-Yes, absolutely! That would be much cleaner and consistent with the rest of the analysis. Here's the revised paragraph with a table:
-
 \paragraph{Adaptive Activation Learning Validates Theoretical Predictions}
-The PReLU experiments provide compelling evidence that networks, when given the freedom to learn their activation shape, independently discover the theoretical optimum. Analysis of the learned negative slope parameters reveals a clear preference for values approaching the absolute value function.
+The PReLU experiments provide compelling evidence that networks, when given the freedom to learn their activation shape, independently discover the theoretical optimum. Analysis of the learned negative slope parameters reveals a clear preference for values approaching the absolute value function. Once the absolute value is approximated the problem can be solved by a single node.
 
 \begin{table}[ht]
 \centering
@@ -207,6 +205,18 @@ The largest cluster (20/48 runs) converged to $\alpha = -1.003$, essentially rec
 
 % ------------------------------------------------------------------
 
+\subsection*{Study Discussion}
+
+This reinitialization study provides compelling validation that dead data represents the primary bottleneck limiting coordination success in the baseline configuration. The dramatic improvement from 48\% to 92\% success through basic dead data elimination confirms that ensuring gradient flow from all data points is both necessary and highly effective for reliable coordination learning. The intervention's simplicity—requiring only initialization screening with no architectural or training modifications—demonstrates that coordination challenges can often be addressed through careful attention to starting conditions rather than complex algorithmic interventions.
+
+The discovery of a secondary failure mode reveals important nuances in coordination learning dynamics. Analysis of the 4 failed runs from basic reinitialization showed hyperplanes positioned extremely close to individual data points, creating geometric vulnerabilities where networks can enter dead states during training despite clean initialization. This proximity-based failure mechanism highlights that successful coordination requires not only active initialization but also sufficient geometric margins to maintain stability throughout optimization.
+
+The margin requirement intervention validates this geometric hypothesis through its ten-fold failure reduction from 8\% to 0.8\%. The 0.3 activation threshold effectively prevents proximity-based vulnerabilities while maintaining reasonable sampling efficiency, demonstrating that targeted geometric constraints can systematically address specific failure modes. The persistence of residual failures at 0.8\% indicates that some coordination challenges may be inherent to the geometric relationships between XOR data and hyperplane positioning, suggesting limits to initialization-based interventions.
+
+The geometric analysis provides strong support for prototype surface learning theory. Clean initialization promotes discovery of the theoretically predicted mirror-symmetric solutions, with mirror pair detection improving from 32\% in the baseline to 88\% with margin requirements. The progressive consolidation of weight space solutions—from 9 clusters in the baseline to 5 dominant clusters with margins—demonstrates that eliminating problematic starting conditions channels networks toward higher-quality coordination patterns consistent with theoretical predictions.
+
+These results establish initialization quality as a critical factor in coordination learning, with implications extending beyond the specific XOR task. The systematic improvement through dead data elimination and margin requirements suggests that geometric design principles should inform initialization strategies for coordination-dependent architectures. The near-perfect reliability achieved through simple screening interventions provides a practical foundation for applications requiring dependable coordination learning while establishing baseline performance for more sophisticated intervention strategies.
+
 
 % ------------------------------------------------------------------
 
@@ -216,16 +226,3 @@ The largest cluster (20/48 runs) converged to $\alpha = -1.003$, essentially rec
 
 % ------------------------------------------------------------------
 
-\subsection*{Discussion}
-
-This activation study demonstrates that the coordination problem identified in the baseline can be solved through simple architectural modifications rather than complex intervention strategies. Every tested activation variant dramatically outperformed the 48\% ReLU baseline, with success rates ranging from 76\% to 96\%, confirming that dead data elimination through negative-side gradients is both necessary and sufficient for reliable coordination learning.
-
-The systematic exploration of the LeakyReLU spectrum reveals a clear progression from standard positive leaks through pure ReLU to negative leaks that approximate the absolute value function. The PReLU experiments provide compelling independent validation: when given the freedom to learn their activation shape, 20 of 48 successful runs converged to $\alpha = -1.003$, essentially recreating the perfect absolute value function. This finding aligns with recent work by Pinto and Tavares, who demonstrated that PReLU with $\alpha = -1$ enables single-layer XOR solutions, suggesting that this mathematical relationship represents a fundamental coordination principle rather than a task-specific quirk.
-
-The geometric analysis reveals that successful coordination can emerge through multiple pathways. Activations closer to the absolute value function rely less on perfect mirror symmetry between parameters, as the activation itself provides the required coordination behavior. This explains why negative leak variants show lower mirror detection rates despite achieving higher success rates—the coordination intelligence shifts from parameter relationships to activation-inherent properties as the function approaches absolute value behavior.
-
-Modern activation functions—ELU and PReLU—achieve top-tier performance (96\% success) while maintaining reasonable convergence times, validating their effectiveness for coordination-dependent tasks. However, smooth activations like ELU complicate prototype surface interpretation, as the effective decision boundaries cannot be directly read from model parameters. This highlights a fundamental trade-off between performance and interpretability in activation function choice.
-
-The convergence timing analysis reveals important efficiency considerations. LeakyReLU -0.8 achieves the fastest coordination discovery (median 42 epochs) due to its strong architectural bias toward the required coordination pattern, while LeakyReLU -0.01 requires extensive exploration (median 2861 epochs) despite achieving optimal success rates. This suggests that activation choice involves balancing coordination assistance against learning flexibility.
-
-These results establish that coordination challenges can be addressed through zero-cost architectural modifications, providing immediate practical guidance for coordination-dependent architectures. The universal improvement across activation variants confirms the dead data mechanism as the primary coordination bottleneck while revealing the rich solution space available when gradient flow is preserved. For practitioners, any deviation from pure ReLU significantly enhances coordination learning, with modern activations offering the best combination of performance and training efficiency.

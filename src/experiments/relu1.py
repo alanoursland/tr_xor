@@ -61,8 +61,9 @@ def config_relu1_kaiming() -> ExperimentConfig:
 @experiment("relu1_reinit")
 def config_relu1_reinit() -> ExperimentConfig:
     """Auto-restart if any sample stays dead."""
-    config = get_experiment_config("relu1_normal")
+    config = get_experiment_config("relu1_kaiming")
     config.model.reinit_dead_data(config.model.init_kaiming, config.data.x, 100)
+    config.analysis.plot_hyperplanes = False
     config.description = (
         "Auto-reinit on dead data."
     )
@@ -72,9 +73,10 @@ def config_relu1_reinit() -> ExperimentConfig:
 @experiment("relu1_reinit_margin")
 def config_relu1_reinit_margin() -> ExperimentConfig:
     """Reinit on dead data with 0.3 margin."""
-    config = get_experiment_config("relu1_normal")
+    config = get_experiment_config("relu1_kaiming")
     config.model.reinit_dead_data(config.model.init_kaiming, config.data.x, 100, min_threshold=0.3)
     config.execution.num_runs = 500
+    config.analysis.plot_hyperplanes = False
     config.description = "Reinit on margin 0.3."
     return config
 

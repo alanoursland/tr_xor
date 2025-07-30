@@ -7,13 +7,13 @@
 
 \subsection*{Study Motivation}
 
-This experiment tests the most fundamental implementation of prototype surface learning theory: a single linear neuron followed by an absolute-value activation, $y = |w^{\mathsf{T}}x + b|$. As detailed in Section~\ref{sec:abs1-model-data}, this architecture directly implements a scaled distance metric from input points to a learned hyperplane, making it the minimal viable test of the theory's core mechanism.
+This experiment tests the most fundamental implementation of prototype surface theory: a single linear neuron followed by an absolute-value activation, $y = |w^{\mathsf{T}}x + b|$. As detailed in Section~\ref{sec:abs1-model-data}, this architecture directly implements a scaled distance metric from input points to a learned hyperplane, making it the minimal viable test of the theory's core mechanism.
 
 The absolute-value activation is designed to solve XOR by learning a prototype surface that intersects the points assigned to the zero class (the ``False'' XOR outputs). According to the theory, the network should position its hyperplane $w^{\mathsf{T}}x + b = 0$ to pass through these prototype points, while placing the ``True'' class points at a distance of $\sqrt{2}$.
 
 We systematically test five initialization strategies to understand how different starting weight scales affect this fundamental learning process. Since the analytical optimum is known (Section~\ref{sec:abs1-model-data}), we can directly validate whether empirical learning recovers the theoretically predicted geometry regardless of initialization.
 
-This experiment serves multiple purposes: it provides geometric validation of prototype surface learning, establishes our experimental methodology and analysis framework, and creates a performance baseline for comparison with more complex architectures in subsequent chapters. The insights gained about initialization effects will directly inform strategies for training the multi-neuron models that follow.RetryClaude can make mistakes. Please double-check responses.
+This experiment serves multiple purposes: it provides geometric validation of prototype surface theory, establishes our experimental methodology and analysis framework, and creates a performance baseline for comparison with more complex architectures in subsequent chapters. The insights gained about initialization effects will directly inform strategies for training the multi-neuron models that follow.RetryClaude can make mistakes. Please double-check responses.
 
 % ------------------------------------------------------------------
 
@@ -154,7 +154,7 @@ Large   & $0.00 \pm 0.00$ & $1.41 \pm 0.00$ & 1 \\
 \end{tabular}
 \end{table}
 
-All initialization schemes produce identical distance patterns. The False points lie exactly on the hyperplane ($d_{\text{False}} = 0$), confirming that the network anchors its decision boundary to this class. The True points are positioned at distance $1.41 \approx \sqrt{2}$, precisely matching the theoretical prediction. The tight clustering demonstrates that prototype surface learning produces a consistent functional relationship regardless of initialization.
+All initialization schemes produce identical distance patterns. The False points lie exactly on the hyperplane ($d_{\text{False}} = 0$), confirming that the network anchors its decision boundary to this class. The True points are positioned at distance $1.41 \approx \sqrt{2}$, precisely matching the theoretical prediction. The tight clustering demonstrates that the models learn a consistent functional relationship regardless of initialization.
 
 \paragraph{Solution Structure Analysis}
 We cluster the learned parameter vectors $(w_1, w_2, b)$ using DBSCAN to reveal how many distinct geometric solutions can achieve the required distance pattern.
@@ -195,20 +195,20 @@ Every initialization discovers exactly two sign-symmetric parameter clusters, re
 Figure~\ref{fig:abs1-hyperplanes} visualizes the two solution clusters. Despite opposite hyperplane orientations (different arrow directions), both achieve identical functional relationships: the hyperplane passes through the False points and places the True points at the calibrated distance needed for correct outputs.
 
 \paragraph{Theoretical Validation}
-These results provide direct empirical validation of prototype surface learning theory. The network learns by positioning its zero-level set to intersect the prototype class (False points) while calibrating weight magnitude so the non-prototype class (True points) produces the target activation. The consistent geometry across all initializations demonstrates that this mechanism represents a fundamental attractor in the learning dynamics, not an artifact of specific training conditions.
+These results provide empirical support of prototype surface theory. The network learns by positioning its zero-level set to intersect the prototype class (False points) while calibrating weight magnitude so the non-prototype class (True points) produces the target activation. The consistent geometry across all initializations demonstrates that this mechanism represents a fundamental attractor in the learning dynamics, not an artifact of specific training conditions.
 
 % ------------------------------------------------------------------
 
 \subsection*{Study Discussion}
 
-This experiment demonstrates the remarkable robustness of the single absolute-value neuron architecture, achieving $100\,\%$ XOR classification success across all initialization schemes. This universal success stems from the analytical tractability of the model: with a known closed-form optimum, the loss landscape contains no local minima that can trap the optimizer. The hard-coded symmetry of the absolute-value activation eliminates the coordination challenges that plague more complex architectures, creating an ideal baseline for prototype surface learning.
+This experiment demonstrates the remarkable robustness of the single absolute-value neuron architecture, achieving $100\,\%$ XOR classification success across all initialization schemes. This universal success stems from the analytical tractability of the model: with a known closed-form optimum, the loss landscape contains no local minima that can trap the optimizer. The hard-coded symmetry of the absolute-value activation avoids the complications that often hinder more complex architectures, creating an ideal baseline for further exploration.
 
 The learning dynamics reveal intriguing relationships between initialization geometry and convergence speed. While convergence time scales monotonically with weight magnitude, our analysis hints at more subtle correlations between parameter distance metrics (angular and magnitude changes) and training epochs. However, these relationships remain incompletely understood and require more sophisticated modeling to quantify precisely. The consistent $\sim22^\circ$ median rotation across initializations suggests fundamental geometric constraints in how random orientations transition to the optimal XOR-solving hyperplane.
 
-The geometric analysis provides direct empirical validation of prototype surface learning theory. Every successful run learns by anchoring its hyperplane to intersect the "False" class points (zero-output targets) while calibrating weight magnitude to position the "True" class at the precise distance needed for correct activation. This demonstrates negative representation learning: the network encodes class membership through the zero-level set rather than positive activations. Importantly, this mechanism is label-independent—if we reversed the 0/1 class assignments, the network would anchor to the other two points, confirming that the underlying geometric principle is general.
+The geometric analysis provides direct empirical validation of the prototype surface theory. Every successful run learns by anchoring its hyperplane to intersect the "False" class points (zero-output targets) while calibrating weight magnitude to position the "True" class at the precise distance needed for correct activation. This demonstrates negative representation learning: the network encodes class membership through the zero-level set rather than positive activations. Importantly, this mechanism is label-independent—if we reversed the 0/1 class assignments, the network would anchor to the other two points, confirming that the underlying geometric principle is general.
 
 Several anomalies warrant future investigation. Large initialization paradoxically achieves the lowest final loss ($7.37 \times 10^{-8}$ mean) despite requiring the most training epochs, suggesting dramatic single-step loss reductions that bypass our stopping threshold. This implies complex optimization dynamics that merit deeper analysis as we scale to more sophisticated architectures.
 
 Given the similar geometric outcomes across initialization schemes, we find no compelling advantage for any particular strategy. Consequently, we will use Kaiming initialization as our default for subsequent experiments, providing consistency with standard deep learning practice while maintaining the geometric reliability demonstrated here.
 
-These results establish the single absolute-value neuron as an ideal prototype surface learning baseline. The next challenge is testing how these principles extend to multi-neuron architectures where symmetry must be learned rather than hard-coded. The transition from deterministic success to the coordination challenges of independent ReLU neurons will reveal which aspects of prototype surface learning are fundamental versus artifacts of this simplified setting.
+These results establish the single absolute-value neuron as an ideal baseline for future experimetns. The next challenge is testing how these principles extend to multi-neuron architectures where symmetry must be learned rather than hard-coded.

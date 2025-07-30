@@ -1,4 +1,4 @@
-# **Prototype Surface Learning Theory**
+# **Prototype Surfaces in Neural Networks**
 
 ## **1. Conceptual Context**
 
@@ -71,7 +71,7 @@ the absolute-value unit can be understood as simultaneously measuring distance o
 
 This behavior makes absolute-value networks function less like inclusion-based classifiers and more like **surface detectors**: each hidden neuron describes an affine prototype, and outputs the deviation from it. The network as a whole then aggregates these deviations to guide classification. As we will see later in the XOR case (Section §4.1), this property allows a single $|\cdot|$ unit to carve out linearly inseparable regions through symmetric combination—something ReLU requires multiple units to achieve.
 
-In short, absolute-value activations preserve the prototype surface idea but collapse the prototype region to a locus. They transition the model’s geometry from region-growing to **distance field encoding**, setting up a different but still compatible basis for prototype surface learning.
+In short, absolute-value activations preserve the prototype surface idea but collapse the prototype region to a locus. They transition the model’s geometry from region-growing to **distance field encoding**, setting up a different but still compatible basis for prototype surface interpretation.
 
 ---
 

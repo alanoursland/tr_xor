@@ -140,8 +140,6 @@ This illustrates a fundamental limitation of adaptive methods: they optimize for
 \paragraph{Speed and Content Separation}
 The geometric analysis confirms that optimization choice affects the trajectory but not the destination. All optimizers converge to identical prototype surface structures, with the same distance patterns (Class 0: 0.00±0.00, Class 1: 1.41±0.00) and mirror-symmetric weight clusters. This reinforces the fundamental finding from the initialization study: learned representations emerge from the problem structure and model architecture, not from optimization dynamics.
 
-This separation has profound implications for understanding neural networks. If prototype surface learning represents a fundamental mechanism, then the geometric insights gained here should generalize to complex architectures where optimal solutions are unknown and Newton steps are unavailable.
-
 \paragraph{Implications for Complex Models}
 While this "frictionless" optimization problem represents an idealized case, the insights inform practical deep learning. The study demonstrates the value of theoretical analysis for algorithm selection and highlights scenarios where simpler optimizers may outperform adaptive methods. For subsequent experiments with multi-neuron architectures, we will use Adam(0.01) as a reasonable default that balances robustness with computational efficiency, informed by this understanding of its behavior characteristics.
 

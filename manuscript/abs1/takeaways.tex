@@ -25,16 +25,8 @@ The quadratic loss surface enables direct empirical testing of optimization theo
 \paragraph{Geometric Robustness}
 The consistent emergence of identical prototype surface structures across all experimental conditions suggests that these geometric relationships represent fundamental attractors in the learning dynamics rather than artifacts of specific training procedures.
 
-\subsection*{Forward Research Directions}
-These results establish the single absolute-value neuron as an ideal baseline for prototype surface learning theory while raising critical questions for future investigation:
-
 \paragraph{Convergence Prediction}
 Our analysis reveals hints of systematic relationships between initialization geometry (angle changes, norm ratios) and convergence speed, but these patterns require more sophisticated modeling to quantify precisely. Developing predictive metrics for training time based on geometric displacement could inform initialization strategies for complex architectures.
 
 \paragraph{Learned Symmetry Challenge}
 The next chapter decomposes the absolute value into two independent ReLU neurons: $|w \cdot x + b| = \text{ReLU}(w_0 \cdot x + b_0) + \text{ReLU}(w_1 \cdot x + b_1)$. This transition from hard-coded to learned symmetry will test whether the clean separation between optimization speed and learned geometry persists when neurons must coordinate rather than operate in isolation.
-
-\paragraph{Architectural Scaling}
-The geometric analysis methods developed here—distance clustering and weight clustering—provide tools for studying prototype surface learning in deeper networks where analytical solutions are unavailable. Understanding how these principles extend beyond the minimal XOR case is essential for validating the broader theory.
-
-This chapter establishes that prototype surface learning can be empirically validated in controlled settings and provides the methodological foundation for investigating how these mechanisms scale to more complex architectures and datasets.

@@ -24,6 +24,7 @@ from typing import List, Dict, Any, Optional
 from pathlib import Path
 import json
 from datetime import datetime
+import numpy as np
 
 # --- Experiment registry access ------------------------------------------------
 # Importing the package triggers registration of experiments via decorators.
@@ -129,6 +130,67 @@ class ResultsExplorerApp(tk.Tk):
         self.last_updated_var = tk.StringVar(value="—")
         ttk.Label(stats_frame, textvariable=self.last_updated_var, foreground="#333").pack(side="left")
 
+        # Accuracy panel ------------------------------------------------------
+        accuracy_panel = ttk.LabelFrame(root, text="Accuracy Distribution", padding=(8, 8))
+        accuracy_panel.pack(fill="x", pady=(0, 8))
+
+        self.accuracy_widgets = {}
+        accuracy_levels = [0, 25, 50, 75, 100]
+        
+        for level in accuracy_levels:
+            level_frame = ttk.Frame(accuracy_panel)
+            level_frame.pack(fill="x", pady=1)
+            
+            # Level label and count
+            level_label = ttk.Label(level_frame, text=f"{level}%:", width=6)
+            level_label.pack(side="left", padx=(0, 8))
+            
+            count_var = tk.StringVar(value="—")
+            count_label = ttk.Label(level_frame, textvariable=count_var, foreground="#333")
+            count_label.pack(side="left", padx=(0, 8))
+            
+            # Show runs toggle button
+            runs_var = tk.BooleanVar()
+            runs_button = ttk.Checkbutton(level_frame, text="Show runs", variable=runs_var,
+                                        command=lambda l=level: self._toggle_runs_display(l))
+            runs_button.pack(side="left", padx=(0, 8))
+            
+            # Runs display (initially hidden)
+            runs_label = ttk.Label(level_frame, text="", foreground="#666", font=("Consolas", 8))
+            
+            self.accuracy_widgets[level] = {
+                'count_var': count_var,
+                'runs_var': runs_var,
+                'runs_button': runs_button,
+                'runs_label': runs_label,
+                'runs_data': []
+            }
+
+        # Epochs panel --------------------------------------------------------
+        epochs_panel = ttk.LabelFrame(root, text="Epoch Percentiles", padding=(8, 8))
+        epochs_panel.pack(fill="x", pady=(0, 8))
+
+        # Create grid for percentiles
+        percentiles_frame = ttk.Frame(epochs_panel)
+        percentiles_frame.pack(fill="x")
+        
+        # Headers
+        ttk.Label(percentiles_frame, text="Percentile", font=("TkDefaultFont", 9, "bold")).grid(row=0, column=0, padx=(0, 16), sticky="w")
+        ttk.Label(percentiles_frame, text="Epochs", font=("TkDefaultFont", 9, "bold")).grid(row=0, column=1, sticky="w")
+        
+        self.epochs_widgets = {}
+        percentile_labels = ["0th", "10th", "25th", "50th", "75th", "90th", "100th"]
+        
+        for i, pct in enumerate(percentile_labels):
+            row = i + 1
+            ttk.Label(percentiles_frame, text=f"{pct}:").grid(row=row, column=0, padx=(0, 16), sticky="w")
+            
+            epochs_var = tk.StringVar(value="—")
+            epochs_label = ttk.Label(percentiles_frame, textvariable=epochs_var, foreground="#333")
+            epochs_label.grid(row=row, column=1, sticky="w")
+            
+            self.epochs_widgets[pct] = epochs_var
+
         # Placeholder main content area --------------------------------------
         self.title_label = ttk.Label(root, text="Results Explorer", font=("Segoe UI", 16))
         self.title_label.pack(anchor="w")
@@ -182,6 +244,7 @@ class ResultsExplorerApp(tk.Tk):
                     data['description'] = analysis_data['description']
         except FileNotFoundError:
             data['description'] = 'N/A'
+            analysis_data = None
             if stats_file.exists():
                 self.status_var.set("Missing analysis_data.json")
         except json.JSONDecodeError as e:
@@ -215,6 +278,7 @@ class ResultsExplorerApp(tk.Tk):
         except FileNotFoundError:
             data['num_runs'] = 'N/A'
             data['last_updated'] = 'N/A'
+            stats_data = None
             if analysis_file.exists():
                 self.status_var.set("Missing stats.json")
         except json.JSONDecodeError as e:
@@ -233,7 +297,124 @@ class ResultsExplorerApp(tk.Tk):
             data['num_runs'] = 'N/A'
             data['last_updated'] = 'N/A'
             
+        # Load accuracy and epochs data for Chunk 2
+        data['accuracy'] = self._load_accuracy_data(analysis_data, stats_data)
+        data['epochs'] = self._load_epochs_data(analysis_data)
+            
         return data
+        
+    def _load_accuracy_data(self, analysis_data: Optional[Dict], stats_data: Optional[Dict]) -> Dict[str, Any]:
+        """Load accuracy bucket counts and run IDs."""
+        accuracy_data = {'counts': {}, 'run_ids': {}}
+        
+        # Try analysis_data.json first
+        if analysis_data:
+            try:
+                # Primary: accuracy.distribution_analysis.level_counts
+                if 'accuracy' in analysis_data and 'distribution_analysis' in analysis_data['accuracy']:
+                    level_counts = analysis_data['accuracy']['distribution_analysis']['level_counts']
+                    accuracy_data['counts'] = {
+                        0: level_counts['0.0'],
+                        25: level_counts['0.25'], 
+                        50: level_counts['0.5'],
+                        75: level_counts['0.75'],
+                        100: level_counts['1.0']
+                    }
+                    
+                    # Get run IDs if available
+                    if 'basic_stats' in analysis_data and 'distributions' in analysis_data['basic_stats']:
+                        acc_dist = analysis_data['basic_stats']['distributions']['accuracy_distribution']
+                        if 'run_ids' in acc_dist:
+                            run_ids = acc_dist['run_ids']
+                            accuracy_data['run_ids'] = {
+                                0: run_ids['0.0'],
+                                25: run_ids['0.25'],
+                                50: run_ids['0.5'], 
+                                75: run_ids['0.75'],
+                                100: run_ids['1.0']
+                            }
+                # Fallback: basic_stats.distributions.accuracy_distribution.bins
+                elif 'basic_stats' in analysis_data and 'distributions' in analysis_data['basic_stats']:
+                    acc_dist = analysis_data['basic_stats']['distributions']['accuracy_distribution']
+                    if 'bins' in acc_dist:
+                        bins = acc_dist['bins']
+                        accuracy_data['counts'] = {
+                            0: bins['0.0'],
+                            25: bins['0.25'],
+                            50: bins['0.5'],
+                            75: bins['0.75'],
+                            100: bins['1.0']
+                        }
+                        
+                        # Get run IDs if available
+                        if 'run_ids' in acc_dist:
+                            run_ids = acc_dist['run_ids']
+                            accuracy_data['run_ids'] = {
+                                0: run_ids['0.0'],
+                                25: run_ids['0.25'],
+                                50: run_ids['0.5'],
+                                75: run_ids['0.75'],
+                                100: run_ids['1.0']
+                            }
+            except KeyError:
+                # Fall through to stats_data fallback
+                pass
+                
+        # Fallback to stats.json
+        if not accuracy_data['counts'] and stats_data and 'accuracy_distribution' in stats_data:
+            acc_dist = stats_data['accuracy_distribution']
+            accuracy_data['counts'] = {
+                0: acc_dist['0_percent'],
+                25: acc_dist['25_percent'],
+                50: acc_dist['50_percent'], 
+                75: acc_dist['75_percent'],
+                100: acc_dist['100_percent']
+            }
+            # No run IDs in stats.json
+            
+        return accuracy_data
+        
+    def _load_epochs_data(self, analysis_data: Optional[Dict]) -> Dict[str, Any]:
+        """Load epoch percentiles data."""
+        epochs_data = {'percentiles': {}}
+        
+        if not analysis_data:
+            return epochs_data
+            
+        try:
+            # Primary: convergence_timing.all_runs.percentiles
+            if 'convergence_timing' in analysis_data and 'all_runs' in analysis_data['convergence_timing']:
+                percentiles = analysis_data['convergence_timing']['all_runs']['percentiles']
+                epochs_data['percentiles'] = {
+                    '0th': percentiles['0th'],
+                    '10th': percentiles['10th'],
+                    '25th': percentiles['25th'],
+                    '50th': percentiles['50th'],
+                    '75th': percentiles['75th'],
+                    '90th': percentiles['90th'],
+                    '100th': percentiles['100th']
+                }
+            # Fallback: compute from raw data if available
+            elif 'basic_stats' in analysis_data and 'raw_metrics' in analysis_data['basic_stats']:
+                raw_metrics = analysis_data['basic_stats']['raw_metrics']
+                if 'convergence_epochs' in raw_metrics:
+                    epochs = raw_metrics['convergence_epochs']
+                    if epochs:  # Make sure we have data
+                        percentiles = np.percentile(epochs, [0, 10, 25, 50, 75, 90, 100])
+                        epochs_data['percentiles'] = {
+                            '0th': int(percentiles[0]),
+                            '10th': int(percentiles[1]),
+                            '25th': int(percentiles[2]),
+                            '50th': int(percentiles[3]),
+                            '75th': int(percentiles[4]),
+                            '90th': int(percentiles[5]),
+                            '100th': int(percentiles[6])
+                        }
+        except (KeyError, TypeError):
+            # Return empty percentiles if data is missing or malformed
+            pass
+            
+        return epochs_data
         
     def _update_overview_panel(self, data: Optional[Dict[str, Any]]) -> None:
         """Update the overview panel with experiment data."""
@@ -241,10 +422,80 @@ class ResultsExplorerApp(tk.Tk):
             self.description_var.set("No experiment loaded")
             self.run_count_var.set("—")
             self.last_updated_var.set("—")
+            self._update_accuracy_panel({})
+            self._update_epochs_panel({})
         else:
             self.description_var.set(data.get('description', 'N/A'))
             self.run_count_var.set(str(data.get('num_runs', 'N/A')))
             self.last_updated_var.set(data.get('last_updated', 'N/A'))
+            self._update_accuracy_panel(data.get('accuracy', {}))
+            self._update_epochs_panel(data.get('epochs', {}))
+            
+    def _update_accuracy_panel(self, accuracy_data: Dict[str, Any]) -> None:
+        """Update the accuracy buckets display."""
+        counts = accuracy_data.get('counts', {})
+        run_ids = accuracy_data.get('run_ids', {})
+        
+        # Check for count mismatch and warn in status bar
+        if counts and hasattr(self, 'run_count_var'):
+            total_from_buckets = sum(counts.values())
+            try:
+                total_runs = int(self.run_count_var.get())
+                if total_from_buckets != total_runs:
+                    self.status_var.set(f"Warning: Accuracy bucket total ({total_from_buckets}) != total runs ({total_runs})")
+            except (ValueError, TypeError):
+                pass  # Skip validation if run count isn't a number
+        
+        for level in [0, 25, 50, 75, 100]:
+            widgets = self.accuracy_widgets[level]
+            
+            # Update count
+            count = counts.get(level, 0) if counts else 0
+            widgets['count_var'].set(str(count))
+            
+            # Update run IDs availability and data
+            level_run_ids = run_ids.get(level, []) if run_ids else []
+            widgets['runs_data'] = level_run_ids
+            
+            # Enable/disable the show runs button
+            has_run_ids = bool(level_run_ids) or (count > 0 and run_ids)  # Enable if we have run IDs or could have them
+            if not run_ids:  # No run IDs available at all
+                widgets['runs_button'].configure(state='disabled')
+                if count > 0:
+                    widgets['runs_button'].configure(text="(run IDs unavailable)")
+                else:
+                    widgets['runs_button'].configure(text="Show runs")
+            else:
+                widgets['runs_button'].configure(state='normal', text="Show runs")
+                
+            # Reset toggle state
+            widgets['runs_var'].set(False)
+            widgets['runs_label'].pack_forget()
+            
+    def _update_epochs_panel(self, epochs_data: Dict[str, Any]) -> None:
+        """Update the epoch percentiles display."""
+        percentiles = epochs_data.get('percentiles', {})
+        
+        for pct_label in ['0th', '10th', '25th', '50th', '75th', '90th', '100th']:
+            if percentiles and pct_label in percentiles:
+                value = str(percentiles[pct_label])
+            else:
+                value = "—"
+            self.epochs_widgets[pct_label].set(value)
+            
+    def _toggle_runs_display(self, level: int) -> None:
+        """Toggle the display of run IDs for an accuracy bucket."""
+        widgets = self.accuracy_widgets[level]
+        is_shown = widgets['runs_var'].get()
+        
+        if is_shown and widgets['runs_data']:
+            # Show the run IDs
+            run_ids_str = ", ".join(map(str, widgets['runs_data']))
+            widgets['runs_label'].configure(text=f"Runs: {run_ids_str}")
+            widgets['runs_label'].pack(side="left", padx=(8, 0))
+        else:
+            # Hide the run IDs
+            widgets['runs_label'].pack_forget()
 
     # --- Experiment list handling -------------------------------------------
     def _refresh_experiments(self) -> None:

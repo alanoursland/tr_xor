@@ -65,6 +65,11 @@ class ResultsExplorerApp(tk.Tk):
         # Populate experiments after UI is built (so we can update widgets)
         self._refresh_experiments()
 
+        # Bind mousewheel scrolling
+        self.bind_all("<MouseWheel>", self._on_mousewheel)  # Windows
+        self.bind_all("<Button-4>", lambda e: self._on_mousewheel(type('obj', (object,), {'delta': 120})()))  # Linux
+        self.bind_all("<Button-5>", lambda e: self._on_mousewheel(type('obj', (object,), {'delta': -120})()))  # Linux
+
     # --- UI construction -----------------------------------------------------
     def _build_menu(self) -> None:
         menubar = tk.Menu(self)
@@ -80,8 +85,28 @@ class ResultsExplorerApp(tk.Tk):
         self.config(menu=menubar)
 
     def _build_layout(self) -> None:
-        # Root container
-        root = ttk.Frame(self, padding=(10, 10, 10, 6))
+        # Create main canvas and scrollbar for entire app
+        main_canvas = tk.Canvas(self)
+        scrollbar = ttk.Scrollbar(self, orient="vertical", command=main_canvas.yview)
+        
+        # Scrollable frame that will contain all content
+        scrollable_frame = ttk.Frame(main_canvas)
+        
+        # Configure scrolling
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: main_canvas.configure(scrollregion=main_canvas.bbox("all"))
+        )
+        
+        main_canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        main_canvas.configure(yscrollcommand=scrollbar.set)
+        
+        # Pack canvas and scrollbar
+        main_canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        # Root container (now inside scrollable_frame instead of self)
+        root = ttk.Frame(scrollable_frame, padding=(10, 10, 10, 6))
         root.pack(fill="both", expand=True)
 
         # Toolbar panel -------------------------------------------------------
@@ -554,7 +579,7 @@ class ResultsExplorerApp(tk.Tk):
             pass
             
         return mirror_data
-                    
+        
     def _update_overview_panel(self, data: Optional[Dict[str, Any]]) -> None:
         """Update the overview panel with experiment data."""
         if data is None:
@@ -642,7 +667,6 @@ class ResultsExplorerApp(tk.Tk):
             
     def _update_clustering_panel(self, clustering_data: Dict[str, Any]) -> None:
         """Update the clustering analysis display."""
-        print(clustering_data)
         # Clear existing content
         for widget in self.clustering_container.winfo_children():
             widget.destroy()
@@ -650,16 +674,16 @@ class ResultsExplorerApp(tk.Tk):
         layers = clustering_data.get('layers', {})
         
         if not layers:
-            self.clustering_status_var.set("No clustering analysis available")
-            self.clustering_status_label = ttk.Label(self.clustering_container, textvariable=self.clustering_status_var, foreground="#666")
-            self.clustering_status_label.pack()
+            # Create new status label since we destroyed all widgets
+            status_label = ttk.Label(self.clustering_container, text="No clustering analysis available", foreground="#666")
+            status_label.pack()
             return
-            
-        # Create expandable sections for each layer
+       
+        # Create expandable sections for each layer (no internal scrolling needed)
         for layer_name, layer_info in layers.items():
             # Layer summary frame
             layer_frame = ttk.LabelFrame(self.clustering_container, text=f"{layer_name}", padding=(4, 4))
-            layer_frame.pack(fill="x", pady=2)
+            layer_frame.pack(fill="x", pady=2, padx=2)
             
             # Summary info
             total_clusters = layer_info.get('total_clusters', 0)
@@ -677,51 +701,67 @@ class ResultsExplorerApp(tk.Tk):
                 param_frame = ttk.Frame(layer_frame)
                 param_frame.pack(fill="x", padx=(16, 0), pady=2)
                 
-                # Parameter header
-                param_header = ttk.Label(param_frame, text=f"{param_name}:", font=("TkDefaultFont", 9, "bold"))
+                # Parameter header with summary
+                n_clusters = param_info.get('n_clusters', 0)
+                noise_count = param_info.get('noise_count', 0)
+                header_text = f"{param_name}: {n_clusters} clusters"
+                if noise_count > 0:
+                    header_text += f", {noise_count} noise"
+                    
+                param_header = ttk.Label(param_frame, text=header_text, font=("TkDefaultFont", 9, "bold"))
                 param_header.pack(anchor="w")
                 
-                # Clusters table
+                # Clusters details
                 clusters = param_info.get('clusters', [])
                 if clusters:
-                    # Create a simple table-like display
-                    table_frame = ttk.Frame(param_frame)
-                    table_frame.pack(fill="x", padx=(8, 0))
-                    
-                    # Headers
-                    headers_frame = ttk.Frame(table_frame)
-                    headers_frame.pack(fill="x")
-                    ttk.Label(headers_frame, text="Cluster", width=8, font=("TkDefaultFont", 8, "bold")).pack(side="left")
-                    ttk.Label(headers_frame, text="Size", width=6, font=("TkDefaultFont", 8, "bold")).pack(side="left")
-                    ttk.Label(headers_frame, text="Centroid", width=20, font=("TkDefaultFont", 8, "bold")).pack(side="left")
-                    ttk.Label(headers_frame, text="Std Dev", width=20, font=("TkDefaultFont", 8, "bold")).pack(side="left")
-                    ttk.Label(headers_frame, text="Runs", font=("TkDefaultFont", 8, "bold")).pack(side="left")
-                    
-                    # Cluster rows
-                    for cluster in clusters:
-                        row_frame = ttk.Frame(table_frame)
-                        row_frame.pack(fill="x")
+                    for i, cluster in enumerate(clusters):
+                        cluster_frame = ttk.Frame(param_frame)
+                        cluster_frame.pack(fill="x", padx=(8, 0), pady=1)
                         
-                        # Format centroid and std as compact strings
-                        centroid_str = f"[{', '.join(map(str, cluster['centroid']))}]"
-                        std_str = f"[{', '.join(map(str, cluster['std']))}]"
+                        # Cluster basic info
+                        cluster_label = cluster['cluster_label']
+                        size = cluster['size']
                         run_count = len(cluster['run_ids'])
                         
-                        ttk.Label(row_frame, text=str(cluster['cluster_label']), width=8, font=("TkDefaultFont", 8)).pack(side="left")
-                        ttk.Label(row_frame, text=str(cluster['size']), width=6, font=("TkDefaultFont", 8)).pack(side="left")
-                        ttk.Label(row_frame, text=centroid_str, width=20, font=("Consolas", 8)).pack(side="left")
-                        ttk.Label(row_frame, text=std_str, width=20, font=("Consolas", 8)).pack(side="left")
-                        ttk.Label(row_frame, text=f"{run_count} runs", font=("TkDefaultFont", 8), foreground="#666").pack(side="left")
-                
-                # Show noise count if present
-                noise_count = param_info.get('noise_count', 0)
-                if noise_count > 0:
-                    noise_label = ttk.Label(param_frame, text=f"Noise points: {noise_count}", 
-                                          font=("TkDefaultFont", 8), foreground="#888")
-                    noise_label.pack(anchor="w", padx=(8, 0))
-                    
+                        basic_info = f"  Cluster {cluster_label}: {size} points, {run_count} runs"
+                        basic_label = ttk.Label(cluster_frame, text=basic_info, font=("TkDefaultFont", 8))
+                        basic_label.pack(anchor="w")
+                        
+                        # Centroid and std on separate lines for readability
+                        centroid = cluster['centroid']
+                        std = cluster['std']
+                        
+                        # Format arrays more compactly
+                        if len(centroid) <= 5:
+                            centroid_str = f"[{', '.join(f'{x:.3f}' for x in centroid)}]"
+                            std_str = f"[{', '.join(f'{x:.3f}' for x in std)}]"
+                        else:
+                            # Truncate long arrays
+                            centroid_str = f"[{', '.join(f'{x:.3f}' for x in centroid[:3])}...] ({len(centroid)}D)"
+                            std_str = f"[{', '.join(f'{x:.3f}' for x in std[:3])}...] ({len(std)}D)"
+                        
+                        details_text = f"    Centroid: {centroid_str}  |  Std: {std_str}"
+                        details_label = ttk.Label(cluster_frame, text=details_text, 
+                                                font=("Consolas", 8), foreground="#666")
+                        details_label.pack(anchor="w")
+                        
+                        # Run IDs - show first few and count if too many
+                        run_ids = cluster['run_ids']
+                        unique_runs = sorted(set(run_ids))  # Remove duplicates and sort
+                        
+                        if len(unique_runs) <= 10:
+                            runs_str = f"    Runs: {', '.join(map(str, unique_runs))}"
+                        else:
+                            first_few = ', '.join(map(str, unique_runs[:8]))
+                            runs_str = f"    Runs: {first_few}... ({len(unique_runs)} unique)"
+                        
+                        runs_label = ttk.Label(cluster_frame, text=runs_str, 
+                                            font=("TkDefaultFont", 8), foreground="#888")
+                        runs_label.pack(anchor="w")
+        
     def _update_mirror_weights_panel(self, mirror_data: Dict[str, Any]) -> None:
         """Update the mirror weights analysis display."""
+        print(mirror_data)
         summary = mirror_data.get('summary', {})
         runs = mirror_data.get('runs', [])
         
@@ -793,6 +833,17 @@ class ResultsExplorerApp(tk.Tk):
         # Keep typed text intact; do not auto-overwrite
         if current and current not in values:
             # leave text, but we might optionally open dropdown later
+            pass
+
+    def _on_mousewheel(self, event):
+        """Handle mousewheel scrolling."""
+        try:
+            # Find the main canvas
+            for child in self.winfo_children():
+                if isinstance(child, tk.Canvas):
+                    child.yview_scroll(int(-1*(event.delta/120)), "units")
+                    break
+        except:
             pass
 
     def _on_experiment_typed(self, event=None) -> None:

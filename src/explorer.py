@@ -25,6 +25,7 @@ from pathlib import Path
 import json
 from datetime import datetime
 import numpy as np
+import ast
 
 # --- Experiment registry access ------------------------------------------------
 # Importing the package triggers registration of experiments via decorators.
@@ -191,6 +192,49 @@ class ResultsExplorerApp(tk.Tk):
             
             self.epochs_widgets[pct] = epochs_var
 
+        # Analysis Results panel ----------------------------------------------
+        analysis_panel = ttk.LabelFrame(root, text="Analysis Results", padding=(8, 8))
+        analysis_panel.pack(fill="both", expand=True, pady=(0, 8))
+
+        # Clustering section
+        clustering_frame = ttk.LabelFrame(analysis_panel, text="Clustering Analysis", padding=(6, 6))
+        clustering_frame.pack(fill="both", expand=True, pady=(0, 4))
+        
+        self.clustering_container = ttk.Frame(clustering_frame)
+        self.clustering_container.pack(fill="both", expand=True)
+        
+        self.clustering_status_var = tk.StringVar(value="No clustering data loaded")
+        self.clustering_status_label = ttk.Label(self.clustering_container, textvariable=self.clustering_status_var, foreground="#666")
+        self.clustering_status_label.pack()
+
+        # Mirror Weights section  
+        mirror_frame = ttk.LabelFrame(analysis_panel, text="Mirror Weights Analysis", padding=(6, 6))
+        mirror_frame.pack(fill="x", pady=(4, 0))
+        
+        # Summary row
+        mirror_summary_frame = ttk.Frame(mirror_frame)
+        mirror_summary_frame.pack(fill="x", pady=(0, 4))
+        
+        self.mirror_summary_var = tk.StringVar(value="No mirror weights data loaded")
+        ttk.Label(mirror_summary_frame, textvariable=self.mirror_summary_var, foreground="#333").pack(side="left")
+        
+        # Expandable details
+        self.mirror_details_var = tk.BooleanVar()
+        self.mirror_details_button = ttk.Checkbutton(mirror_summary_frame, text="Show details", 
+                                                    variable=self.mirror_details_var,
+                                                    command=self._toggle_mirror_details)
+        self.mirror_details_button.pack(side="right")
+        
+        # Details container (initially hidden)
+        self.mirror_details_frame = ttk.Frame(mirror_frame)
+        self.mirror_details_text = tk.Text(self.mirror_details_frame, height=8, wrap=tk.WORD, 
+                                          font=("Consolas", 8), foreground="#666")
+        scrollbar = ttk.Scrollbar(self.mirror_details_frame, orient="vertical", command=self.mirror_details_text.yview)
+        self.mirror_details_text.configure(yscrollcommand=scrollbar.set)
+        
+        self.mirror_details_text.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
         # Placeholder main content area --------------------------------------
         self.title_label = ttk.Label(root, text="Results Explorer", font=("Segoe UI", 16))
         self.title_label.pack(anchor="w")
@@ -300,6 +344,10 @@ class ResultsExplorerApp(tk.Tk):
         # Load accuracy and epochs data for Chunk 2
         data['accuracy'] = self._load_accuracy_data(analysis_data, stats_data)
         data['epochs'] = self._load_epochs_data(analysis_data)
+        
+        # Load clustering and mirror weights data for Chunk 3
+        data['clustering'] = self._load_clustering_data(analysis_data)
+        data['mirror_weights'] = self._load_mirror_weights_data(analysis_data)
             
         return data
         
@@ -376,46 +424,137 @@ class ResultsExplorerApp(tk.Tk):
         
     def _load_epochs_data(self, analysis_data: Optional[Dict]) -> Dict[str, Any]:
         """Load epoch percentiles data."""
-        epochs_data = {'percentiles': {}}
-        
-        if not analysis_data:
-            return epochs_data
-            
-        try:
-            # Primary: convergence_timing.all_runs.percentiles
-            if 'convergence_timing' in analysis_data and 'all_runs' in analysis_data['convergence_timing']:
-                percentiles = analysis_data['convergence_timing']['all_runs']['percentiles']
-                epochs_data['percentiles'] = {
-                    '0th': percentiles['0th'],
-                    '10th': percentiles['10th'],
-                    '25th': percentiles['25th'],
-                    '50th': percentiles['50th'],
-                    '75th': percentiles['75th'],
-                    '90th': percentiles['90th'],
-                    '100th': percentiles['100th']
-                }
-            # Fallback: compute from raw data if available
-            elif 'basic_stats' in analysis_data and 'raw_metrics' in analysis_data['basic_stats']:
-                raw_metrics = analysis_data['basic_stats']['raw_metrics']
-                if 'convergence_epochs' in raw_metrics:
-                    epochs = raw_metrics['convergence_epochs']
-                    if epochs:  # Make sure we have data
-                        percentiles = np.percentile(epochs, [0, 10, 25, 50, 75, 90, 100])
-                        epochs_data['percentiles'] = {
-                            '0th': int(percentiles[0]),
-                            '10th': int(percentiles[1]),
-                            '25th': int(percentiles[2]),
-                            '50th': int(percentiles[3]),
-                            '75th': int(percentiles[4]),
-                            '90th': int(percentiles[5]),
-                            '100th': int(percentiles[6])
-                        }
-        except (KeyError, TypeError):
-            # Return empty percentiles if data is missing or malformed
-            pass
-            
+        epochs_data = analysis_data["convergence_timing"]["all_runs"]
         return epochs_data
         
+    def _load_clustering_data(self, analysis_data: Optional[Dict]) -> Dict[str, Any]:
+        """Load clustering analysis data."""
+        clustering_data = {'layers': {}}
+        
+        if not analysis_data:
+            return clustering_data
+            
+        try:
+            # Primary: hyperplane_clustering
+            if 'hyperplane_clustering' in analysis_data:
+                clustering_raw = analysis_data['hyperplane_clustering']
+                
+                # Iterate through all layers found
+                for layer_name, layer_data in clustering_raw.items():
+                    if not isinstance(layer_data, dict):
+                        continue
+                        
+                    layer_info = {
+                        'parameters': {},
+                        'total_clusters': 0,
+                        'total_noise': 0
+                    }
+                    
+                    # Process each parameter type (weight, bias, etc.)
+                    for param_name, param_data in layer_data.items():
+                        if param_name in ['layer_name', 'clustering_params']:
+                            continue  # Skip metadata fields
+                            
+                        if isinstance(param_data, dict) and 'param_data' in param_data:
+                            clusters = []
+                            
+                            # Process each cluster
+                            for cluster in param_data['param_data']:
+                                cluster_info = {
+                                    'cluster_label': cluster['cluster_label'],
+                                    'size': cluster['size'],
+                                    'run_ids': cluster['run_ids'],
+                                    'centroid': [round(x, 3) for x in cluster['centroid']],
+                                    'std': [round(x, 3) for x in cluster['std']]
+                                }
+                                clusters.append(cluster_info)
+                            
+                            layer_info['parameters'][param_name] = {
+                                'clusters': clusters,
+                                'n_clusters': param_data.get('n_clusters', 0),
+                                'noise_count': param_data.get('noise_count', 0)
+                            }
+                            
+                            # Accumulate totals for layer summary
+                            layer_info['total_clusters'] += param_data.get('n_clusters', 0)
+                            layer_info['total_noise'] += param_data.get('noise_count', 0)
+                    
+                    clustering_data['layers'][layer_name] = layer_info
+                        
+        except (KeyError, TypeError) as e:
+            # Return empty clustering if data is missing or malformed
+            pass
+            
+        return clustering_data
+        
+    def _load_mirror_weights_data(self, analysis_data: Optional[Dict]) -> Dict[str, Any]:
+        """Load mirror weights analysis data."""
+        mirror_data = {'summary': {}, 'runs': []}
+        
+        if not analysis_data:
+            return mirror_data
+            
+        try:
+            if 'mirror_weights' in analysis_data:
+                mirror_weights = analysis_data['mirror_weights']
+                
+                if mirror_weights:  # Check if we have data
+                    # Collect all cosine similarities for summary stats
+                    all_cosines = []
+                    total_pairs = 0
+                    runs_with_mirrors = 0
+                    
+                    for run_data in mirror_weights:
+                        run_id = run_data['run_id']
+                        mirror_pairs = run_data.get('mirror_pairs', [])
+                        mirror_count = run_data.get('mirror_count', 0)
+                        
+                        if mirror_count > 0:
+                            runs_with_mirrors += 1
+                            total_pairs += mirror_count
+                            
+                            # Parse cosine similarities from mirror pairs
+                            for pair_str in mirror_pairs:
+                                try:
+                                    # Parse "(0, 1, -0.999)" format
+                                    pair_tuple = ast.literal_eval(pair_str)
+                                    if len(pair_tuple) >= 3:
+                                        cosine = float(pair_tuple[2])
+                                        all_cosines.append(cosine)
+                                except (ValueError, SyntaxError):
+                                    # Skip malformed pairs
+                                    pass
+                        
+                        mirror_data['runs'].append({
+                            'run_id': run_id,
+                            'mirror_pairs': mirror_pairs,
+                            'mirror_count': mirror_count
+                        })
+                    
+                    # Compute summary statistics
+                    if all_cosines:
+                        mirror_data['summary'] = {
+                            'total_runs_analyzed': len(mirror_weights),
+                            'runs_with_mirrors': runs_with_mirrors,
+                            'total_pairs': total_pairs,
+                            'mean_cosine': round(np.mean(all_cosines), 4),
+                            'std_cosine': round(np.std(all_cosines), 4),
+                            'min_cosine': round(min(all_cosines), 4),
+                            'max_cosine': round(max(all_cosines), 4)
+                        }
+                    else:
+                        mirror_data['summary'] = {
+                            'total_runs_analyzed': len(mirror_weights),
+                            'runs_with_mirrors': 0,
+                            'total_pairs': 0
+                        }
+                        
+        except (KeyError, TypeError):
+            # Return empty mirror data if missing or malformed
+            pass
+            
+        return mirror_data
+                    
     def _update_overview_panel(self, data: Optional[Dict[str, Any]]) -> None:
         """Update the overview panel with experiment data."""
         if data is None:
@@ -424,12 +563,16 @@ class ResultsExplorerApp(tk.Tk):
             self.last_updated_var.set("—")
             self._update_accuracy_panel({})
             self._update_epochs_panel({})
+            self._update_clustering_panel({})
+            self._update_mirror_weights_panel({})
         else:
             self.description_var.set(data.get('description', 'N/A'))
             self.run_count_var.set(str(data.get('num_runs', 'N/A')))
             self.last_updated_var.set(data.get('last_updated', 'N/A'))
             self._update_accuracy_panel(data.get('accuracy', {}))
             self._update_epochs_panel(data.get('epochs', {}))
+            self._update_clustering_panel(data.get('clustering', {}))
+            self._update_mirror_weights_panel(data.get('mirror_weights', {}))
             
     def _update_accuracy_panel(self, accuracy_data: Dict[str, Any]) -> None:
         """Update the accuracy buckets display."""
@@ -496,6 +639,140 @@ class ResultsExplorerApp(tk.Tk):
         else:
             # Hide the run IDs
             widgets['runs_label'].pack_forget()
+            
+    def _update_clustering_panel(self, clustering_data: Dict[str, Any]) -> None:
+        """Update the clustering analysis display."""
+        print(clustering_data)
+        # Clear existing content
+        for widget in self.clustering_container.winfo_children():
+            widget.destroy()
+            
+        layers = clustering_data.get('layers', {})
+        
+        if not layers:
+            self.clustering_status_var.set("No clustering analysis available")
+            self.clustering_status_label = ttk.Label(self.clustering_container, textvariable=self.clustering_status_var, foreground="#666")
+            self.clustering_status_label.pack()
+            return
+            
+        # Create expandable sections for each layer
+        for layer_name, layer_info in layers.items():
+            # Layer summary frame
+            layer_frame = ttk.LabelFrame(self.clustering_container, text=f"{layer_name}", padding=(4, 4))
+            layer_frame.pack(fill="x", pady=2)
+            
+            # Summary info
+            total_clusters = layer_info.get('total_clusters', 0)
+            total_noise = layer_info.get('total_noise', 0)
+            summary_text = f"{total_clusters} clusters"
+            if total_noise > 0:
+                summary_text += f", {total_noise} noise points"
+                
+            summary_label = ttk.Label(layer_frame, text=summary_text, foreground="#333")
+            summary_label.pack(anchor="w")
+            
+            # Parameters details
+            parameters = layer_info.get('parameters', {})
+            for param_name, param_info in parameters.items():
+                param_frame = ttk.Frame(layer_frame)
+                param_frame.pack(fill="x", padx=(16, 0), pady=2)
+                
+                # Parameter header
+                param_header = ttk.Label(param_frame, text=f"{param_name}:", font=("TkDefaultFont", 9, "bold"))
+                param_header.pack(anchor="w")
+                
+                # Clusters table
+                clusters = param_info.get('clusters', [])
+                if clusters:
+                    # Create a simple table-like display
+                    table_frame = ttk.Frame(param_frame)
+                    table_frame.pack(fill="x", padx=(8, 0))
+                    
+                    # Headers
+                    headers_frame = ttk.Frame(table_frame)
+                    headers_frame.pack(fill="x")
+                    ttk.Label(headers_frame, text="Cluster", width=8, font=("TkDefaultFont", 8, "bold")).pack(side="left")
+                    ttk.Label(headers_frame, text="Size", width=6, font=("TkDefaultFont", 8, "bold")).pack(side="left")
+                    ttk.Label(headers_frame, text="Centroid", width=20, font=("TkDefaultFont", 8, "bold")).pack(side="left")
+                    ttk.Label(headers_frame, text="Std Dev", width=20, font=("TkDefaultFont", 8, "bold")).pack(side="left")
+                    ttk.Label(headers_frame, text="Runs", font=("TkDefaultFont", 8, "bold")).pack(side="left")
+                    
+                    # Cluster rows
+                    for cluster in clusters:
+                        row_frame = ttk.Frame(table_frame)
+                        row_frame.pack(fill="x")
+                        
+                        # Format centroid and std as compact strings
+                        centroid_str = f"[{', '.join(map(str, cluster['centroid']))}]"
+                        std_str = f"[{', '.join(map(str, cluster['std']))}]"
+                        run_count = len(cluster['run_ids'])
+                        
+                        ttk.Label(row_frame, text=str(cluster['cluster_label']), width=8, font=("TkDefaultFont", 8)).pack(side="left")
+                        ttk.Label(row_frame, text=str(cluster['size']), width=6, font=("TkDefaultFont", 8)).pack(side="left")
+                        ttk.Label(row_frame, text=centroid_str, width=20, font=("Consolas", 8)).pack(side="left")
+                        ttk.Label(row_frame, text=std_str, width=20, font=("Consolas", 8)).pack(side="left")
+                        ttk.Label(row_frame, text=f"{run_count} runs", font=("TkDefaultFont", 8), foreground="#666").pack(side="left")
+                
+                # Show noise count if present
+                noise_count = param_info.get('noise_count', 0)
+                if noise_count > 0:
+                    noise_label = ttk.Label(param_frame, text=f"Noise points: {noise_count}", 
+                                          font=("TkDefaultFont", 8), foreground="#888")
+                    noise_label.pack(anchor="w", padx=(8, 0))
+                    
+    def _update_mirror_weights_panel(self, mirror_data: Dict[str, Any]) -> None:
+        """Update the mirror weights analysis display."""
+        summary = mirror_data.get('summary', {})
+        runs = mirror_data.get('runs', [])
+        
+        if not summary:
+            self.mirror_summary_var.set("No mirror weights data available")
+            self.mirror_details_button.configure(state='disabled')
+            self.mirror_details_var.set(False)
+            self.mirror_details_frame.pack_forget()
+            return
+            
+        # Update summary display
+        total_runs = summary.get('total_runs_analyzed', 0)
+        runs_with_mirrors = summary.get('runs_with_mirrors', 0)
+        total_pairs = summary.get('total_pairs', 0)
+        
+        summary_text = f"Analyzed {total_runs} runs: {runs_with_mirrors} with mirrors ({total_pairs} pairs)"
+        
+        if 'mean_cosine' in summary:
+            mean_cos = summary['mean_cosine']
+            std_cos = summary['std_cosine']
+            summary_text += f", mean cosine: {mean_cos:.4f} ± {std_cos:.4f}"
+            
+        self.mirror_summary_var.set(summary_text)
+        self.mirror_details_button.configure(state='normal')
+        
+        # Prepare details text
+        if runs:
+            details_lines = []
+            for run_data in runs:
+                run_id = run_data['run_id']
+                mirror_count = run_data['mirror_count']
+                
+                if mirror_count > 0:
+                    pairs_text = ", ".join(run_data['mirror_pairs'])
+                    details_lines.append(f"Run {run_id}: {pairs_text}")
+                    
+            self.mirror_details_content = "\n".join(details_lines) if details_lines else "No mirror pairs found"
+        else:
+            self.mirror_details_content = "No run data available"
+            
+    def _toggle_mirror_details(self) -> None:
+        """Toggle the display of mirror weights details."""
+        if self.mirror_details_var.get():
+            # Show details
+            self.mirror_details_frame.pack(fill="both", expand=True, pady=(4, 0))
+            self.mirror_details_text.delete(1.0, tk.END)
+            self.mirror_details_text.insert(1.0, getattr(self, 'mirror_details_content', 'No details available'))
+            self.mirror_details_text.configure(state='disabled')
+        else:
+            # Hide details
+            self.mirror_details_frame.pack_forget()
 
     # --- Experiment list handling -------------------------------------------
     def _refresh_experiments(self) -> None:

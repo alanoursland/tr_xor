@@ -42,7 +42,8 @@ def generate_overview_section(config) -> str:
 
 def generate_accuracy_section(distributions, total_runs) -> str:
     """Generate the classification accuracy section."""
-    acc_bins = distributions.get("accuracy_distribution", {}).get("bins", {})
+    acc_bins = distributions["accuracy_distribution"]["bins"]
+    acc_run_ids = distributions["accuracy_distribution"]["run_ids"]
 
     report = "## 🎯 Classification Accuracy\n\n"
 
@@ -50,6 +51,14 @@ def generate_accuracy_section(distributions, total_runs) -> str:
         count = acc_bins.get(acc, 0)
         if count > 0:
             report += f"* {count}/{total_runs} runs achieved {int(100*acc)}% accuracy\n"
+
+    report += "\n"
+
+    report += "Accuracy Run Ids:\n"
+    for acc in sorted(acc_run_ids.keys(), reverse=True):
+        run_ids = acc_run_ids.get(acc, [])
+        if run_ids:
+            report += f"{int(100*acc)}%: {', '.join(str(r) for r in run_ids)}\n"
 
     report += "\n---\n\n"
     return report
@@ -287,25 +296,16 @@ def generate_loss_distribution_section(basic_stats) -> str:
     report += "\n---\n\n"
     return report
 
-
-def generate_hyperplane_clustering_section(analysis_results):
-    """Generate the hyperplane clustering section in Markdown with improved formatting."""
-    report = "## 🎯 Hyperplane Clustering\n\n"
-
-    hyperplane_clustering = analysis_results.get("hyperplane_clustering", {})
-
-    if not hyperplane_clustering:
-        report += "* **No clustering data available**\n\n"
-        return report
-
-    for layer_name, layer_result in hyperplane_clustering.items():
-        report += f"### 🔹 Layer: `{layer_name}`\n\n"
+def generate_cluster_table(clusters):
+    report = ""
+    for layer_name, layer_result in clusters.items():
+        report += f"  #### 🔹 Layer: `{layer_name}`\n"
 
         clustering_params = layer_result.get("clustering_params", {})
         eps = clustering_params.get("eps", "N/A")
         min_samples = clustering_params.get("min_samples", "N/A")
 
-        report += f"**DBSCAN Parameters**: eps=`{eps}`, min_samples=`{min_samples}`\n\n"
+        report += f"  **DBSCAN Parameters**: eps=`{eps}`, min_samples=`{min_samples}`\n"
 
         # Process each parameter type (weight, bias, etc.)
         for param_key, param_data in layer_result.items():
@@ -317,15 +317,15 @@ def generate_hyperplane_clustering_section(analysis_results):
             n_clusters = param_data.get("n_clusters", 0)
             noise_count = param_data.get("noise_count", 0)
 
-            report += f"#### Parameter: `{param_label}`\n\n"
+            report += f"    ##### Parameter: `{param_label}`\n\n"
             
             # Summary statistics
-            report += f"* **Total clusters found**: {n_clusters}\n"
+            report += f"    * **Total clusters found**: {n_clusters}\n"
             if noise_count > 0:
-                report += f"* **Noise points**: {noise_count}\n"
+                report += f"    * **Noise points**: {noise_count}\n"
             
             if not clusters:
-                report += "* No clusters to display\n\n"
+                report += "*  No clusters to display\n\n"
                 continue
                 
             report += "\n"
@@ -334,8 +334,8 @@ def generate_hyperplane_clustering_section(analysis_results):
             sorted_clusters = sorted(clusters, key=lambda x: x["size"], reverse=True)
 
             # Create a table for better readability
-            report += "| Cluster | Size | Centroid | Std Dev | Runs |\n"
-            report += "|---------|------|----------|---------|------|\n"
+            report += "    | Cluster | Size | Centroid | Std Dev | Runs |\n"
+            report += "    |---------|------|----------|---------|------|\n"
 
             for cluster in sorted_clusters:
                 cid = cluster["cluster_label"]
@@ -350,65 +350,30 @@ def generate_hyperplane_clustering_section(analysis_results):
                 
                 runs_str = ", ".join(str(r) for r in set(run_ids))
 
-                report += f"| {cid} | {size} | `{centroid_str}` | `{std_str}` | {runs_str} |\n"
+                report += f"    | {cid} | {size} | `{centroid_str}` | `{std_str}` | {runs_str} |\n"
 
             report += "\n"
 
         report += "---\n\n"
-
     return report
-    """Generate the hyperplane clustering section in Markdown."""
+
+def generate_hyperplane_clustering_section(analysis_results):
+    """Generate the hyperplane clustering section in Markdown with improved formatting."""
     report = "## 🎯 Hyperplane Clustering\n\n"
 
     hyperplane_clustering = analysis_results.get("hyperplane_clustering", {})
 
     if not hyperplane_clustering:
         report += "* **No clustering data available**\n\n"
-    else:
-        for layer_name, layer_result in hyperplane_clustering.items():
-            report += f"### 🔹 Layer `{layer_name}`\n"
+        return report
+    succ_clusters = hyperplane_clustering["successful"]
+    # fail_clusters = hyperplane_clustering["unsuccessful"]
 
-            clustering_params = layer_result.get("clustering_params", {})
-            eps = clustering_params.get("eps")
-            min_samples = clustering_params.get("min_samples")
-
-            report += f"* **DBSCAN eps**: `{eps}`\n"
-            report += f"* **DBSCAN min_samples**: `{min_samples}`\n\n"
-
-            for param_key, param_data in layer_result.items():
-                if param_key in ("layer_name", "clustering_params"):
-                    continue  # skip meta
-
-                param_label = param_data.get("param_label")
-                clusters = param_data.get("param_data", [])
-                n_clusters = param_data.get("n_clusters", 0)
-                noise_points = param_data.get("noise_count", 0)
-
-                report += f"**Parameter `{param_label}`**\n\n"
-                report += f"* Clusters: **{n_clusters}**\n"
-                if noise_points > 0:
-                    report += f"* Noise points: **{noise_points}**\n"
-                report += "\n"
-
-                for cluster in clusters:
-                    cid = cluster["cluster_label"]
-                    size = cluster["size"]
-                    centroid = cluster["centroid"]
-                    std = cluster["std"]
-                    run_ids = cluster["run_ids"]
-
-                    report += f"#### ◼ Cluster `{cid}`\n"
-                    report += f"* **Size**: {size}\n"
-                    report += f"* **Centroid**: [{', '.join(f'{v:.6f}' for v in centroid)}]\n"
-                    report += f"* **Std Dev**: [{', '.join(f'{s:.6f}' for s in std)}]\n"
-                    report += f"* **Runs**: {', '.join(str(r) for r in run_ids)}\n"
-                    report += "\n"
-
-            report += "\n"
-
-        report += "---\n\n"
+    report += "### Successful Clusters\n"
+    report += generate_cluster_table(succ_clusters)
 
     return report
+
 
 def generate_dead_data_analysis_section(analysis_results, config):
     """Generate the dead data point analysis section."""
@@ -464,6 +429,78 @@ def generate_dead_data_analysis_section(analysis_results, config):
     report += "\n---\n\n"
     return report
 
+def generate_dead_unit_analysis_section(analysis_results, config):
+    """Generate the dead unit (post-training) analysis section."""
+    # Only include this section if enabled
+    if not config.analysis.dead_unit_analysis:
+        return ""
+
+    # Extract dead-unit info
+    if "dead_units" not in analysis_results:
+        return ""
+
+    du = analysis_results["dead_units"]
+    dead_counts = du.get("dead_unit_counts", [])
+    dead_fractions = du.get("dead_unit_fractions", [])
+    accuracies = du.get("accuracies", [])
+
+    if not (dead_counts and accuracies):
+        return ""
+
+    # Aggregate by exact accuracy value (mirrors dead_data behavior)
+    # For each accuracy level, we track:
+    #   - alive: number of runs with zero dead units
+    #   - dead: number of runs with one or more dead units
+    #   - dead_unit_counts: list of dead-unit counts for stats
+    #   - dead_unit_fractions: list of dead-unit fractions for stats
+    acc_summary = {}
+    for cnt, frac, acc in zip(dead_counts, dead_fractions, accuracies):
+        if acc not in acc_summary:
+            acc_summary[acc] = {
+                "alive": 0,
+                "dead": 0,
+                "dead_unit_counts": [],
+                "dead_unit_fractions": [],
+            }
+
+        if cnt == 0:
+            acc_summary[acc]["alive"] += 1
+        else:
+            acc_summary[acc]["dead"] += 1
+            acc_summary[acc]["dead_unit_counts"].append(cnt)
+            acc_summary[acc]["dead_unit_fractions"].append(frac)
+
+    # Build markdown report
+    report = "## 🧠 Dead Unit Analysis (Post-Training)\n\n"
+
+    # Sort by accuracy descending (like your dead data section)
+    for acc in sorted(acc_summary.keys(), reverse=True):
+        summary = acc_summary[acc]
+        acc_percent = int(round(acc * 100))
+        alive_count = summary["alive"]
+        dead_count = summary["dead"]
+
+        if alive_count > 0:
+            report += f"* {alive_count} runs with **no dead units** reached {acc_percent}% accuracy\n"
+
+        if dead_count > 0:
+            # Compute simple stats if we have dead-unit details
+            counts = summary["dead_unit_counts"]
+            fracs = summary["dead_unit_fractions"]
+            if counts and fracs:
+                mean_cnt = sum(counts) / len(counts)
+                mean_frac = sum(fracs) / len(fracs)
+                report += (
+                    f"* {dead_count} runs with **dead units** reached {acc_percent}% accuracy\n"
+                    f"|    mean dead units: {mean_cnt:.2f}  "
+                    f"(mean fraction: {mean_frac*100:.1f}%)\n"
+                )
+            else:
+                # Fallback if we didn't store per-run details for this acc level
+                report += f"* {dead_count} runs with **dead units** reached {acc_percent}% accuracy\n"
+
+    report += "\n---\n\n"
+    return report
 
 def generate_mirror_analysis_section(analysis_results, config) -> str:
     """Generate the mirror weight symmetry analysis section."""
@@ -592,14 +629,15 @@ def generate_analysis_report(
     report += generate_report_header(config)
     report += generate_overview_section(config)
     report += generate_accuracy_section(distributions, total_runs)
+    report += generate_loss_distribution_section(basic_stats)
     report += generate_convergence_section(convergence_timing, config)
-    report += generate_hyperplane_distance_section(analysis_results)
     report += generate_weight_reorientation_section(weight_reorientation)
     report += generate_combined_norm_ratio_section(weight_reorientation)
-    report += generate_loss_distribution_section(basic_stats)
+    report += generate_hyperplane_distance_section(analysis_results)
     report += generate_hyperplane_clustering_section(analysis_results)
-    report += generate_dead_data_analysis_section(analysis_results, config)
     report += generate_mirror_analysis_section(analysis_results, config)
+    report += generate_dead_data_analysis_section(analysis_results, config)
+    report += generate_dead_unit_analysis_section(analysis_results, config)
     report += generate_failure_analysis_section(analysis_results, config)
 
     return report

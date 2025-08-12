@@ -19,13 +19,16 @@ import os
 import sys
 import platform
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, messagebox
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 import json
 from datetime import datetime
 import numpy as np
 import ast
+import subprocess
+import platform
+from PIL import Image, ImageTk  # You'll need: pip install Pillow
 
 # --- Experiment registry access ------------------------------------------------
 # Importing the package triggers registration of experiments via decorators.
@@ -36,6 +39,23 @@ from configs import list_experiments
 APP_TITLE = "Results Explorer"
 DEFAULT_GEOMETRY = "900x600"
 RESULTS_ROOT = os.environ.get("RESULTS_ROOT", os.path.join(os.getcwd(), "results"))
+KNOWN_PLOTS = {
+    'epoch_distribution': {
+        'filename': 'epoch_distribution.png',
+        'display_name': 'Epoch Distribution',
+        'type': 'png'
+    },
+    'angle_vs_epochs': {
+        'filename_template': '{experiment_name}_linear1_angle_vs_epochs.pdf',
+        'display_name': 'Linear1 Angle vs Epochs', 
+        'type': 'pdf'
+    },
+    'normratio_vs_epochs': {
+        'filename_template': '{experiment_name}_linear1_normratio_vs_epochs.pdf',
+        'display_name': 'Linear1 Normratio vs Epochs',
+        'type': 'pdf'
+    }
+}
 
 
 def _configure_windows_dpi_awareness() -> None:
@@ -69,6 +89,10 @@ class ResultsExplorerApp(tk.Tk):
         self.bind_all("<MouseWheel>", self._on_mousewheel)  # Windows
         self.bind_all("<Button-4>", lambda e: self._on_mousewheel(type('obj', (object,), {'delta': 120})()))  # Linux
         self.bind_all("<Button-5>", lambda e: self._on_mousewheel(type('obj', (object,), {'delta': -120})()))  # Linux
+
+        # Initialize plot states (in-memory only)
+        self._plots_config = {plot_id: False for plot_id in KNOWN_PLOTS.keys()}
+        self._load_plot_states()
 
     # --- UI construction -----------------------------------------------------
     def _build_menu(self) -> None:
@@ -260,6 +284,71 @@ class ResultsExplorerApp(tk.Tk):
         self.mirror_details_text.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
 
+        # Plots panel ----------------------------------------------------------
+        plots_panel = ttk.LabelFrame(root, text="Experiment Plots", padding=(8, 8))
+        plots_panel.pack(fill="both", expand=True, pady=(4, 8))
+        
+        # Plots checkboxes frame
+        plots_controls_frame = ttk.Frame(plots_panel)
+        plots_controls_frame.pack(fill="x", pady=(0, 8))
+        
+        # Create plot checkboxes
+        self.plot_vars = {}
+        self.plot_widgets = {}
+        
+        for plot_id, plot_info in KNOWN_PLOTS.items():
+            plot_frame = ttk.Frame(plots_controls_frame)
+            plot_frame.pack(side="left", padx=(0, 16))
+            
+            # Checkbox
+            var = tk.BooleanVar()
+            checkbox = ttk.Checkbutton(
+                plot_frame, 
+                text=plot_info['display_name'],
+                variable=var,
+                command=lambda pid=plot_id: self._toggle_plot_display(pid)
+            )
+            checkbox.pack(anchor="w")
+            
+            # Status label (for "not found" messages)
+            status_label = ttk.Label(plot_frame, text="", foreground="#888", font=("TkDefaultFont", 8))
+            status_label.pack(anchor="w")
+            
+            self.plot_vars[plot_id] = var
+            self.plot_widgets[plot_id] = {
+                'checkbox': checkbox,
+                'status_label': status_label,
+                'available': False,
+                'filepath': None
+            }
+        
+        # Plots display area (scrollable)
+        plots_display_frame = ttk.Frame(plots_panel)
+        plots_display_frame.pack(fill="both", expand=True)
+        
+        # Canvas for plot images with scrollbar
+        self.plots_canvas = tk.Canvas(plots_display_frame, bg='white')
+        plots_scrollbar = ttk.Scrollbar(plots_display_frame, orient="vertical", command=self.plots_canvas.yview)
+        
+        self.plots_scrollable_frame = ttk.Frame(self.plots_canvas)
+        self.plots_scrollable_frame.columnconfigure(0, weight=1)
+        self.plots_scrollable_frame.bind(
+            "<Configure>",
+            lambda e: self.plots_canvas.configure(scrollregion=self.plots_canvas.bbox("all"))
+        )
+        
+        self.plots_canvas_window = self.plots_canvas.create_window((0, 0), window=self.plots_scrollable_frame, anchor="nw")
+        self.plots_canvas.configure(yscrollcommand=plots_scrollbar.set)
+
+        # Bind canvas resize to update frame width
+        self.plots_canvas.bind('<Configure>', self._on_canvas_configure)        
+
+        self.plots_canvas.pack(side="left", fill="both", expand=True)
+        plots_scrollbar.pack(side="right", fill="y")
+        
+        # Store references for plot display widgets
+        self.plot_display_widgets = {}
+        
         # Placeholder main content area --------------------------------------
         self.title_label = ttk.Label(root, text="Results Explorer", font=("Segoe UI", 16))
         self.title_label.pack(anchor="w")
@@ -579,7 +668,50 @@ class ResultsExplorerApp(tk.Tk):
             pass
             
         return mirror_data
+
+    def _load_plots_config(self) -> Dict[str, bool]:
+        """Load plot checkbox states from memory (default all off)."""
+        if not hasattr(self, '_plots_config'):
+            self._plots_config = {plot_id: False for plot_id in KNOWN_PLOTS.keys()}
+        return self._plots_config
+    
+    def _save_plots_config(self) -> None:
+        """Save current plot checkbox states to memory."""
+        if not hasattr(self, '_plots_config'):
+            self._plots_config = {}
         
+        for plot_id, var in self.plot_vars.items():
+            self._plots_config[plot_id] = var.get()
+    
+    def _discover_plots(self, experiment_name: str) -> None:
+        """Check which plots exist for the given experiment."""
+        experiment_dir = Path(self.results_root) / experiment_name
+        
+        for plot_id, plot_info in KNOWN_PLOTS.items():
+            widgets = self.plot_widgets[plot_id]
+            
+            # Determine filename
+            if 'filename' in plot_info:
+                filename = plot_info['filename']
+            else:
+                filename = plot_info['filename_template'].format(experiment_name=experiment_name)
+            
+            filepath = experiment_dir / filename
+            
+            # Check if file exists
+            if filepath.exists():
+                widgets['available'] = True
+                widgets['filepath'] = filepath
+                widgets['checkbox'].configure(state='normal')
+                widgets['status_label'].configure(text="")
+            else:
+                widgets['available'] = False
+                widgets['filepath'] = None
+                widgets['checkbox'].configure(state='disabled')
+                widgets['status_label'].configure(text="Plot not found")
+                # Turn off the checkbox if file doesn't exist
+                self.plot_vars[plot_id].set(False)
+
     def _update_overview_panel(self, data: Optional[Dict[str, Any]]) -> None:
         """Update the overview panel with experiment data."""
         if data is None:
@@ -814,6 +946,106 @@ class ResultsExplorerApp(tk.Tk):
             # Hide details
             self.mirror_details_frame.pack_forget()
 
+    def _toggle_plot_display(self, plot_id: str) -> None:
+        """Toggle the display of a plot image."""
+        is_shown = self.plot_vars[plot_id].get()
+        widgets = self.plot_widgets[plot_id]
+        
+        # Save state to memory
+        self._save_plots_config()
+        
+        if is_shown and widgets['available']:
+            self._show_plot(plot_id)
+        else:
+            self._hide_plot(plot_id)
+
+    def _show_plot(self, plot_id: str) -> None:
+        """Display a plot image or PDF viewer button."""
+        widgets = self.plot_widgets[plot_id]
+        plot_info = KNOWN_PLOTS[plot_id]
+        filepath = widgets['filepath']
+        
+        if plot_id in self.plot_display_widgets:
+            return  # Already showing
+        
+        # Create container frame
+        container = ttk.LabelFrame(
+            self.plots_scrollable_frame, 
+            text=plot_info['display_name'], 
+            padding=(8, 8)
+        )
+        container.pack(fill="x", pady=(0, 8), padx=4, expand=True)
+        
+        if plot_info['type'] == 'png':
+            try:
+                # Load and display image
+                image = Image.open(filepath)
+                
+                # Scale image to fit window width (max 800px)
+                canvas_width = 800
+                img_width, img_height = image.size
+                if img_width > canvas_width:
+                    scale = canvas_width / img_width
+                    new_width = int(img_width * scale)
+                    new_height = int(img_height * scale)
+                    image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                
+                # Convert to PhotoImage
+                photo = ImageTk.PhotoImage(image)
+                
+                # Display in label
+                img_label = ttk.Label(container, image=photo)
+                img_label.image = photo  # Keep reference to prevent garbage collection
+                img_label.pack()
+                
+                self.plot_display_widgets[plot_id] = {'container': container, 'widgets': [img_label]}
+                
+            except Exception as e:
+                error_label = ttk.Label(container, text=f"Error loading image: {e}", foreground="red")
+                error_label.pack()
+                self.plot_display_widgets[plot_id] = {'container': container, 'widgets': [error_label]}
+                
+        elif plot_info['type'] == 'pdf':
+            # PDF viewer button
+            pdf_label = ttk.Label(container, text=f"PDF file: {filepath.name}")
+            pdf_label.pack(pady=(0, 4))
+            
+            open_button = ttk.Button(
+                container, 
+                text="Open in default viewer",
+                command=lambda: self._open_pdf(filepath)
+            )
+            open_button.pack()
+            
+            self.plot_display_widgets[plot_id] = {'container': container, 'widgets': [pdf_label, open_button]}
+        
+        # Update canvas scroll region
+        self.plots_canvas.update_idletasks()
+        self.plots_canvas.configure(scrollregion=self.plots_canvas.bbox("all"))
+    
+    def _hide_plot(self, plot_id: str) -> None:
+        """Hide a plot display."""
+        if plot_id in self.plot_display_widgets:
+            display_info = self.plot_display_widgets[plot_id]
+            display_info['container'].destroy()
+            del self.plot_display_widgets[plot_id]
+            
+            # Update canvas scroll region
+            self.plots_canvas.update_idletasks()
+            self.plots_canvas.configure(scrollregion=self.plots_canvas.bbox("all"))
+    
+    def _open_pdf(self, filepath: Path) -> None:
+        """Open PDF file in default system viewer."""
+        try:
+            if platform.system() == "Windows":
+                os.startfile(str(filepath))
+            elif platform.system() == "Darwin":  # macOS
+                subprocess.run(["open", str(filepath)])
+            else:  # Linux
+                subprocess.run(["xdg-open", str(filepath)])
+        except Exception as e:
+            messagebox.showerror("Error", f"Could not open PDF: {e}")
+
     # --- Experiment list handling -------------------------------------------
     def _refresh_experiments(self) -> None:
         """Populate from the *registered* experiments (authoritative list)."""
@@ -822,6 +1054,7 @@ class ResultsExplorerApp(tk.Tk):
             self._all_experiments = list(names)
             self._set_combo_values(self._all_experiments)
             self.status_var.set(f"Loaded {len(self._all_experiments)} experiments from registry.")
+            self._load_plot_states()
         except Exception as e:
             self._all_experiments = []
             self._set_combo_values([])
@@ -845,6 +1078,11 @@ class ResultsExplorerApp(tk.Tk):
                     break
         except:
             pass
+
+    def _on_canvas_configure(self, event):
+        """Update the scrollable frame width when canvas is resized."""
+        canvas_width = event.width
+        self.plots_canvas.itemconfig(self.plots_canvas_window, width=canvas_width)
 
     def _on_experiment_typed(self, event=None) -> None:
         typed = (self.experiment_var.get() or "").strip()
@@ -872,7 +1110,21 @@ class ResultsExplorerApp(tk.Tk):
         overview_data = self._load_experiment_overview(name)
         self._update_overview_panel(overview_data)
         
+        # Discover and update plots
+        self._discover_plots(name)
+        self._load_plot_states()
+
         self.status_var.set(f"Loaded experiment: {name}")
+
+    def _load_plot_states(self) -> None:
+        """Load and apply saved plot checkbox states."""
+        config = self._load_plots_config()
+        
+        for plot_id, should_show in config.items():
+            if plot_id in self.plot_vars:
+                self.plot_vars[plot_id].set(should_show)
+                if should_show:
+                    self._toggle_plot_display(plot_id)
 
     # --- Actions -------------------------------------------------------------
     def _on_exit(self) -> None:

@@ -105,6 +105,7 @@ class AnalysisConfig:
    mirror_weight_detection: bool = False    # Detect w_i ≈ -w_j pairs (ReLU-specific)
    failure_angle_analysis: bool = False     # Initial angle analysis for failed runs
    dead_data_analysis: bool = False         # ReLU-specific dead data detection
+   dead_unit_analysis: bool = False         # ReLU-specific dead unit detection
    
    # Individual visualizations
    plot_hyperplanes: bool = False            # Geometric plots per run

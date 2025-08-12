@@ -2,6 +2,62 @@
 \section{Runtime Monitors Study}
 \label{sec:relu1-monitors}
 
+% ------------------------------------------------------------------
+
+\subsection*{Study Motivation}
+
+The previous studies demonstrate two contrasting philosophies for addressing neural network failure modes: rejection sampling prevents problems by discarding unsuitable initializations, while BHS prevents problems by constructing theoretically guaranteed configurations. Both approaches share a fundamental assumption that failure modes must be addressed before training begins. This study explores a paradigm shift from prevention to intervention—allowing problems to arise naturally and correcting them during training through active monitoring.
+
+Initialization-based solutions, while effective, have inherent limitations. Rejection sampling achieves excellent success rates but wastes computational resources, discarding 60-90\% of random initializations depending on margin requirements. BHS demonstrates that guaranteeing one desirable property (active gradients) can inadvertently create other failure modes (orientation traps), achieving only 72\% success despite its theoretical elegance. Both approaches assume that trainability is fundamentally determined at initialization, with no mechanism to address problems that develop during optimization.
+
+Runtime monitoring offers an alternative philosophy: begin with standard initialization and deploy targeted monitors that detect and correct specific failure modes as they emerge. Rather than attempting to predict and prevent all possible failures through careful initialization, this approach embraces a reactive strategy. Each monitor watches for a specific pathology—dead data points that receive no gradient flow, or hyperplanes that drift beyond reasonable bounds—and applies minimal corrections only when these conditions persist beyond a patience threshold.
+
+The theoretical appeal of this approach lies in its modularity and minimalism. Different failure modes can be addressed by independent monitors without complex interactions or unintended consequences. The minimal intervention principle ensures that networks develop naturally when possible, with corrections applied only when necessary. This provides direct observability into failure dynamics: every intervention represents a documented instance of a developing failure mode, offering insights into when and how networks struggle during training.
+
+This study addresses several empirical questions. Can reactive intervention achieve the same reliability as careful initialization? What computational overhead does continuous monitoring impose? Do mid-training corrections affect the quality of final solutions compared to networks that never needed intervention? Most fundamentally, can runtime monitoring handle failure modes that initialization-based methods cannot address, such as problems that emerge during optimization rather than existing from the start? The answers will determine whether active monitoring represents a viable alternative to initialization engineering for achieving reliable neural network training.
+
+% ------------------------------------------------------------------
+
+\subsection*{Study Design}
+
+\paragraph{Experimental Configuration}
+The runtime monitoring study employs the same 2-ReLU architecture (Linear(2→2) → ReLU → Sum) with standard Kaiming initialization, eliminating any special initialization requirements. The key innovation is a composite monitoring system that observes training dynamics and intervenes when specific failure conditions persist. Two independent monitors operate simultaneously, each targeting a distinct failure mode identified in previous studies. The monitoring system uses PyTorch hooks to observe network state non-invasively, allowing normal gradient flow except when intervention is required. To ensure statistical precision matching the margin rejection study, 500 independent runs were conducted.
+
+\paragraph{DeadSampleMonitor Implementation}
+The DeadSampleMonitor addresses the primary failure mode identified in baseline experiments by detecting and correcting dead data points during training. For each of the four XOR points, the monitor tracks whether the point is both misclassified and receiving zero gradient flow (all ReLU pre-activations negative). A patience counter increments when these conditions hold and resets to zero otherwise. After five consecutive epochs of a point being "dead-and-wrong," the monitor intervenes by identifying the neuron with smallest distance |pre-activation|/||weight|| and applying a minimal weight update: $\Delta w = \alpha x$ where $\alpha = \max(0, \varepsilon - z) / ||x||^2$ and $\varepsilon = 10^{-4}$. This produces the smallest possible weight change that achieves positive activation, restoring gradient flow while minimizing disruption to learned features.
+
+\paragraph{BoundsMonitor Implementation}  
+The BoundsMonitor prevents hyperplanes from drifting beyond a reasonable distance from the data, implementing a soft version of the geometric constraint that BHS enforces through initialization. The monitor calculates each hyperplane's orthogonal distance from the origin as $d = |b| / ||w||$ and tracks violations of the radius constraint $r = 1.4$ (matching the BHS radius). A separate patience counter for each neuron increments during violations and resets when the constraint is satisfied. After three consecutive epochs of violation, the monitor resets the hyperplane's bias to zero, forcing it to pass through the origin. This intervention is more aggressive than the weight nudge but occurs less frequently, serving as a geometric regularizer that prevents pathological drift.
+
+\paragraph{Modified Training Protocol}
+Training modifications accommodate the monitoring framework while maintaining comparability with baseline experiments. Early stopping based on loss change is disabled, requiring all runs to complete 800 epochs. This ensures monitors have opportunity to detect and correct problems that might develop late in training. The Adam optimizer configuration (learning rate 0.01, betas=(0.9, 0.99)) and MSE loss function remain unchanged. Monitors perform checks after every batch update but only intervene when patience thresholds are exceeded, balancing responsiveness with stability.
+
+\paragraph{Analysis Framework}
+The experimental design enables comprehensive evaluation of runtime monitoring effectiveness across multiple dimensions. Success rate analysis quantifies whether reactive intervention can match the 99.2\% reliability of margin-based rejection sampling. Intervention tracking records when each monitor activates, providing direct observation of failure mode frequency and timing. Convergence analysis examines both successful runs reaching loss below $10^{-7}$ and the distribution of runs requiring the full 800 epochs. Geometric analysis assesses solution quality through distance patterns, weight clustering, and mirror symmetry detection to determine whether mid-training corrections affect final solution geometry. Statistical comparisons with all previous methods establish the relative merits of reactive versus preventive approaches to failure mode mitigation.
+
+% ------------------------------------------------------------------
+
+
+
+% ------------------------------------------------------------------
+
+
+
+% ------------------------------------------------------------------
+
+
+
+% ------------------------------------------------------------------
+
+
+
+% ------------------------------------------------------------------
+
+
+
+% ------------------------------------------------------------------
+
+
 \subsection*{Aim}
 Rather than rejecting bad initialisations, we attach two \emph{online
 monitors} that watch training in real time:

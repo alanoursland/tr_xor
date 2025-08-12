@@ -1,7 +1,3 @@
-This idea was explored in experiment relu1_bhs and was a bust.
-
----
-
 # Bounded Hypersphere Initialization for ReLU Networks
 
 ## Abstract

@@ -15,6 +15,7 @@ import torch
 import traceback
 import experiments as _
 
+from copy import deepcopy
 from collections import defaultdict
 from configs import ExperimentConfig, get_experiment_config, list_experiments
 from pathlib import Path
@@ -79,6 +80,47 @@ def analyze_dead_data(run_results: List[Dict[str, Any]], config: ExperimentConfi
 
     return results
 
+def analyze_dead_units(run_results: List[Dict[str, Any]], config: ExperimentConfig) -> Dict[str, Any]:
+    """
+    Analyze which hidden units are dead *after training* (i.e., never activate for any input),
+    and correlate with final accuracy.
+    """
+
+    model = config.model
+    data = config.data
+    x = data.x  # [num_points, input_dim]
+
+    results = {
+        "dead_unit_counts": [],
+        "dead_unit_fractions": [],
+        "accuracies": [],
+    }
+
+    for i, result in enumerate(run_results):
+        run_dir = result["run_dir"]
+        model_final = torch.load(run_dir / "model.pt", map_location="cpu")
+        model.load_state_dict(model_final)
+        data = config.data
+
+        model.eval()
+        with torch.no_grad():
+            activations = model.forward_components(x)  # Get per-unit pre-ReLU outputs
+
+            if isinstance(activations, tuple):
+                activations = activations[0]
+
+            relu_out = torch.relu(activations)  # [num_points, num_units]
+            is_dead_unit = torch.all(relu_out == 0, dim=0)  # [num_units]
+
+            total_dead_units = int(is_dead_unit.sum().item())
+            num_units = relu_out.shape[1]
+            dead_frac = total_dead_units / num_units if num_units > 0 else 0.0
+
+            results["dead_unit_counts"].append(total_dead_units)
+            results["dead_unit_fractions"].append(dead_frac)
+            results["accuracies"].append(result.get("accuracy", 0.0))
+
+    return results
 
 def summarize_all_runs(all_results: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
@@ -684,43 +726,33 @@ def format_clustering_results(
     # print(f"layer_info = {layer_info}")
     return layer_info
 
-def analyze_hyperplane_clustering(
-    run_results: List[Dict[str, Any]], config: ExperimentConfig, eps: float = 0.1, min_samples: int = 2
+def cluster_parameters_for_runs(
+    run_results: List[Dict[str, Any]],
+    eps: float,
+    min_samples: int
 ) -> Dict[str, Any]:
     """
-    Cluster final hyperplane weights across runs, layer by layer, using DBSCAN.
-
-    Args:
-        run_results: List of results from all training runs.
-        eps: DBSCAN epsilon parameter (distance threshold).
-        min_samples: DBSCAN minimum samples per cluster.
-
-    Returns:
-        Dictionary mapping layer names to their clustering results.
+    Run parameter clustering for the given runs (no filtering here).
+    Returns {layer_name: formatted_clustering_result}, or {} if no runs.
     """
-    accuracy_threshold = config.analysis.accuracy_threshold
-    successful_runs = [r for r in run_results if r.get("accuracy", 0) >= accuracy_threshold]
-    if not successful_runs:
-        print("⚠️ No runs met the accuracy threshold. Skipping clustering.")
+    if not run_results:
         return {}
 
-    # Extract all parameter data from runs
-    layer_data = extract_layer_parameters(successful_runs)
-    
+    layer_data = extract_layer_parameters(run_results)
+
     cluster_results = {}
     for layer_name, layer_entries in layer_data.items():
         try:
-            # Prepare data for clustering
             collated_parameters = collate_layer_entries(layer_entries)
             layer_results = {}
+
             for param_key, param_value in collated_parameters.items():
                 if param_key == "unit_ids":
-                    continue  # you can skip this if you keep 'unit_ids' separately
-                flat_array = param_value["array"]
+                    continue
 
+                flat_array = param_value["array"]
                 labels, n_clusters, noise_count = cluster_units(flat_array, eps, min_samples)
 
-                # Store the raw cluster output in a clean shape:
                 layer_results[param_key] = {
                     "labels": labels,
                     "array": flat_array,
@@ -730,14 +762,35 @@ def analyze_hyperplane_clustering(
                     "unit_ids": param_value["unit_ids"],
                 }
 
-            # Format results
-            cluster_results[layer_name] = format_clustering_results(layer_name, layer_results, eps, min_samples)
-
+            cluster_results[layer_name] = format_clustering_results(
+                layer_name, layer_results, eps, min_samples
+            )
         except Exception as e:
             cluster_results[layer_name] = {"error": f"Failed to cluster: {str(e)}"}
             raise e
 
     return cluster_results
+
+def analyze_hyperplane_clustering(
+    run_results: List[Dict[str, Any]],
+    config: ExperimentConfig,
+    eps: float = 0.1,
+    min_samples: int = 2,
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """
+    Cluster final hyperplane parameters separately for successful and unsuccessful runs.
+    Returns (successful_clusters, unsuccessful_clusters).
+    """
+    threshold = config.analysis.accuracy_threshold
+
+    successful_runs = [r for r in run_results if r.get("accuracy", 0.0) >= threshold]
+    unsuccessful_runs = [r for r in run_results if r.get("accuracy", 0.0) < threshold]
+
+    # Run clustering per group
+    successful_clusters = cluster_parameters_for_runs(successful_runs, eps, min_samples)
+    unsuccessful_clusters = cluster_parameters_for_runs(unsuccessful_runs, eps, min_samples)
+
+    return successful_clusters, unsuccessful_clusters
 
 
 def compute_accuracy_summary_stats(accuracies: List[float]) -> Dict[str, float]:
@@ -1068,7 +1121,11 @@ def main() -> int:
         # Hyperplane clustering analysis
         if config.analysis.hyperplane_clustering:
             print("🎯 Analyzing hyperplane clustering...")
-            analysis_results["hyperplane_clustering"] = analyze_hyperplane_clustering(run_results, config)
+            succ_clusters, fail_clusters = analyze_hyperplane_clustering(run_results, config)
+            analysis_results["hyperplane_clustering"] = {
+                "successful": succ_clusters,
+                "unsuccessful": fail_clusters,
+            }
             print("  ✓ Hyperplane clustering analysis completed")
 
         # # Geometric analysis (hyperplanes, prototype regions)
@@ -1121,6 +1178,13 @@ def main() -> int:
             print("💀 Analyzing data data in initial model ...")
             analysis_results["dead_data"] = analyze_dead_data(run_results, config)
             print("  ✓ data data in initial model analysis completed")
+
+        # Dead unit analysis
+        if config.analysis.dead_unit_analysis:
+            print("🧠 Analyzing dead units after training...")
+            analysis_results["dead_units"] = analyze_dead_units(run_results, config)
+            print("  ✓ Dead unit analysis completed")
+
 
         # Generate visualizations
         if config.analysis.plot_hyperplanes:

@@ -37,6 +37,7 @@ def config_relu1_normal() -> ExperimentConfig:
             mirror_weight_detection=True,
             failure_angle_analysis=True,
             dead_data_analysis=True,
+            dead_unit_analysis=True,
             # Visualizations (default disabled for speed)
             plot_hyperplanes=True,
             plot_epoch_distribution=True,
@@ -84,7 +85,7 @@ def config_relu1_reinit_margin() -> ExperimentConfig:
 @experiment("relu1_bhs")
 def config_relu1_bhs() -> ExperimentConfig:
     """Tangent-to-hypersphere init; all samples active."""
-    config = get_experiment_config("relu1_normal")
+    config = get_experiment_config("relu1_kaiming")
     config.model.reinit_dead_data(
         lambda: config.model.init_bounded_hypersphere(config.model.init_kaiming, radius=1.4),
         config.data.x,
@@ -101,7 +102,7 @@ def config_relu1_bhs() -> ExperimentConfig:
 @experiment("relu1_monitor")
 def config_relu1_monitor() -> ExperimentConfig:
     """Runtime monitors fix dead samples / large norms"""
-    config = get_experiment_config("relu1_normal")
+    config = get_experiment_config("relu1_kaiming")
     dataset_size = config.data.x.shape[0]  # == 4
     hook_manager = monitor.SharedHookManager(config.model)
     training_monitor = monitor.CompositeMonitor(

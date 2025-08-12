@@ -241,27 +241,35 @@ def compute_distribution_statistics(metrics: Dict[str, List[float]], config: Exp
 
     # Accuracy distribution (especially important for XOR)
     if metrics["accuracies"]:
+        run_ids = metrics["run_ids"]
         accuracies = metrics["accuracies"]
 
         # XOR has discrete accuracy levels: 0%, 25%, 50%, 75%, 100%
         acc_bins = {0.0: 0, 0.25: 0, 0.5: 0, 0.75: 0, 1.0: 0}
+        run_id_bins = {0.0: [], 0.25: [], 0.5: [], 0.75: [], 1.0: []}
 
-        for acc in accuracies:
+        for run_id, acc in zip(run_ids, accuracies):
             # Round to nearest XOR accuracy level
             if acc <= 0.125:
                 acc_bins[0.0] += 1
+                run_id_bins[0.0].append(run_id)
             elif acc <= 0.375:
                 acc_bins[0.25] += 1
+                run_id_bins[0.25].append(run_id)
             elif acc <= 0.625:
                 acc_bins[0.5] += 1
+                run_id_bins[0.5].append(run_id)
             elif acc <= 0.875:
                 acc_bins[0.75] += 1
+                run_id_bins[0.75].append(run_id)
             else:
                 acc_bins[1.0] += 1
+                run_id_bins[1.0].append(run_id)
 
         distributions["accuracy_distribution"] = {
             "type": "discrete_xor",
             "bins": acc_bins,
+            "run_ids": run_id_bins,
             "perfect_rate": acc_bins[1.0] / len(accuracies),
             "failure_rate": acc_bins[0.0] / len(accuracies),
             "partial_success_rate": (acc_bins[0.25] + acc_bins[0.5] + acc_bins[0.75]) / len(accuracies),
@@ -352,6 +360,7 @@ def extract_run_metrics(run_results: List[Dict[str, Any]]) -> Dict[str, List[flo
     metrics = {
         "final_losses": [],
         "best_losses": [],
+        "run_ids": [],
         "accuracies": [],
         "training_times": [],
         "convergence_epochs": [],
@@ -361,6 +370,8 @@ def extract_run_metrics(run_results: List[Dict[str, Any]]) -> Dict[str, List[flo
     }
 
     for result in run_results:
+        metrics["run_ids"].append(result["run_id"])
+
         # Loss metrics
         metrics["final_losses"].append(result.get("final_loss", float("inf")))
         metrics["best_losses"].append(result.get("best_loss", result.get("final_loss", float("inf"))))

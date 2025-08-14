@@ -148,7 +148,7 @@ This shift has two implications:
 
 When networks use absolute-value activations, hidden units act more like **distance sensors** than region classifiers. This aligns closely with traditional metric learning, but from a surface-based, rather than centroid-based, perspective.
 
-From a prototype surface learning standpoint, the use of $|\cdot|$ enforces a strict localization: **the prototype is the surface itself**, and all outputs describe how far the input has drifted from it. This behavior complements the ReLU-based regime, offering a dual view—**proximity measured from both sides, rather than inclusion from one.**
+From a prototype surface standpoint, the use of $|\cdot|$ enforces a strict localization: **the prototype is the surface itself**, and all outputs describe how far the input has drifted from it. This behavior complements the ReLU-based regime, offering a dual view—**proximity measured from both sides, rather than inclusion from one.**
 
 ---
 

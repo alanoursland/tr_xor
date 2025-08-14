@@ -35,7 +35,7 @@ This output defines a scalar field over the input space. The value is zero on th
 
 ## Theoretical Framing
 
-Prototype surface learning theory proposes that neural networks learn structured, class-characterizing surfaces rather than just boundaries. The absolute value activation makes this interpretation geometrically transparent:
+Our prototype surface theory proposes that neural networks learn structured, class-characterizing surfaces rather than just boundaries. The absolute value activation makes this interpretation geometrically transparent:
 
 * The hyperplane $Wx + b = 0$ defines a **prototype surface** for class 0.
 * Inputs on this surface yield zero activation.

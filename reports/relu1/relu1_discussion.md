@@ -43,7 +43,7 @@ This failure mode demonstrates that:
 
 The 98.4% success rate of mirror initialization (compared to 58% for standard initialization) confirms that symmetry discovery is a major challenge, but the remaining 1.6% failure rate reveals irreducible geometric constraints in the optimization landscape.
 
-## 3. Implications for Prototype Surface Learning
+## 3. Implications for Prototype Surfaces
 
 These results, and the geometric nature of the failure modes, reinforce a key tenet that learning is driven by **gradient flow from class-aligned surfaces**. In the `abs1` model, that flow is always present. In the `relu1` model, it is **fragile and conditional**, a fact confirmed by comparing the `normal` and `reinit` experiments.
 

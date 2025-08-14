@@ -1,6 +1,6 @@
 **Outline XOR Experimental Plan**
 
-**1. Title:** Experiment Plan: Investigating Prototype Surface Learning with the XOR Problem
+**1. Title:** Experiment Plan: Investigating Prototype Surfaces with the XOR Problem
 
 **2. Introduction**
     * **2.1. Core Research Context:**

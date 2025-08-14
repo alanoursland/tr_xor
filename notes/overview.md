@@ -1,4 +1,4 @@
-## Neural Network Prototype Surface Learning Research Project
+## Neural Network Prototype Surface Research Project
 
 This research project investigates the hypothesis that neural networks fundamentally learn prototype surfaces rather than linear decision boundaries. The core theory challenges the conventional understanding that neural networks primarily function by constructing hyperplanes that separate different classes in feature space.
 
@@ -8,7 +8,7 @@ Instead of learning linear separations, neural networks learn manifolds or surfa
 
 **Research Goals**
 
-The primary goal is to gather empirical evidence supporting the prototype surface learning theory through systematic experimentation. This is not an effort to definitively prove the theory, but rather to accumulate data, identify new research questions, and provide supporting evidence for this alternative understanding of neural network learning mechanisms.
+The primary goal is to gather empirical evidence supporting the prototype surface interpretation through systematic experimentation. This is not an effort to definitively prove the theory, but rather to accumulate data, identify new research questions, and provide supporting evidence for this alternative understanding of neural network learning mechanisms.
 
 **Research Approach**
 

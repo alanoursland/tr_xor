@@ -47,7 +47,7 @@ Despite the variety of solutions found in the first layer, the second linear lay
 
 ## 5\. Implications and Future Work
 
-This experiment successfully demonstrates that the core principles of Prototype Surface Learning can generalize from a simple regression model to a more standard, multi-layer classification architecture. However, this generalization is not seamless and introduces significant new complexities. The choice of loss function and the addition of a second learnable layer have a profound impact on the learned geometry, the stability of the solution, and the optimization dynamics.
+This experiment successfully demonstrates that the core principles of our prototype surface theory can generalize from a simple regression model to a more standard, multi-layer classification architecture. However, this generalization is not seamless and introduces significant new complexities. The choice of loss function and the addition of a second learnable layer have a profound impact on the learned geometry, the stability of the solution, and the optimization dynamics.
 
 These findings open up several avenues for future investigation:
 

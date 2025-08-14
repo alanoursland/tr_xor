@@ -2,7 +2,7 @@
 
 ## **Experiment Overview**
 
-This report details the next experiment in a series systematically exploring how prototype surface learning principles apply to networks of increasing complexity. This experiment advances from the single-layer, regression-based model in `abs1` to a **two-layer, two-output, classification-based MLP**.
+This report details the next experiment in a series systematically exploring how prototype surface principles apply to networks of increasing complexity. This experiment advances from the single-layer, regression-based model in `abs1` to a **two-layer, two-output, classification-based MLP**.
 
 The primary motivation is twofold. First, by adopting a more standard classification architecture—using two logit outputs and Binary Cross-Entropy (BCE) loss—we address the valid methodological question of why a simpler loss like MSE was used previously. Second, and more importantly, this increase in complexity allows us to study how the **learning dynamics** and **interpretability** change with a deeper network. The goal is to investigate whether a coherent prototype surface still emerges, to expose any new problems or failure modes that arise, and to use these insights to eventually inform methods for improving training and interpretability.
 
@@ -54,4 +54,4 @@ This experiment is exploratory and designed to investigate three primary questio
 2.  If the model succeeds, does it converge to a stable geometric solution where the first layer learns a surface aligned with the `XOR=False` class, similar to the behavior observed in the simpler `abs1` model?
 3.  How does the second learnable layer transform the single feature signal from the first layer into two distinct class logits? Furthermore, do the backpropagated error signals from two outputs fundamentally change the geometric feature learned by the first layer compared to the single-output model?
 
-The results will provide critical insights into how the principles of prototype surface learning scale with increasing network complexity and how learning dynamics are affected by standard classification architectures.
+The results will provide critical insights into how the principles of our prototype surface theory scale with increasing network complexity and how learning dynamics are affected by standard classification architectures.

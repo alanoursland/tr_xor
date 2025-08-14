@@ -1,6 +1,6 @@
 ## Potential Connections to Existing Research Areas
 
-The "Prototype Surface Learning Theory" has clear ties to **prototype learning**, **geometric interpretations of neural networks**, and **distance metric learning**. Beyond these, it could intersect with or offer new perspectives on several other research domains:
+The prototype surface theory has clear ties to **prototype learning**, **geometric interpretations of neural networks**, and **distance metric learning**. Beyond these, it could intersect with or offer new perspectives on several other research domains:
 
 ### **1. Core Connections** 
 
@@ -47,4 +47,4 @@ The "Prototype Surface Learning Theory" has clear ties to **prototype learning**
 * **Abstract Algebra & Topology in Neural Networks:**
     * The hierarchical composition of half-spaces (defined by ReLUs) to form complex decision regions is already studied using tools from discrete geometry and topology (e.g., counting linear regions). This theory provides a semantic interpretation (prototypes) for these geometric structures.
 
-These connections suggest that the "Prototype Surface Learning Theory" could be a unifying concept or a new lens through which to view many existing challenges and phenomena in neural network research.
+These connections suggest that the prototype surface theory could be a unifying concept or a new lens through which to view many existing challenges and phenomena in neural network research.

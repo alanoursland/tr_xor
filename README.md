@@ -1,4 +1,4 @@
-# Prototype Surface Learning in Neural Networks: A Technical Report Exploring the XOR Problem
+# Prototype Surfaces in Neural Networks: A Technical Report Exploring the XOR Problem
 
 ## Overview
 
@@ -15,7 +15,7 @@ The key insight is that **zero activation indicates membership** in a learned pr
    - Significance for understanding neural network behavior
    - Approach through controlled experiments
 
-2. **[Core Theory](notes/core_theory.md)** - The mathematical framework of prototype surface learning
+2. **[Core Theory](notes/core_theory.md)** - A mathematical framework for prototype surfaces in neural networks.
    - How linear transformations encode signed distances to hyperplanes
    - ReLU as one-sided prototype region detection
    - Absolute value as two-sided distance measurement
@@ -140,7 +140,7 @@ If reusing research materials, please credit:
 ```bibtex
 @misc{oursland2025prototype,
   author       = {Oursland, Alan},
-  title        = {Prototype Surface Learning in Neural Networks: A Technical Report Exploring the XOR Problem (Work in Progress)},
+  title        = {Prototype Surfaces in Neural Networks: A Technical Report Exploring the XOR Problem (Work in Progress)},
   year         = {2025},
   howpublished = {\url{https://github.com/alanoursland/tr_xor}},
   note         = {GitHub repository, accessed 2025-06-24}

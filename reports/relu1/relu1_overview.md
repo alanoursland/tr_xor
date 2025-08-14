@@ -39,7 +39,7 @@ But the model does not enforce this symmetry — it must be learned through grad
 
 ## Theoretical Framing
 
-In the context of prototype surface learning, this model tests whether **a symmetric prototype surface** can be constructed from **asymmetric components**. Each ReLU unit defines an activation region corresponding to a half-space. The sum of two such ReLU fields can mimic a symmetric surface, but only if the weights and biases of the two units are mirror images.
+In the context of prototype surfaces, this model tests whether **a symmetric prototype surface** can be constructed from **asymmetric components**. Each ReLU unit defines an activation region corresponding to a half-space. The sum of two such ReLU fields can mimic a symmetric surface, but only if the weights and biases of the two units are mirror images.
 
 This experiment studies whether such symmetry emerges reliably from standard training, and how its formation compares to the explicit structure imposed by the absolute value.
 

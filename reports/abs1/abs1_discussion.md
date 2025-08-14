@@ -4,7 +4,7 @@
 
 This experiment demonstrated that a minimal neural network—a single linear neuron with an absolute value activation—consistently learns to classify the XOR dataset. All runs converged to a geometrically optimal and stable solution. This outcome provides strong support for the central hypothesis of this work: that even a single-node model can learn a class-defining prototype surface and distinguish categories by measuring deviation from it. These runs show a single |·| neuron consistently learns one prototype surface anchored on the False points and uses distance from that surface to classify.
 
-The results support the central hypothesis of this work: that a single-node model can represent a class-defining prototype surface and distinguish categories by measuring deviation from it. More broadly, the experiment serves as a concrete test case for the Prototype Surface Learning (PSL) theory, which interprets neural network activations as geometric distance functions rather than magnitude indicating feature confidence.
+The results support the central hypothesis of this work: that a single-node model can represent a class-defining prototype surface and distinguish categories by measuring deviation from it. More broadly, the experiment serves as a concrete test case for the prototype surface theory, which interprets neural network activations as geometric distance functions rather than magnitude indicating feature confidence.
 
 This discussion highlights key geometric patterns observed in successful solutions, notes ambiguous aspects of interpretation in single-unit networks, outlines early observations about convergence rates, and raises theoretical and empirical questions for future investigation. The findings are not definitive; rather, they are the first step in grounding a geometric theory of learning in empirical behavior—even in the simplest nonlinear setting.
 
@@ -63,7 +63,7 @@ This duality—where low activation signals class membership—is a core tenet o
 
 ## 5. **Interpretation Ambiguity in Single-Unit Outputs**
 
-The observed behavior of the single-node model exposes a subtle but important ambiguity in how neural network outputs are interpreted—particularly in minimal architectures. Although the network reliably outputs higher values for `True`-labeled XOR inputs and near-zero values for `False` inputs, it does so by learning a surface that **intersects** the `False` class. From a traditional standpoint—where higher activation is often taken to indicate stronger feature presence—this could suggest the unit is recognizing the `True` class. However, under the prototype surface learning (PSL) perspective, the opposite is true: the model is **anchored to the `False` class**, and its output grows with **distance** from the prototype surface that represents it.
+The observed behavior of the single-node model exposes a subtle but important ambiguity in how neural network outputs are interpreted—particularly in minimal architectures. Although the network reliably outputs higher values for `True`-labeled XOR inputs and near-zero values for `False` inputs, it does so by learning a surface that **intersects** the `False` class. From a traditional standpoint—where higher activation is often taken to indicate stronger feature presence—this could suggest the unit is recognizing the `True` class. However, under the prototype surface perspective, the opposite is true: the model is **anchored to the `False` class**, and its output grows with **distance** from the prototype surface that represents it.
 
 This tension between activation magnitude and geometric alignment reveals a representational duality. In this setup, the neuron is not a gate detecting presence or absence of a class-specific feature—it is a **distance function**, anchored to one class and used to measure how far inputs deviate from it. The low-activation (near-zero) values signal membership in the prototype class (`False`), while high-activation values correspond to inputs outside that region (`True`).
 
@@ -93,7 +93,7 @@ This expression arises from summing squared errors over all four data points, wi
 
 The only way for the model to output exactly zero is for the linear term $Wx + b$ to equal zero—i.e., for the input to lie **on the surface** defined by the affine equation. Therefore, the optimization objective naturally favors placing this surface through the class-0 inputs. Since those two points lie on a shared diagonal, and the class-1 inputs lie symmetrically across from it, this configuration also minimizes error for the `True` class by placing them at equal and maximal distance from the surface.
 
-Thus, the surface intersecting the `False` inputs is not just a convenient or likely solution—it is the **globally optimal configuration** for this architecture and task. This result reinforces the geometric consistency observed across successful runs and provides a formal basis for the behavior predicted by Prototype Surface Learning theory.
+Thus, the surface intersecting the `False` inputs is not just a convenient or likely solution—it is the **globally optimal configuration** for this architecture and task. This result reinforces the geometric consistency observed across successful runs and provides a formal basis for the behavior predicted by our prototype surface theory.
 
 
 
